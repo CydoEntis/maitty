@@ -453,6 +453,23 @@ fn what_the_flooding_machine_gets_through_in_a_flush_is_held_to_its_budget() {
 }
 
 #[test]
+fn a_machines_github_report_is_given_with_its_machine_and_tag() {
+    use maitty_shared::protocol::{GitHubAccount, GitHubReport};
+    let mut streams = Streams::default();
+    let report = GitHubReport {
+        installed: true,
+        accounts: vec![GitHubAccount { login: "me".into(), active: true }],
+        problem: None,
+    };
+    let answer = ServerMsg::Reply(Reply::GitHubAccounts { tag: 7, report: report.clone() });
+    let said = streams.on_message(BOX, answer, Instant::now());
+    assert!(matches!(
+        &said[..],
+        [Out::GitHubAccounts { machine, tag: 7, report: given }] if *machine == BOX && *given == report
+    ));
+}
+
+#[test]
 fn what_another_machine_says_went_wrong_is_given_and_this_computers_is_not() {
     let mut streams = Streams::default();
     let now = Instant::now();

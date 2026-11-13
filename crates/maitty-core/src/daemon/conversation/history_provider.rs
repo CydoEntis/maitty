@@ -11,6 +11,9 @@ const TOOL_LABEL_CHARS: usize = 2048;
 const HELPER_TITLE_CHARS: usize = 120;
 /// Largest plan text kept for one plan item.
 const MAX_PLAN_BYTES: usize = 64 * 1024;
+/// The item a provider's own summary of the earlier conversation arrives as. It is kept as a tool
+/// step of this kind, with the summary as its output.
+pub(super) const CONTEXT_SUMMARY_ITEM: &str = "contextSummary";
 
 fn tool_label(item: &Value) -> String {
     item.get("command")
@@ -160,6 +163,19 @@ pub(super) fn notification(
             kind: kind.into(),
             label: "Plan".into(),
             output: bounded_plan(item.get("text").and_then(Value::as_str).unwrap_or_default()),
+            input: None,
+            exit_code: None,
+            duration_ms: None,
+        },
+        // The transcript reader has already cleaned and bounded the text.
+        CONTEXT_SUMMARY_ITEM => Content::Tool {
+            kind: kind.into(),
+            label: String::new(),
+            output: item
+                .get("text")
+                .and_then(Value::as_str)
+                .ok_or(IncompleteReason::InvalidEvent)?
+                .into(),
             input: None,
             exit_code: None,
             duration_ms: None,

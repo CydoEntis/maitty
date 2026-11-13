@@ -137,12 +137,10 @@ const BlockView = memo(function BlockView({ block }: { block: Block }) {
     case 'code':
       return <CodeBlock language={block.language} text={block.text} />
     case 'list': {
-      const Tag = block.ordered ? 'ol' : 'ul'
-      return (
-        <Tag className={`m-0 flex flex-col gap-1 pl-[22px] ${block.ordered ? 'list-decimal' : 'list-disc'}`}>
-          {block.items.map((item, index) => <li key={index} className="whitespace-pre-wrap"><Inlines nodes={item} /></li>)}
-        </Tag>
-      )
+      const items = block.items.map((item, index) => <li key={index} className="whitespace-pre-wrap"><Inlines nodes={item} /></li>)
+      return block.ordered
+        ? <ol start={block.start} className="m-0 flex flex-col gap-1 pl-[22px] list-decimal">{items}</ol>
+        : <ul className="m-0 flex flex-col gap-1 pl-[22px] list-disc">{items}</ul>
     }
     case 'quote':
       return <blockquote className="m-0 border-l-[3px] border-line2 py-0.5 pl-3.5 whitespace-pre-wrap text-muted"><Inlines nodes={block.inlines} /></blockquote>

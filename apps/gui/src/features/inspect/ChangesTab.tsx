@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Icon } from '@/features/workspace/components/glyphs'
+import { LOCAL_MACHINE } from '@/api/machines'
 import { repoDiff, repoStatus, type RepoDiff } from './api'
 import { changeKind } from './changeKind'
 import { CommitBar, type ChangeActions } from './CommitBar'
@@ -23,10 +24,12 @@ function commentHint(count: number): string {
 
 type Props = {
   term: number
+  /** The machine the pane is on (0: this computer), whose daemon is asked. */
+  machine?: number
   /** The branch the checkout is on, shown above the files. */
   branch?: string
   comments?: Omit<PatchComments, 'path' | 'sent' | 'onSent'>
-  /** Commit and Create PR, for a checkout on this computer; absent elsewhere. */
+  /** The commit bar: Commit, the remote button and Create PR, run where the checkout is. */
   actions?: ChangeActions
   onNotice: (text: string) => void
 }
@@ -53,10 +56,12 @@ function FileRow({ file, current, ticked, onTick, onPick }: { file: ChangedFile;
 }
 
 /** The session's uncommitted changes: the files down the left with the commit under them, the picked file's diff beside. */
-export function ChangesTab({ term, branch, comments, actions, onNotice }: Props) {
-  const query = useRepoQuery(term, ['diff'], () => repoDiff(term), CHANGES_REFRESH_MS)
+export function ChangesTab({ term, machine = LOCAL_MACHINE, branch, comments, actions, onNotice }: Props) {
+  // Each machine numbers its own panes, so another machine's answers are kept under its number too.
+  const elsewhere = machine === LOCAL_MACHINE ? [] : [machine]
+  const query = useRepoQuery(term, ['diff', ...elsewhere], () => repoDiff(term, null, machine), CHANGES_REFRESH_MS)
   // How far the branch is from its upstream, for the remote button; without it (an error, no upstream) the branch reads as level.
-  const status = useRepoQuery(term, ['status'], () => repoStatus(term), CHANGES_REFRESH_MS)
+  const status = useRepoQuery(term, ['status', ...elsewhere], () => repoStatus(term, machine), CHANGES_REFRESH_MS)
   const [picked, setPicked] = useState<string | null>(null)
   // Files unticked, so left out of the commit; every changed file starts ticked.
   const [skipped, setSkipped] = useState<ReadonlySet<string>>(() => new Set())

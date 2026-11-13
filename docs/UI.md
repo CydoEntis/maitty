@@ -132,11 +132,37 @@ session is its own action (its look is in [DESIGN](DESIGN.md#desktop-app)).
 The desktop app also shows other machines' terminal sessions (ADR 0007).
 Its host holds one supervised connection per machine and the web view only renders: it knows a machine by
 name, never by where it points. A session of another machine has the id `build/t12` (the machine's name, so a
-saved layout survives a restart; this computer's stay `t12`). **Settings › Machines** retries, removes and
+saved layout survives a restart; this computer's stay `t12`). **Settings › GitHub** (`GitHubSection`, key
+`H`) has one row for this computer and one for each connected machine, saying what that machine's own `gh`
+says (`github_accounts`): "Signed in as <login>" (with "(also …)" for its other accounts), "Not signed in",
+"The GitHub command line (gh) is not installed. Get it from cli.github.com", "Checking…" until it answers,
+or "Could not check: <why>" for a machine that did not answer, which leaves the other rows as they are.
+**Check again** asks every row again. A machine that is not connected has no row. A row with somebody
+signed in has **Details** (`GitHubDetails`, `aria-expanded`; **Hide** when open), which opens under the
+row: the accounts with `active` beside the active one, **Add another account** (the same sign-in as
+**Sign in**), then what that machine's git says (`git_identities`, asked when the row opens and on
+**Check again**): "Commits as <name> <<email>>" (or which of the two is not set, or "No name or email is
+set for commits"), and the folder rules, each a folder with `<login> · <name> <<email>>` or "set outside
+Maitty". With no rules it says "Every folder uses <active login>". git missing says "git is not installed
+on this machine."; a failure says "Could not read git's settings: <why>" and leaves the accounts showing.
+Once git's settings are read, a rule Maitty wrote has **Change** and **Remove**, and **Add a folder rule**
+sits under the list; a rule set outside Maitty has neither. **Remove** asks once in the row ("Remove this
+rule" or "Keep") before sending `git_identity_rule` with `Remove`; a refusal shows the machine's reason
+under the list and leaves the rule shown. Add and Change open `GitRuleDialog` ("Add a folder rule on
+<machine>" or "Change the folder rule on <machine>"): the folder (typed, or **Choose…** with the system's
+picker here and `PickFolderDialog` on another machine; fixed when changing), the account (one of the logins
+signed in there), the commit name and the commit email. **Show the lines** asks the machine for a `Preview`
+and lists each git config file with the lines it would write; nothing is written until **Write these
+lines** sends `Apply`. Editing any field takes the preview away, so only what was shown can be written. A
+refusal is shown in the machine's words and nothing is written; after a write the rules are read again. A
+row that says "Not
+signed in" has **Sign in**: it closes Settings and opens a terminal session on that machine running GitHub's
+own sign-in (`start_github_sign_in`); when that session ends the page asks every row again
+(`useSessionsEnded`). A machine without `gh`, or one that could not be read, has no Sign in. **Settings › Machines** retries, removes and
 adds machines (the behaviour is the terminal app's [Machines dialog](#project-specific-machines-dialog),
 with the host list read off the UI thread, the look at the machine ended by a 12 s limit or Cancel, and a
 login that needs a person run in a session named `ssh <name>`); **New session** (⌘T, Ctrl+Shift+T, ⌘K, the sidebar's New agent chat, a machine's New agent chat here) opens, on this computer, the
-**new agent chat page** (`NewChatPage`, layout 2f) over the panes, under the heading "What should we work on?" (the same for every agent, with no logo). It asks for a folder first: a search field over the machine's projects ("Recent projects", "Matching projects" while typing, "Open folder" for a typed path that is not in the list, and "No projects match. Paste a full path, or use Browse…"), with **Browse…** for the system's folder picker. No folder is chosen for the person: the message box cannot send until one is. Once a folder is picked, three buttons in one row replace the list: the **project** (a dropdown with a search, RECENT PROJECTS (the first three, the focused project first) and ALL ON THIS COMPUTER, then **Browse for a folder…**, a row for each other machine and **Add a machine…**), the **branch** (hidden outside a git repository; the folder's worktrees and branches with the age of their last commit (`git_branches`), and a typed name creates one) and **New worktree | This folder**, each with a line saying what it means. Choosing New worktree is a choice by itself: it takes a new branch under a suggested two-word name (`model/worktreeName.ts`) at once, which the branch button then shows, and a typed name or a branch with no worktree yet can replace it; This folder drops it. Under the buttons are three suggested tasks as plain rows; a click starts the chat with that task. The agent, its model and its effort are on the model button in the tray under the message box (see *Agent, model and effort*), where the agent switch shows because the chat has not started; an agent that is not installed says so under the box, with **set it up** opening the agent's official page (`open_agent_docs`, a fixed list, never a caller's address). The permission mode the chat starts in is beside it (`PermissionMenu`): Claude's modes, or for Codex **Read only**,
+**new agent chat page** (`NewChatPage`, layout 2f) over the panes, under the heading "What should we work on?" (the same for every agent, with no logo). It asks for a folder first: a search field over the machine's projects ("Recent projects", "Matching projects" while typing, "Open folder" for a typed path that is not in the list, and "No projects match. Paste a full path, or use Browse…"), with **Browse…** for a folder picker: the system's for this computer, and the window's own for another machine (`PickFolderDialog`, which lists that machine's folders through `list_folders`, starting at `~`). Beside it, and in the project dropdown, **Clone a repository…** opens `CloneRepoDialog` ("Clone a repository to this computer" or to the machine's name): a repository address and the folder the clone goes inside, which starts as the folder last cloned into on that machine (kept in this window's storage) or else the start folder, with **Choose…** for the same folder picker. Under the address is the machine's own GitHub repositories (`GitHubRepoPicker`, `github_repos` and `github_owners`): a search box that asks again 300 ms after typing stops, an owner menu when the account has organisations, and a list, newest pushed first, with `· private` on a private one; Up and Down move, Enter or a click fills the address and does not start the clone. A list of 200 says "Showing the first 200 repositories. Search to find the others." A machine that is not signed in says "Sign in to GitHub on <machine> to pick from your repositories." with **Open GitHub settings** (which closes the dialog and opens Settings › GitHub); one without `gh` says where to get it; a list that could not be loaded says why. Pasting an address works in every case. The machine's daemon runs git (`clone_repository`); when a folder rule Maitty wrote on that machine covers the destination folder, "Will use <login>" shows under it (the rules are read as the dialog opens; a machine that cannot say shows no line); while it runs the dialog says "Cloning…" and cannot be closed, a refusal is shown in the machine's own words with the address kept, and the new folder becomes the page's project. No folder is chosen for the person: the message box cannot send until one is. Once a folder is picked, three buttons in one row replace the list: the **project** (a dropdown with a search, RECENT PROJECTS (the first three, the focused project first) and ALL ON THIS COMPUTER, then **Browse for a folder…**, a row for each other machine and **Add a machine…**), the **branch** (hidden outside a git repository; the folder's worktrees and branches with the age of their last commit (`git_branches`), and a typed name creates one) and **New worktree | This folder**, each with a line saying what it means. Choosing New worktree is a choice by itself: it takes a new branch under a suggested two-word name (`model/worktreeName.ts`) at once, which the branch button then shows, and a typed name or a branch with no worktree yet can replace it; This folder drops it. Under the buttons are three suggested tasks as plain rows; a click starts the chat with that task. The agent, its model and its effort are on the model button in the tray under the message box (see *Agent, model and effort*), where the agent switch shows because the chat has not started; an agent that is not installed says so under the box, with **set it up** opening the agent's official page (`open_agent_docs`, a fixed list, never a caller's address). The permission mode the chat starts in is beside it (`PermissionMenu`): Claude's modes, or for Codex **Read only**,
 **Auto** (nothing is sent, so Codex's own settings stand) and **Full access** in red, which go on the launch line as
 `--sandbox` and `--ask-for-approval`. While Yolo mode is on for Codex the page says Full access and offers no menu, since
 that setting already starts it so. A running Codex chat has the same three modes on its permission button: a pick types
@@ -732,6 +758,18 @@ selection between a local and a remote pane turns the feature off and on. Menu e
 run git in a remote pane's folder (Changes, Snapshots, Make it a git repo) are left out of that
 pane's menu instead.
 
+**The side panel is the exception for Changes.** In the desktop app the side panel opens for a pane
+on another machine and its Changes tab shows the same file list and diffs as for a local pane, read
+from that machine's daemon (`repoStatus` and `repoDiff` with the machine, `features/inspect/api.ts`)
+with the same commit bar under the files: the ticks, the message, **Commit N files**, the remote
+button (**Pull ↓N**, **Push ↑N** or **Fetch**, by the same rule as locally, `remoteAction.ts`) and
+**Create PR**. Each is run by that machine's daemon in the pane's checkout (`git_commit_all`,
+`git_sync` and `git_create_pull_request` with the pane, `Query::Git`), with that machine's git
+identity and GitHub sign-in, and its answer or failure shows as it does locally. Files, Branches, History and References show the
+local-only sentence in the tab instead of asking anything; Checks and Timeline are as for a local
+pane. A chat on another machine that has no terminal of its own has no pane to ask, so the panel
+does not open for it and the toast says Inspect is local-only.
+
 **Dropping files on a pane** (`features/terminal/dropRoute.ts`, `useFileSends.tsx`, host `file_send.rs`,
 ADR 0007). On a pane of this computer the dropped paths are typed into it, quoted for its shell. On a
 pane of another machine a path here names nothing there, so the files are sent to that machine over its ssh
@@ -889,6 +927,10 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   second place to click, not a second Tab stop. A run with a failed step starts open.
   Under the divider of a turn that edited files is a **changes row**: "3 changed files +111 −0" (each file once; the
   lines only when every diff was kept), which opens the side panel on Changes.
+  Where an agent ran out of room and carried on from its own summary of the conversation, the daemon sends the summary
+  as a `contextSummary` tool step and the chat shows a **summary row** (`ContextSummary`): a divider reading "Earlier
+  conversation summarised to make room" that opens to the summary as formatted text. It is never a user bubble, never
+  folds into a work row, and Find does not look inside it.
 - **Cards** (`features/chat/components/`). Every fact the history carries is shown, and a missing one is said to be
   unavailable (a diff the history did not keep, a checklist without items, a command time or exit code the provider
   does not report, a turn without the daemon's times shows "Turn finished", not an invented duration). Only a step

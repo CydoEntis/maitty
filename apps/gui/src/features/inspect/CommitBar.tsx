@@ -4,8 +4,15 @@ import { remoteAction } from './remoteAction'
 import { commitTextFor } from './commitText'
 import { messageOf } from './useRepoQuery'
 
-/** What the Changes tab needs to commit and open a pull request: the checkout's folder on this computer, and a first message. */
-export type ChangeActions = { folder: string; suggested: string; /** The machine the checkout is on (0: this computer); the host refuses any other. */ machine: number }
+/** What the Changes tab needs to commit, sync and open a pull request: the checkout (its folder on this computer, or its pane on another machine) and a first message. */
+export type ChangeActions = {
+  folder: string
+  suggested: string
+  /** The machine the checkout is on (0: this computer). */
+  machine: number
+  /** On another machine, the pane there whose checkout is meant: its daemon is asked, and `folder` is not used. */
+  term?: number
+}
 
 type Props = ChangeActions & {
   /** How many files the commit would take. */
@@ -22,8 +29,12 @@ type Props = ChangeActions & {
   onNotice: (text: string) => void
 }
 
-/** The commit message with **Commit N files** and **Create PR**. Nothing runs until a button is pressed. */
-export function CommitBar({ folder, machine, suggested, files, chosen, everything, ahead, behind, onChanged, onNotice }: Props) {
+/**
+ * The commit message with **Commit N files**, the remote button and **Create PR**. Nothing runs
+ * until a button is pressed, and each runs where the checkout is: on this computer, or on the
+ * session's machine with that machine's git and GitHub sign-in.
+ */
+export function CommitBar({ folder, machine, term, suggested, files, chosen, everything, ahead, behind, onChanged, onNotice }: Props) {
   const [message, setMessage] = useState(suggested)
   const [busy, setBusy] = useState<'commit' | 'pr' | 'remote' | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
@@ -38,7 +49,7 @@ export function CommitBar({ folder, machine, suggested, files, chosen, everythin
   }
   const commit = () => {
     run('commit', async () => {
-      const hash = await commitAll(folder, message, machine, everything ? undefined : chosen.map((file) => file.path))
+      const hash = await commitAll(folder, message, machine, everything ? undefined : chosen.map((file) => file.path), term)
       const count = everything ? files : chosen.length
       onNotice(`Committed ${String(count)} ${count === 1 ? 'file' : 'files'} as ${hash}`)
       setMessage('')
@@ -48,13 +59,13 @@ export function CommitBar({ folder, machine, suggested, files, chosen, everythin
   const remote = remoteAction(ahead, behind)
   const syncWithRemote = () => {
     run('remote', async () => {
-      onNotice(await syncRemote(folder, remote.action, machine))
+      onNotice(await syncRemote(folder, remote.action, machine, term))
       onChanged()
     })
   }
   const openPullRequest = () => {
     run('pr', async () => {
-      const url = await createPullRequest(folder, machine)
+      const url = await createPullRequest(folder, machine, term)
       setPullRequest(url)
       onNotice('Pull request opened')
     })

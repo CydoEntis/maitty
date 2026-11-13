@@ -13,6 +13,8 @@ const FILE_CHANGE_ITEM = 'fileChange'
 // a history cached by an older daemon holds them by name only, so the fallback below stays.
 const CODEX_PLAN_ITEM = 'plan'
 const CODEX_HELPER_ITEM = 'collabAgentToolCall'
+// The daemon's name for an agent's own summary of the earlier conversation; the text is the output.
+const CONTEXT_SUMMARY_ITEM = 'contextSummary'
 
 const STATUS_BY_STATE: Record<HistoryEntry['state'], ItemStatus> = {
   Running: 'running',
@@ -111,6 +113,7 @@ export function projectItem(provider: ChatProvider, content: ItemContent, base: 
     return [{ ...base, kind: 'message', role: role === 'User' ? 'user' : 'agent', text }]
   }
   if ('Tool' in content) {
+    if (content.Tool.kind === CONTEXT_SUMMARY_ITEM) return [{ ...base, kind: 'summary', text: content.Tool.output }]
     return provider === 'claude' ? claudeTool(content.Tool, base) : codexTool(content.Tool, base)
   }
   return unsupportedItem(provider, content.Unsupported.kind, base)

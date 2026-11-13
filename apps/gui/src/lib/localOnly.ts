@@ -11,6 +11,7 @@ export const LOCAL_FEATURES = {
   changes: 'Changes',
   find: 'Find',
   branches: 'Branches',
+  history: 'History',
   references: 'References',
   'agent-status': 'Connecting an agent',
   worktrees: 'Worktrees',

@@ -586,6 +586,38 @@ async fn pane_terminal_resize(
         .map_err(|error| format!("{error:#}"))
 }
 
+/// Which commit name and email git uses on a machine (this computer when `machine` is left out),
+/// and the folders where a rule gives another. Read by that machine's daemon; nothing is written.
+#[tauri::command]
+async fn git_identities(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+) -> Result<serde_json::Value, String> {
+    let daemon = wire.identities_daemon(machine, || daemon_executable(&app))?;
+    maitty_desktop_client::git_identities(daemon)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Previews, writes or removes a folder's GitHub account and commit identity rule on a machine (this
+/// computer when `machine` is left out). `change` is a `GitRuleChange` as JSON; that machine's
+/// daemon checks it and does it. Answers the lines, by file.
+#[tauri::command]
+async fn git_identity_rule(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+    change: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let change: maitty_shared::protocol::GitRuleChange =
+        serde_json::from_value(change).map_err(|error| format!("invalid rule change: {error}"))?;
+    let daemon = wire.rule_daemon(machine, || daemon_executable(&app))?;
+    maitty_desktop_client::git_identity_rule(change, daemon)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 #[tauri::command]
 async fn repo_query(
     app: tauri::AppHandle,
@@ -594,8 +626,10 @@ async fn repo_query(
     term: u32,
     question: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    wire.require_local(machine, "Inspect")?;
-    maitty_desktop_client::repo_query(term, question, daemon_executable(&app)?)
+    let question: maitty_shared::repo::RepoRequest =
+        serde_json::from_value(question).map_err(|error| format!("invalid repository request: {error}"))?;
+    let daemon = wire.repo_daemon(machine, &question, || daemon_executable(&app))?;
+    maitty_desktop_client::repo_query(term, question, daemon)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -697,6 +731,24 @@ async fn start_agent_session(
     flags: Vec<String>,
 ) -> Result<serde_json::Value, String> {
     maitty_desktop_client::start_agent_session(cwd, agent, flags, daemon_executable(&app)?)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
+/// Start GitHub's own sign-in (`gh auth login`, see `maitty_desktop_client::GITHUB_SIGN_IN_COMMAND`) in a new
+/// terminal session of a machine, this computer when `machine` is left out. The window chooses the machine and
+/// nothing else: no word of the command comes from it.
+#[tauri::command]
+async fn start_github_sign_in(
+    app: tauri::AppHandle,
+    wire: tauri::State<'_, terminal_stream::Wire>,
+    machine: Option<u16>,
+) -> Result<serde_json::Value, String> {
+    if let Some(machine) = machine.filter(|machine| routing::is_remote(Some(*machine))) {
+        return wire.github_sign_in(machine).map(|()| serde_json::Value::Null);
+    }
+    let home = app.path().home_dir().map_err(|error| error.to_string())?;
+    maitty_desktop_client::start_github_sign_in(home, daemon_executable(&app)?)
         .await
         .map_err(|error| format!("{error:#}"))
 }
@@ -1534,6 +1586,10 @@ pub fn run() {
             terminal_stream::terminal_history,
             terminal_stream::watch_terminal_output,
             terminal_stream::list_folders,
+            terminal_stream::clone_repository,
+            terminal_stream::github_accounts,
+            terminal_stream::github_repos,
+            terminal_stream::github_owners,
             terminal_stream::get_shared_settings,
             terminal_stream::set_shared_setting,
             output_socket::open_terminal_socket,
@@ -1546,11 +1602,14 @@ pub fn run() {
             terminal_stream::terminal_input,
             pane_terminal_resize,
             repo_query,
+            git_identities,
+            git_identity_rule,
             search_panes,
             usage_report,
             new_worktree_session,
             restore_snapshot,
             start_agent_session,
+            start_github_sign_in,
             prewarm_agent_session,
             drop_prewarmed_agent,
             start_terminal_session,

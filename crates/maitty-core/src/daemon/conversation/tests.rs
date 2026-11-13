@@ -11,28 +11,58 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-fn fake_claude_executable(root: &Path) -> PathBuf {
-    let executable = root.join(if cfg!(windows) {
-        "fake-claude.exe"
-    } else {
-        "fake-claude"
-    });
-    let mut command = std::process::Command::new("rustc");
-    command
-        .arg("--edition=2024")
-        .arg(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("src/daemon/conversation/fixtures/fake_claude.rs"),
-        )
-        .arg("-o")
-        .arg(&executable);
-    let output = crate::proc::quiet(&mut command).output().unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+/// A test helper program compiled from `fixtures/<source>`, once for every test of every run with
+/// that source. Each fixture used to compile its own: some sixty compilers at once, and as many
+/// new programs for a virus scanner to read, left Windows too busy to stop a process within five
+/// seconds or to let go of a fixture's folder within a minute.
+fn compiled(cell: &'static std::sync::OnceLock<PathBuf>, source: &str) -> &'static Path {
+    cell.get_or_init(|| {
+        use std::hash::{Hash, Hasher};
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/daemon/conversation/fixtures").join(source);
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        std::fs::read(&file).unwrap().hash(&mut hasher);
+        let built = std::env::temp_dir().join(format!(
+            "{}-test-{}-{:016x}{}",
+            crate::brand::APP_COMMAND,
+            source.trim_end_matches(".rs"),
+            hasher.finish(),
+            std::env::consts::EXE_SUFFIX
+        ));
+        if built.exists() {
+            return built;
+        }
+        // Built under a name of its own and moved into place, so a test run that starts at the
+        // same moment never runs half a program.
+        let partial = built.with_extension(format!("{}.partial", std::process::id()));
+        let mut command = std::process::Command::new("rustc");
+        command.arg("--edition=2024").args(["-C", "debuginfo=0"]).arg(&file).arg("-o").arg(&partial);
+        let output = crate::proc::quiet(&mut command).output().unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        // Windows writes debugging data beside the program whatever is asked; nothing reads it.
+        let _ = std::fs::remove_file(partial.with_extension("pdb"));
+        if std::fs::rename(&partial, &built).is_err() {
+            // The other run got there first; its program is the same one.
+            let _ = std::fs::remove_file(&partial);
+            assert!(built.exists(), "the compiled {source} is missing");
+        }
+        built
+    })
+}
+
+/// `built` under `name` in a fixture's folder, where the program looks for its fixture. A link
+/// costs nothing and is a file the scanner has already read; a copy is for a folder that cannot
+/// hold one.
+fn placed(built: &Path, root: &Path, name: &str) -> PathBuf {
+    let executable = root.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
+    if std::fs::hard_link(built, &executable).is_err() {
+        std::fs::copy(built, &executable).unwrap();
+    }
     executable
+}
+
+fn fake_claude_executable(root: &Path) -> PathBuf {
+    static BUILT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    placed(compiled(&BUILT, "fake_claude.rs"), root, "fake-claude")
 }
 
 fn claude_launch(root: &Path, scenario: Option<&str>) -> (Launch, super::runtime::Owner) {
@@ -637,28 +667,24 @@ async fn claude_adapter_acknowledges_interrupts_for_the_active_turn() {
 }
 
 fn fake_executable(root: &Path) -> PathBuf {
-    let executable = root.join(if cfg!(windows) {
-        "fake-codex.exe"
-    } else {
-        "fake-codex"
-    });
-    let mut command = std::process::Command::new("rustc");
-    command
-        .arg("--edition=2024")
-        .arg(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("src/daemon/conversation/fixtures/fake_provider.rs"),
-        )
-        .arg("-o")
-        .arg(&executable);
-    let output = crate::proc::quiet(&mut command).output().unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    executable
+    static BUILT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    placed(compiled(&BUILT, "fake_provider.rs"), root, "fake-codex")
 }
+/// Every file and folder still under `directory`, for a failure message that names what would not go.
+fn left_in(directory: &Path) -> Vec<PathBuf> {
+    let Ok(read) = std::fs::read_dir(directory) else {
+        return Vec::new();
+    };
+    read.filter_map(Result::ok)
+        .flat_map(|entry| {
+            let path = entry.path();
+            let mut found = left_in(&path);
+            found.push(path);
+            found
+        })
+        .collect()
+}
+
 struct Fixture {
     directory: crate::daemon::persist::ScratchDir,
     record: Conversation,
@@ -743,14 +769,23 @@ impl Fixture {
             // once held the freshly compiled provider past ten seconds, so the deadline is long;
             // a passing test leaves the loop as soon as the removal succeeds.
             let until = std::time::Instant::now() + Duration::from_secs(60);
-            while directory.exists() && std::fs::remove_dir_all(&directory).is_err() {
+            let mut refused = None;
+            while directory.exists() {
+                let Err(error) = std::fs::remove_dir_all(&directory) else {
+                    break;
+                };
+                refused = Some(error);
                 if std::time::Instant::now() >= until {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
             drop(self);
-            assert!(!directory.exists(), "fixture directory survived cleanup");
+            assert!(
+                !directory.exists(),
+                "fixture directory survived cleanup: {refused:?}; still in it: {:?}",
+                left_in(&directory)
+            );
             assert!(!executable.exists(), "compiled provider survived cleanup");
         })
         .await
@@ -866,6 +901,31 @@ async fn next(rx: &mut mpsc::Receiver<Ev>) -> Event {
     .expect("provider event within deadline")
 }
 
+/// Whether the process a number names has run to its end. Windows goes on listing a process that
+/// has ended for as long as anything still holds it open (a scanner reading a program it has not
+/// seen before does), so being listed does not mean it is running.
+#[cfg(windows)]
+fn has_ended(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject};
+    // SAFETY: the handle is the one just opened, checked before use and closed once.
+    unsafe {
+        let handle = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
+        if handle.is_null() {
+            // Nothing by that number can be opened: it is gone.
+            return true;
+        }
+        let ended = WaitForSingleObject(handle, 0) == WAIT_OBJECT_0;
+        CloseHandle(handle);
+        ended
+    }
+}
+
+#[cfg(not(windows))]
+fn has_ended(_pid: u32) -> bool {
+    false
+}
+
 async fn stopped(pids: Vec<u32>) {
     tokio::task::spawn_blocking(move || {
         // A kill is asked for on another thread and, on Windows, done by `taskkill`: on a busy
@@ -875,17 +935,20 @@ async fn stopped(pids: Vec<u32>) {
         loop {
             let mut system = sysinfo::System::new();
             system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-            let alive = pids.iter().any(|pid| {
-                system
-                    .process(sysinfo::Pid::from_u32(*pid))
-                    .is_some_and(|p| p.status() != sysinfo::ProcessStatus::Zombie)
-            });
-            if !alive {
+            let alive: Vec<String> = pids
+                .iter()
+                .filter_map(|pid| {
+                    let process = system.process(sysinfo::Pid::from_u32(*pid))?;
+                    let running = process.status() != sysinfo::ProcessStatus::Zombie && !has_ended(*pid);
+                    running.then(|| format!("{pid} {:?}", process.name()))
+                })
+                .collect();
+            if alive.is_empty() {
                 return;
             }
             assert!(
                 std::time::Instant::now() < until,
-                "provider process tree survived disposal: {pids:?}"
+                "provider process tree survived disposal: {alive:?}"
             );
             std::thread::yield_now();
         }
@@ -1419,10 +1482,12 @@ fn authenticated_pane(session: &mut TestSession) -> (u32, String) {
             .into_owned(),
     );
     cfg.shell_args = vec!["--descendant".into()];
-    // An id of its own for each pane: a second pane under the first one's id would replace it in
-    // `terms`, so cleanup would never stop the first, and its process, running the fixture's
-    // executable from inside the fixture folder, keeps Windows from deleting either.
-    let id = 900001 + u32::try_from(session.daemon.terms.len()).unwrap();
+    // A pane of its own each time: one put in the place of an earlier pane would drop that pane
+    // without stopping it, and its process would keep the fixture's folder from being removed.
+    const FIRST_TEST_PANE: u32 = 900_001;
+    let id = (FIRST_TEST_PANE..)
+        .find(|id| !session.daemon.terms.contains_key(id))
+        .expect("a free pane id");
     let mut pane = crate::daemon::term::Term::spawn(
         &cfg,
         crate::daemon::term::SpawnSpec {
@@ -1954,6 +2019,63 @@ async fn approved_commands_are_listed_and_taken_back_by_a_person_only() {
         })
         .await
         .expect("the file forgot it too");
+    })
+    .catch_unwind()
+    .await;
+    session.cleanup().await;
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+#[tokio::test]
+async fn only_a_person_can_clone_or_ask_about_github_and_an_oversized_clone_is_answered_at_once() {
+    let mut session = conversation_fixture("conversation-approval").await;
+    let outcome = AssertUnwindSafe(async {
+        let clone = |address: String| {
+            crate::protocol::ClientMsg::Query(crate::protocol::Query::CloneRepo { address, parent: "~".into(), tag: 9 })
+        };
+        let from = authenticated_pane(&mut session);
+        let refused = exchange(&mut session, 440, clone("https://example.invalid/o/r.git".into()), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+
+        use crate::protocol::Query;
+        let about_github = [
+            Query::GitIdentityRule { change: crate::protocol::GitRuleChange::Remove { folder: "/code".into() }, tag: 9 },
+            Query::GitIdentities { tag: 9 },
+            Query::GitHubAccounts { tag: 9 },
+            Query::GitHubRepos { owner: None, search: None, tag: 9 },
+            Query::GitHubOwners { tag: 9 },
+        ];
+        for (client, query) in (442..).zip(about_github) {
+            let from = authenticated_pane(&mut session);
+            let refused = exchange(&mut session, client, crate::protocol::ClientMsg::Query(query), Some(from)).await;
+            assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+        }
+
+        let from = authenticated_pane(&mut session);
+        let push = Query::Git { term: from.0, request: crate::protocol::GitRequest::Push, tag: 9 };
+        let refused = exchange(&mut session, 450, crate::protocol::ClientMsg::Query(push), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+        let from = authenticated_pane(&mut session);
+        let commit = crate::protocol::GitRequest::Commit { message: "m".into(), paths: None };
+        let commit = Query::Git { term: from.0, request: commit, tag: 9 };
+        let refused = exchange(&mut session, 452, crate::protocol::ClientMsg::Query(commit), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+        let from = authenticated_pane(&mut session);
+        let open = Query::Git { term: from.0, request: crate::protocol::GitRequest::PullRequest, tag: 9 };
+        let refused = exchange(&mut session, 453, crate::protocol::ClientMsg::Query(open), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+        let nowhere = Query::Git { term: u32::MAX, request: crate::protocol::GitRequest::Fetch, tag: 9 };
+        let refused = exchange(&mut session, 451, crate::protocol::ClientMsg::Query(nowhere), None).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("no pane")), "{refused:?}");
+
+        let long = format!("https://example.invalid/{}", "a".repeat(4096));
+        let answered = exchange(&mut session, 441, clone(long), None).await;
+        assert!(
+            matches!(answered, ServerMsg::Reply(crate::protocol::Reply::Cloned { tag: 9, outcome: Err(ref why) }) if why.contains("too long")),
+            "{answered:?}"
+        );
     })
     .catch_unwind()
     .await;

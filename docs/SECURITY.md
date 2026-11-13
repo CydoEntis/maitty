@@ -156,6 +156,13 @@ which is the person's own, shown only in Settings and never logged. Signing in i
 interactive command in an ordinary terminal session (`start_agent_session` with `auth login` or
 `login`, each a plain word that `agent_command` allows).
 
+`start_github_sign_in(machine)` starts GitHub's own sign-in for Settings › GitHub: a terminal session
+in the home folder of this computer or of the machine named, whose first command is the constant
+`GITHUB_SIGN_IN_COMMAND` (`gh auth login --web --git-protocol https`, in `maitty-desktop-client`). The
+webview supplies the machine and nothing else, so it is not a way to run a program of the window's
+choosing. The person finishes the sign-in in that terminal and their browser; the host reads no code,
+password or token from it.
+
 `export_daemon_log` (`daemon_log.rs`) saves a copy of the end of the service's log (4 MiB at most) as
 `maitty-log.txt` in the Downloads folder, for a person to send when something went wrong (Settings ›
 Daemon › Service log). The webview supplies nothing: the log, the folder and the name are the
@@ -517,12 +524,77 @@ is a fixed set of host commands that take a machine's name or number, never a pr
 - **Files stay on their machine.** Features that read a pane's files or repository are refused for another
   machine's pane by the window and again by the host's commands, in the terminal app's words, so a pane
   number from another machine can never reach a pane of this computer.
+- **A machine's changes are the one repository answer taken.** `repo_query` asks another machine's daemon
+  only what changed and its diff (`remote_repo::may_ask`); a file's text, a folder listing, branches,
+  history and writes are refused by the host before anything is sent. The answer passes
+  `remote_repo::vet_repo_reply`: anything but a status or a diff is dropped, every string loses its
+  escapes and control characters, a path or branch is one line of at most 4,096 characters, and the lists
+  are cut to the sizes a daemon's own answer may have. The diff is shown as text and never run or written
+  to this computer's disk.
+- **Fetch, pull, push, commit and Create PR on a machine** take one of those five words and a pane number
+  from the window, plus a commit's message and file names; never a command, an address or a folder. That
+  machine's daemon checks the message and names and runs its own git and `gh` in the pane's folder
+  (`Query::Git`). The one-line answer passes `remote_repo::vet_git_reply`: cleaned, one line, at most 512
+  characters, and checked against what was asked. A commit's answer must open with a commit id, and a
+  pull request's must be exactly `https://github.com/<owner>/<repo>/pull/<number>`
+  (`maitty_shared::github::is_pull_request_address`), so a machine cannot hand the window any other
+  address to show. Any other answer is dropped.
 - **No install or restart.** A machine that needs the app shows the command to run; the desktop app never
   installs, updates or restarts anything on it.
 - **A different daemon at a known name** is refused (the shared daemon-id store) and says so; Remove then
   adding the machine again is the way out.
 
 ## Project-specific: auth and permissions
+
+- **Cloning a repository** (`Query::CloneRepo`, `daemon/clone.rs`) takes an address from a client, so the
+  daemon checks it before git sees it: at most 2,048 bytes, no whitespace or control character, not
+  starting with `-` (git would read an option), and only an `https://`, `ssh://` or `git://` address or
+  the `user@host:path` form. A local path, `file://`, `http://` and git's `ext::` transport are refused:
+  they would read this computer's own disk, send credentials in the clear, or run a program. The address
+  is passed after `--` as one argument, never through a shell. The new folder's name comes from the
+  address and may hold no path separator or other character a folder name cannot. Only a person's
+  client may ask; a pane's or an agent's connection is refused. The daemon reads no credential: git uses
+  whatever the machine already has, and fails when it would have to ask.
+- **Reading who commits** (`Query::GitIdentities`, `daemon/git_identity.rs`): the daemon reads the
+  machine's global git config through git itself: the default `user.name` and `user.email`, and the
+  folder of every `includeIf "gitdir:…"` entry. It reads further only into files that sit directly in
+  its own `git-identities` folder and name the folder they are for; what a rule set outside Maitty
+  points at is never opened. No credential is read (a rule holds a GitHub login, never a token), nothing
+  is written, and only a person's client may ask.
+- **Writing a folder's rule** (`Query::GitIdentityRule`, `daemon/git_rule.rs`): the daemon writes the
+  machine's global git config, and only this: one `includeIf "gitdir:<folder>/".path` entry and one file
+  of its own in `<data dir>/git-identities/`. The file sets the folder's commit name and email, the GitHub
+  login, and a credential helper that runs `gh auth token --user <login>` when git needs github.com's
+  password inside that folder. The login is checked to be a GitHub login (letters, digits, dashes, no
+  leading dash) before it is put in the helper's command, and must be signed in on the machine; the name
+  and email may hold no control character; the folder must exist and may hold no pattern character or
+  quote. No token is written: `gh` keeps it and hands it to git when asked. The person sees the exact
+  lines before they are written (`Preview`). A rule set outside Maitty is never replaced or removed, and a
+  removal takes out only Maitty's entry and file. Only a person's client may ask.
+- **Changing a checkout on request** (`Query::Git`, `daemon/sync.rs`, `commit.rs`, `pull_request.rs`):
+  fetch, fast-forward pull, push, commit and open a pull request for the checkout a pane is in. Only a
+  person's client may ask, with the pane checks of `Query::Repo`. The request is one of five words; the
+  only text taken from the client is a commit message (trimmed, at most 16 KiB, no control character but
+  a line break or tab) and the commit's paths (relative, no `..`, no `.git` part, no leading `-`, no
+  control character, read literally by git). Everything is passed as arguments, never through a shell.
+  git runs with `GIT_TERMINAL_PROMPT=0` and `gh` with its prompts off, so neither can ask for a
+  credential, and each request is stopped at its limit. Nothing merges, rebases, forces or amends. A
+  pull request answers only a `https://github.com/<owner>/<repo>/pull/<number>` address.
+- **Who is signed in to GitHub** (`Query::GitHubAccounts`, `daemon/github.rs`) runs the machine's own
+  `gh auth status --json hosts` with fixed arguments and nothing from the client in them. Only the
+  logins and which one is active leave the daemon; a token is never asked for (`--show-token` is never
+  passed), read from `gh`'s files, logged or sent. A login is kept only when it is letters, digits and
+  dashes, at most 39 long, both where it is read and again when it arrives from another machine. Only a
+  person's client may ask.
+- **Listing GitHub repositories** (`Query::GitHubRepos`, `Query::GitHubOwners`, `daemon/github.rs`) puts
+  two things from a client on `gh`'s command line, so both are checked first: an owner must be a login
+  (`maitty_shared::github::is_login`: letters, digits and dashes, no dash at either end, so it can never
+  be read as an option), and a search may hold only letters, digits, spaces, dots, underscores and
+  dashes, at most 100 characters, and is passed after `--`. A `:` is refused, so a search cannot carry a
+  GitHub qualifier that widens it past the owner. Each is one argument, never a shell line. A repository
+  is passed on only when its name is `owner/name` in GitHub's own characters, and the address to clone
+  is built from that name (`clone_address`), so text from `gh` or from another machine never becomes an
+  address by itself. Only a person's client may ask.
 
 No user accounts. Access to the daemon is access to its local socket: a named
 pipe on Windows, a Unix socket in the temp directory elsewhere, named per user

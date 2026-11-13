@@ -46,8 +46,10 @@ type Props = {
   bypassAllowed?: boolean
   /** Yolo mode is on for Codex, so every Codex chat starts with full access whatever is picked here. */
   codexYolo?: boolean
-  /** The system's folder picker, whose answer is null when it is cancelled; null itself for another machine, whose disk this window cannot browse. */
+  /** A folder picker whose answer is null when it is cancelled: the system's for this computer, the window's own for another machine. Null when there is none. */
   browse: (() => Promise<string | null>) | null
+  /** Clones a repository onto that computer and answers with its new folder, or null when it is cancelled. Without it the page has no such button. */
+  clone?: (() => Promise<string | null>) | null
   onStart: (request: NewChatRequest) => Promise<void>
   /** Starts the chat's agent while the first message is written (`useWarmAgent`); without it the agent starts on send. */
   onWarm?: WarmAgent
@@ -75,7 +77,7 @@ const isPath = (text: string): boolean => /^(~|\/|[A-Za-z]:[\\/])/.test(text)
  * agent, model and effort on its model button and the permission mode beside it. The chat it starts
  * is the agent in a terminal the daemon owns, shown as its chat (ADR 0003). Enter sends, Esc goes back.
  */
-export function NewChatPage({ machines, machine, projects, defaultAgent, bypassAllowed = false, codexYolo = false, browse, onStart, onWarm, onOtherMachine, onAddMachine, onCancel, seed = null }: Props) {
+export function NewChatPage({ machines, machine, projects, defaultAgent, bypassAllowed = false, codexYolo = false, browse, clone = null, onStart, onWarm, onOtherMachine, onAddMachine, onCancel, seed = null }: Props) {
   // On another machine the chat is the agent started in a shell there: this computer's models, branches, files and installed agents say nothing of it.
   const remote = machine !== LOCAL_MACHINE
   const target = machines.find((candidate) => candidate.machine === machine)
@@ -170,6 +172,13 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
     void browse().then((chosen) => {
       if (chosen === null) return
       openFolder(chosen)
+    })
+  }
+  const cloneOne = () => {
+    if (clone === null) return
+    void clone().then((cloned) => {
+      if (cloned === null) return
+      openFolder(cloned)
     })
   }
   const onKeyDown = (event: KeyboardEvent) => {
@@ -276,6 +285,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
               <input autoFocus aria-label="Search projects or paste a path" placeholder="Search projects or paste a path…" value={query} onChange={(event) => { setQuery(event.target.value) }}
                 onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); pickFirst() } }} />
               {browse !== null && <button type="button" className="mx-nc-browse" onClick={pickOther}>Browse…</button>}
+              {clone !== null && <button type="button" className="mx-nc-browse" title="Bring a git repository onto this machine" onClick={cloneOne}>Clone a repository…</button>}
             </label>
             <h3 className="mx-nc-heading">{listTitle}</h3>
             <ul className="mx-nc-list" aria-label={listTitle}>
@@ -302,7 +312,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
             <div className="mx-nc-picks">
               <ChipMenu title="Project" side="bottom" label={<strong>{folderName}</strong>} summary={folderName} icon={<span className="mx-ns-square" style={{ background: current?.color ?? 'var(--dim)' }} aria-hidden="true" />} search="Search projects" width={300}
                 sections={folderSections} fromQuery={fromPath}
-                footer={<>{browse !== null && <button type="button" className="mx-chip-action" onClick={pickOther}><Icon name="folder" size={12} />Browse for a folder…</button>}{otherMachines}{addMachine}</>} />
+                footer={<>{browse !== null && <button type="button" className="mx-chip-action" onClick={pickOther}><Icon name="folder" size={12} />Browse for a folder…</button>}{clone !== null && <button type="button" className="mx-chip-action" onClick={cloneOne}><Icon name="folder" size={12} />Clone a repository…</button>}{otherMachines}{addMachine}</>} />
               {branches !== null && (
                 <>
                   <ChipMenu title="Branch" side="bottom" summary={branchLabel} label={<span className="mx-nc-branch">{branchLabel}</span>} icon={<span className="mx-nc-branch"><Icon name="branch" size={12} /></span>}

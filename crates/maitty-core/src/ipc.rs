@@ -321,6 +321,7 @@ pub fn terminal_dial(attach: bool) -> Result<maitty_machines::Dial> {
         term: std::env::var(concat!(env!("APP_ENV"), "_TERM_ID")).ok(),
         token: std::env::var(concat!(env!("APP_ENV"), "_PANE_TOKEN")).ok(),
         structured,
+        newest_only: false,
     })
 }
 

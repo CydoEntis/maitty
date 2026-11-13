@@ -6,6 +6,8 @@ import { toast } from '@/lib/toast'
 import { DEFAULT_PICK } from '@/features/chat/agentChoice'
 import { addWorktree, defaultSessionFolder, handoffBrief, dropPrewarmedAgent, prewarmAgentSession, startAgentSession as launchAgentSession, loadConversations, renameConversationOnDaemon, sendTerminalInput, sendWhenAgentReady, startChatSession, startShellSession, submitMessage, switchBranch } from '@/api/daemon'
 import { LOCAL_MACHINE, startSessionOnMachine } from '@/api/machines'
+import { startGitHubSignIn } from '@/api/githubAccounts'
+import { useSessionsEnded } from './useSessionsEnded'
 import type { DesktopSettingsSection } from '@/features/settings/components/DesktopSettings'
 import type { SettingsPreferences } from '@/features/settings/preferences'
 import { errorMessage } from '@/lib/error-message'
@@ -233,9 +235,9 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
   }, [online, starting, startAgentSession, preferences.newSessionView])
 
   // Starts a shell on another machine and opens it once the machine lists it; resolves to its id.
-  const startOnMachine = useCallback(async (target: { machine: number; name: string }, folder: string): Promise<string | null> => {
+  const startOnMachine = useCallback(async (target: { machine: number; name: string }, folder: string, launch?: () => Promise<void>): Promise<string | null> => {
     const known = new Set((machinesRef.current.get(target.machine)?.conversations ?? []).map((item) => item.id))
-    await startSessionOnMachine(target.machine, folder)
+    await (launch ?? (() => startSessionOnMachine(target.machine, folder)))()
     // The machine tells its new session in its next list; its layout opens when it does.
     const deadline = Date.now() + REMOTE_START_WAIT_MS
     while (Date.now() < deadline) {
@@ -317,5 +319,26 @@ export function useSessionStarts({ queryClient, sessions, setWorktreeFrom, setLa
     void runStart(async () => resolveStartFolder(preferences.startFolder, home || (await defaultSessionFolder())), (id) => { rememberShellStart(id); movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) }) })
   }, [setSettingsSection, focusedSession, runStart, startOnMachine, preferences.startFolder, home, setLayout])
 
-  return { signInAgent, runStart, newSession, newTerminal, startAgentSession, startChatHere, handoffSession, newChatWithSummary, startNewChat, warmNewChat, createWorktree }
+  // Signing in to GitHub is `gh`'s own interactive command, in a terminal of its own in the machine's home folder: it
+  // shows a code and opens a browser. The host holds the command; only the machine is chosen here. The session is
+  // watched so that whoever shows the sign-in can ask again once it has ended.
+  const { watch: watchSignIn, ended: gitHubSignInsEnded } = useSessionsEnded(sessionMap)
+  const signInGitHub = useCallback((machine: number, name: string) => {
+    setSettingsSection(null)
+    const started = (id: string) => { rememberShellStart(id); watchSignIn(id) }
+    if (machine !== LOCAL_MACHINE) {
+      void startOnMachine({ machine, name }, REMOTE_HOME, () => startGitHubSignIn(machine)).then(
+        (id) => { if (id !== null) started(id) },
+        (error: unknown) => { toast.error(errorMessage(error, `Could not start the sign-in on ${name}`)) },
+      )
+      return
+    }
+    void runStart(
+      async () => home || (await defaultSessionFolder()),
+      (id) => { started(id); movePanes(() => { setLayout((current) => openArrangement(current, id, makeId)) }) },
+      () => startGitHubSignIn(LOCAL_MACHINE),
+    )
+  }, [setSettingsSection, watchSignIn, startOnMachine, runStart, home, setLayout])
+
+  return { signInAgent, signInGitHub, gitHubSignInsEnded, runStart, newSession, newTerminal, startAgentSession, startChatHere, handoffSession, newChatWithSummary, startNewChat, warmNewChat, createWorktree }
 }

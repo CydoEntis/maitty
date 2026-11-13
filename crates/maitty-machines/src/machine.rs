@@ -696,6 +696,10 @@ pub struct Dial {
     pub term: Option<String>,
     pub token: Option<String>,
     pub structured: Option<protocol::StructuredIdentity>,
+    /// Refuse a machine on an older version even when the two could still talk. The desktop
+    /// window asks this: it offers the machine's update instead of working around what an older
+    /// daemon lacks, which showed as features failing with nothing said.
+    pub newest_only: bool,
 }
 
 /// The Hello for `machine`. The only place a pane claim is made, so no caller can send a pane's
@@ -708,6 +712,7 @@ pub fn hello(machine: &Machine, dial: Dial) -> ClientMsg {
         term,
         token,
         structured,
+        newest_only: _,
     } = dial;
     // A conversation's secret is this computer's daemon's to check, like a pane's.
     let structured = structured.filter(|_| !machine.is_remote());
@@ -726,6 +731,7 @@ pub fn hello(machine: &Machine, dial: Dial) -> ClientMsg {
 
 /// Connect to another machine (never this one) and complete the handshake.
 pub async fn open_remote(machine: &Machine, dial: Dial) -> Result<(Reader, Writer)> {
+    let newest_only = dial.newest_only;
     let hello = hello(machine, dial);
     let (mut r, w, said) = match &machine.route {
         Route::Local => {
@@ -750,7 +756,7 @@ pub async fn open_remote(machine: &Machine, dial: Dial) -> Result<(Reader, Write
         Ok(daemon) => daemon,
         Err(e) => return Err(ssh_failed(machine, said, e, true).await),
     };
-    if daemon.speaks_with_us() {
+    if accepts(newest_only, daemon) {
         Ok((r, w))
     } else {
         Err(OtherVersion {
@@ -758,6 +764,12 @@ pub async fn open_remote(machine: &Machine, dial: Dial) -> Result<(Reader, Write
         }
         .into())
     }
+}
+
+/// Whether a link may use the daemon that welcomed it. A newer daemon is the compatibility
+/// window's to judge either way: the fix for one is updating this computer.
+fn accepts(newest_only: bool, daemon: maitty_ipc_transport::Welcomed) -> bool {
+    daemon.speaks_with_us() && !(newest_only && daemon.version < protocol::PROTOCOL_VERSION)
 }
 
 #[cfg(test)]
@@ -993,6 +1005,7 @@ mod tests {
             term: None,
             token: None,
             structured: None,
+            newest_only: false,
         };
         let err = super::open_remote(&through(&["relay.exe", "{command}"]), dial)
             .await
@@ -1092,6 +1105,7 @@ mod tests {
                 term: None,
                 token: None,
                 structured: Some(identity()),
+                newest_only: false,
             };
             match super::hello(m, dial) {
                 super::ClientMsg::Hello { structured, .. } => structured,
@@ -1105,6 +1119,18 @@ mod tests {
     }
 
     #[test]
+    fn a_link_that_wants_the_newest_refuses_an_older_daemon_it_could_still_talk_to() {
+        use super::protocol::{COMPATIBLE_SINCE, PROTOCOL_VERSION};
+        const { assert!(COMPATIBLE_SINCE < PROTOCOL_VERSION) };
+        let welcomed = |version| maitty_ipc_transport::Welcomed { version, compatible_since: COMPATIBLE_SINCE };
+        let older = welcomed(PROTOCOL_VERSION - 1);
+        assert!(super::accepts(false, older));
+        assert!(!super::accepts(true, older));
+        assert!(super::accepts(true, welcomed(PROTOCOL_VERSION)));
+        assert!(!super::accepts(false, welcomed(COMPATIBLE_SINCE - 1)));
+    }
+
+    #[test]
     fn a_hello_for_another_machine_never_carries_a_pane_claim() {
         let dial = || super::Dial {
             attach: false,
@@ -1113,6 +1139,7 @@ mod tests {
             term: Some("7".into()),
             token: Some("secret".into()),
             structured: None,
+            newest_only: false,
         };
         let from = |m: &super::Machine| match super::hello(m, dial()) {
             super::ClientMsg::Hello { from, .. } => from,

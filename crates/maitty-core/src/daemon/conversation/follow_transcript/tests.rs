@@ -408,6 +408,39 @@ fn a_claude_system_line_that_is_no_command_is_not_something_said() {
 }
 
 #[test]
+fn claudes_summary_of_a_full_conversation_is_a_step_and_not_something_the_person_said() {
+    let lines = vec![
+        claude_user("u1", "fix the build"),
+        claude_assistant("a1", json!({ "type": "text", "text": "Working on it." })),
+        line(json!({ "type": "system", "subtype": "compact_boundary", "content": "Conversation compacted" })),
+        line(json!({
+            "type": "user", "uuid": "s1", "isSidechain": false, "isCompactSummary": true,
+            "timestamp": "2026-11-04T09:30:06.000Z",
+            "message": { "role": "user", "content": "This session is being continued.\n## Summary" },
+        })),
+        claude_assistant("a2", json!({ "type": "text", "text": "Done." })),
+    ];
+
+    let history = history_of(Format::Claude, &lines);
+
+    let items = items(&history);
+    assert_eq!(items.len(), 4);
+    assert_eq!(
+        items[2].content,
+        Content::Tool {
+            kind: "contextSummary".into(),
+            output: "This session is being continued.\n## Summary".into(),
+            label: String::new(),
+            input: None,
+            exit_code: None,
+            duration_ms: None,
+        }
+    );
+    assert_eq!(items[2].state, ItemState::Completed);
+    assert_eq!(turns(&history).len(), 1);
+}
+
+#[test]
 fn text_is_cleaned_and_a_huge_message_is_cut() {
     let huge = "x".repeat(MAX_MESSAGE_BYTES * 2);
     let lines = vec![

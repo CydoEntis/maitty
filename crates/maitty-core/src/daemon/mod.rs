@@ -10,11 +10,16 @@ mod check;
 pub use check::first_failing_line;
 mod check_source;
 mod check_stale;
+mod clone;
+mod commit;
 mod commands;
 mod contain;
 mod conversation;
 mod folders;
 mod git;
+mod git_identity;
+mod git_rule;
+mod github;
 mod helpers;
 mod identity;
 mod last_lines;
@@ -24,6 +29,7 @@ mod persist;
 mod pr;
 #[cfg(unix)]
 mod provider_groups;
+mod pull_request;
 mod repeats;
 mod repo;
 mod restore;
@@ -31,6 +37,7 @@ mod scan;
 mod search;
 mod secrets;
 mod status;
+mod sync;
 mod term;
 mod usage;
 mod usage_store;
@@ -225,6 +232,21 @@ pub enum Ev {
     SearchReady {
         client: ClientId,
         hits: Vec<crate::protocol::SearchHit>,
+    },
+    CloneReady {
+        client: ClientId,
+        tag: u64,
+        outcome: Result<String, String>,
+    },
+    GitHubAccountsReady {
+        client: ClientId,
+        tag: u64,
+        report: crate::protocol::GitHubReport,
+    },
+    /// A GitHub list `gh` was asked for off the loop, as the reply to send.
+    Answered {
+        client: ClientId,
+        reply: Reply,
     },
     FoldersReady {
         client: ClientId,
@@ -2287,6 +2309,17 @@ impl Daemon {
                 tag,
                 listing,
             } => self.send(client, ServerMsg::Reply(Reply::Folders { tag, listing })),
+            Ev::CloneReady {
+                client,
+                tag,
+                outcome,
+            } => self.send(client, ServerMsg::Reply(Reply::Cloned { tag, outcome })),
+            Ev::GitHubAccountsReady {
+                client,
+                tag,
+                report,
+            } => self.send(client, ServerMsg::Reply(Reply::GitHubAccounts { tag, report })),
+            Ev::Answered { client, reply } => self.send(client, ServerMsg::Reply(reply)),
             Ev::SavedConversationsReady { client, tag, found } => {
                 self.send(client, ServerMsg::Reply(Reply::SavedConversations { tag, found }));
             }
@@ -2865,6 +2898,92 @@ impl Daemon {
                         });
                         return;
                     }
+                    Query::CloneRepo { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can clone a repository".into())
+                    }
+                    Query::GitHubAccounts { .. } | Query::GitHubRepos { .. } | Query::GitHubOwners { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can ask about this machine's GitHub account".into())
+                    }
+                    Query::GitIdentities { .. } | Query::GitIdentityRule { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can ask or change who commits on this machine".into())
+                    }
+                    Query::GitIdentityRule { change, tag } => {
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let signed_in = |login: &str| github::accounts().accounts.iter().any(|account| account.login == login);
+                            let outcome = git_rule::change(&git_identity::Place::real(), &change, signed_in);
+                            let reply = Reply::GitIdentityRuleDone { tag, outcome };
+                            let _ = tx.blocking_send(Ev::Answered { client, reply });
+                        });
+                        return;
+                    }
+                    Query::GitIdentities { tag } => {
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let report = git_identity::report(&git_identity::Place::real());
+                            let reply = Reply::GitIdentities { tag, report };
+                            let _ = tx.blocking_send(Ev::Answered { client, reply });
+                        });
+                        return;
+                    }
+                    Query::GitHubRepos { owner, search, tag } => {
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let answer = github::repos(owner.as_deref(), search.as_deref());
+                            let reply = Reply::GitHubRepos { tag, answer };
+                            let _ = tx.blocking_send(Ev::Answered { client, reply });
+                        });
+                        return;
+                    }
+                    Query::GitHubOwners { tag } => {
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let reply = Reply::GitHubOwners { tag, answer: github::owners() };
+                            let _ = tx.blocking_send(Ev::Answered { client, reply });
+                        });
+                        return;
+                    }
+                    Query::GitHubAccounts { tag } => {
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let report = github::accounts();
+                            let _ = tx.blocking_send(Ev::GitHubAccountsReady { client, tag, report });
+                        });
+                        return;
+                    }
+                    Query::CloneRepo { address, parent, tag } => {
+                        // Checked here too, so an address or a path that is far too long never
+                        // reaches a thread.
+                        if address.len() > clone::ADDRESS_MAX_BYTES || parent.len() > folders::PATH_MAX_BYTES {
+                            self.send(
+                                client,
+                                ServerMsg::Reply(Reply::Cloned {
+                                    tag,
+                                    outcome: Err("That address or folder is too long".into()),
+                                }),
+                            );
+                            return;
+                        }
+                        let home = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf());
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let outcome = clone::clone(&address, &parent, home.as_deref(), clone::CLONE_LIMIT);
+                            let _ = tx.blocking_send(Ev::CloneReady { client, tag, outcome });
+                        });
+                        return;
+                    }
                     Query::SavedConversations { .. } if self.client_is_agent(client) => {
                         ServerMsg::Error("Only a human client can list saved conversations".into())
                     }
@@ -2918,6 +3037,38 @@ impl Daemon {
                         tokio::task::spawn_blocking(move || {
                             let hits = search::search(&panes, &query);
                             let _ = tx.blocking_send(Ev::SearchReady { client, hits });
+                        });
+                        return;
+                    }
+                    Query::Git { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can change a checkout this way".into())
+                    }
+                    Query::Git { term, request, tag } => {
+                        let folder = self
+                            .may_use_terminal(client, term)
+                            .and_then(|()| self.may(client, Grant::Write, Some(term)))
+                            .and_then(|()| {
+                                self.terms
+                                    .get(&term)
+                                    .map(|t| t.cwd.clone())
+                                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))
+                            });
+                        let folder = match folder {
+                            Ok(folder) => folder,
+                            Err(error) => {
+                                self.send(client, ServerMsg::Error(format!("{error:#}")));
+                                return;
+                            }
+                        };
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let outcome = sync::answer(&folder, &request);
+                            let reply = Reply::GitDone { tag, outcome };
+                            let _ = tx.blocking_send(Ev::Answered { client, reply });
                         });
                         return;
                     }

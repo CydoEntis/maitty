@@ -306,6 +306,7 @@ mod tests {
             term: None,
             token: None,
             structured: None,
+            newest_only: false,
         })
     }
 

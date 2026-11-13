@@ -7,7 +7,7 @@
 //! (`machine_ids`). Nothing here knows about Tauri, so the whole of it is tested without a
 //! window, against the fake `ssh` shim.
 
-use crate::routing::{ReplyAllowance, expects_answer};
+use crate::routing::{ReplyAllowance, answer_window};
 use maitty_ipc_transport::{Reader, Writer};
 use maitty_machines::connections::{Burst, Connections, NotConnected, SERVER_BURST};
 use maitty_machines::link::{
@@ -40,7 +40,8 @@ const LOCAL_REDIAL: Duration = Duration::from_secs(1);
 
 /// What a connection says about the host in its Hello: it attaches to the panes this app owns
 /// (ADR 0004) and asks for a pane's replay when a view opens on it. A desktop has no pane of
-/// its own, so there is no claim to make.
+/// its own, so there is no claim to make. A machine on an older version is not used as it is:
+/// it shows as needing its update, which the window offers.
 pub(crate) fn dial() -> anyhow::Result<Dial> {
     Ok(Dial {
         attach: true,
@@ -49,6 +50,7 @@ pub(crate) fn dial() -> anyhow::Result<Dial> {
         term: None,
         token: None,
         structured: None,
+        newest_only: true,
     })
 }
 
@@ -129,11 +131,13 @@ impl HubHandle {
             return Err(NotConnected(machine));
         }
         // What the machine says to this request may be taken as its answer.
-        if machine != MachineId::LOCAL && expects_answer(&outgoing.msg) {
+        if machine != MachineId::LOCAL
+            && let Some(window) = answer_window(&outgoing.msg)
+        {
             lock(&self.shared.allowance)
                 .entry(machine)
                 .or_default()
-                .asked(Instant::now());
+                .asked(Instant::now(), window);
         }
         self.outbox
             .send(outgoing)

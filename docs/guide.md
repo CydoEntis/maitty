@@ -487,7 +487,8 @@ A machine you add only needs the `maitty` program. There is no desktop app on it
   PATH ssh gives it. Only a copy kept somewhere else needs `remote_cmd` set to its full path.
 - **A version close enough.** This computer, the machine and any desktop app talk when their versions are the
   same or close enough that the newer one still speaks the older one's protocol; releases say when that
-  stops being true. A machine too old to talk to shows `needs update`; run `maitty machine update <name>`. A machine too new for
+  stops being true. A machine too old to talk to shows `needs update`; run `maitty machine update <name>`. The desktop
+  app asks more: a machine on any older version shows `needs update` there, with its **update** button. A machine too new for
   this computer shows `newer than this app` and has no update button: update this computer instead
   (`maitty update`, or the desktop app's own update). A machine is never downgraded from here.
 
@@ -727,8 +728,31 @@ no sounds, so there is no switch for them.
 
 A new session (**New session**, ⌘T) starts where the focused session is. On another machine it asks for a
 folder there, starting at `~`, because the folder picker is this computer's; a folder that does not exist
-opens in the machine's home folder. Files, Changes, worktrees and the other features that read a pane's files
-are for this computer's sessions only.
+opens in the machine's home folder. To start on a project that is not on the machine yet, use **Clone a
+repository…** on the new chat page (beside Browse…, or in the project menu): paste the repository's address,
+pick the folder it goes inside, and the chat opens on the new folder. The side panel's **Changes** tab
+works for a session on another machine too: it lists the changed files and their diffs, read from that
+machine. You can commit there too: tick the files, write the message, and **Commit**, **Pull** / **Push** /
+**Fetch** and **Create PR** all run on that machine, with its git name and its GitHub sign-in (a pull only
+fast-forwards; Create PR needs `gh` signed in there, see Settings › GitHub). The panel's Files, Branches, History and References tabs say they are
+local-only. If that machine is signed in to
+GitHub, the dialog also lists your repositories there: search, pick an owner, and click one to fill in its
+address. It works for this computer and for
+another machine, and uses whatever git sign-in that machine already has; a private repository the machine
+cannot sign in to fails with git's own message. **Settings › GitHub** shows who each connected machine is
+signed in to GitHub as, read from that machine's GitHub CLI (`gh`); Maitty never sees the token. A machine
+that is not signed in has **Sign in** there: it opens a terminal on that machine running `gh auth login`,
+which shows a one-time code and opens GitHub in your browser. Finish it, close the terminal, and the row
+updates. A machine with somebody signed in has **Details**: every account signed in there (the active one
+marked), the name and email its commits carry, and its folder rules, the folders where git uses another
+account and identity. A rule you made by hand in your git config shows as "set outside Maitty". **Add
+another account** starts the same sign-in. **Add a folder rule** gives a folder its own account, name and
+email: choose the folder, pick one of the accounts signed in there, type the name and email, and click
+**Show the lines** to see exactly what Maitty will write to git's config. Nothing changes until you click
+**Write these lines**. From then on, commits in any repository inside that folder carry that name and
+email, and git signs in to GitHub there as that account. A rule Maitty made has **Change** and **Remove**;
+Remove asks once. Cloning into a folder a rule covers says "Will use <account>" under the destination. Files, worktrees and the other features that read a pane's files
+are for this computer's sessions only; Changes is the exception described above.
 
 **Dropping files or folders on a session of another machine** sends them there: drag up to 10 files or folders from
 your file manager onto the pane. Each goes over ssh (not a custom transport) into `~/.cache/maitty/pastes` on that

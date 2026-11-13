@@ -11,7 +11,7 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 85;
+pub const PROTOCOL_VERSION: u32 = 93;
 
 /// The first version whose daemon lists an agent's saved conversations for a folder
 /// (`Query::SavedConversations`).
@@ -43,6 +43,136 @@ pub enum SavedConversations {
     /// The daemon reads no saved conversations for this agent.
     NotSupported,
 }
+
+/// The first version whose daemon writes and removes a folder's GitHub account and commit identity
+/// rule on request (`Query::GitIdentityRule`).
+pub const GIT_RULES_SINCE: u32 = 93;
+/// The most files and lines one answer about a rule carries.
+pub const GIT_RULE_FILES_MAX: usize = 4;
+pub const GIT_RULE_LINES_MAX: usize = 16;
+
+/// What a `Query::GitIdentityRule` does to a folder's rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GitRuleChange {
+    /// The lines that `Apply` would write, written nowhere.
+    Preview { folder: String, identity: GitIdentity },
+    /// Write the rule: `folder` (which must be there) commits as `identity` and signs in to
+    /// github.com as its login, which must be signed in on the machine. A rule Maitty wrote for
+    /// the folder before is replaced; one set outside Maitty is refused.
+    Apply { folder: String, identity: GitIdentity },
+    /// Take away the rule Maitty wrote for `folder`, named as `GitIdentityRule::folder` names it.
+    Remove { folder: String },
+}
+
+/// Lines of one config file, each `key = value`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitConfigWrite {
+    pub file: String,
+    pub lines: Vec<String>,
+}
+
+/// The first version whose daemon says which commit identity its machine's git uses, and for
+/// which folders a different one applies (`Query::GitIdentities`).
+pub const GIT_IDENTITIES_SINCE: u32 = 92;
+/// The most folder rules one report carries.
+pub const GIT_IDENTITY_RULES_MAX: usize = 100;
+/// The longest name, email or folder a report carries, in characters.
+pub const GIT_IDENTITY_TEXT_MAX_CHARS: usize = 1024;
+
+/// What `Query::GitIdentities` found in the machine's global git config. Never a credential.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitIdentityReport {
+    /// False when the machine has no git; the rest is then empty.
+    pub installed: bool,
+    /// The name and email commits carry where no rule applies; each is absent when not set.
+    pub name: Option<String>,
+    pub email: Option<String>,
+    /// The folders whose checkouts use something else, in the order git reads them.
+    pub rules: Vec<GitIdentityRule>,
+    /// One line saying why the config could not be read, when it could not.
+    pub problem: Option<String>,
+}
+
+/// One `includeIf "gitdir:<folder>/"` entry of the global git config.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitIdentityRule {
+    /// The folder as the entry writes it, without the closing slash.
+    pub folder: String,
+    /// What the rule sets, when Maitty wrote it. `None` for a rule set outside Maitty: it is
+    /// listed so it can be seen, and nothing of what it sets is read.
+    pub identity: Option<GitIdentity>,
+}
+
+/// Who commits, and as which GitHub account git signs in, inside a folder with a rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitIdentity {
+    pub name: String,
+    pub email: String,
+    pub login: String,
+}
+
+/// The first version whose daemon opens a pull request for a pane's checkout on request
+/// (`GitRequest::PullRequest`).
+pub const GIT_PULL_REQUEST_SINCE: u32 = 91;
+
+/// The first version whose daemon commits files of a pane's checkout on request
+/// (`GitRequest::Commit`).
+pub const GIT_COMMIT_SINCE: u32 = 90;
+/// How long the daemon gives one commit, in seconds: the repository's own hooks run in it.
+pub const GIT_COMMIT_LIMIT_SECS: u64 = 120;
+/// The longest commit message taken, in bytes.
+pub const GIT_COMMIT_MESSAGE_MAX_BYTES: usize = 16 * 1024;
+/// The most that the paths of one commit may add up to, in bytes: they are passed to git as
+/// arguments, and a command line only holds so much.
+pub const GIT_COMMIT_PATHS_MAX_BYTES: usize = 24 * 1024;
+
+/// The first version whose daemon fetches, pulls and pushes a pane's checkout on request
+/// (`Query::Git`).
+pub const GIT_SYNC_SINCE: u32 = 89;
+/// How long the daemon gives one fetch, pull or push, in seconds.
+pub const GIT_SYNC_LIMIT_SECS: u64 = 60;
+
+/// What a `Query::Git` does to the checkout a pane is in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GitRequest {
+    /// Bring what is known of the remote up to date, dropping the branches it no longer has.
+    Fetch,
+    /// Fast-forward the branch to its upstream. A branch with commits of its own as well is left
+    /// as it is: nothing is merged or rebased.
+    Pull,
+    /// Send the branch to its upstream, or to `origin` under its own name when it has none yet.
+    /// Never forced.
+    Push,
+    /// Commit `paths` with `message`, or everything that changed when no paths are named. Each
+    /// path is a file's name relative to the checkout, with `/` between its parts. Whatever else
+    /// is staged stays out of a commit that names paths. The answer's line is the new commit's
+    /// short id, a space and its subject.
+    Commit {
+        message: String,
+        paths: Option<Vec<String>>,
+    },
+    /// Push the branch, then open a GitHub pull request for it with the machine's GitHub command
+    /// line, titled and described from its commits. The answer's line is the pull request's
+    /// address, always `https://github.com/<owner>/<repo>/pull/<number>`.
+    PullRequest,
+}
+
+/// The first version whose daemon lists the repositories its machine's GitHub account can clone
+/// (`Query::GitHubRepos`, `Query::GitHubOwners`).
+pub const GITHUB_REPOS_SINCE: u32 = 88;
+/// How long the daemon gives `gh` to list repositories or organisations.
+pub const GITHUB_LIST_LIMIT_SECS: u64 = 30;
+
+/// The first version whose daemon says who is signed in to GitHub on its machine
+/// (`Query::GitHubAccounts`).
+pub const GITHUB_ACCOUNTS_SINCE: u32 = 87;
+
+/// The first version whose daemon clones a repository on request (`Query::CloneRepo`).
+pub const CLONE_SINCE: u32 = 86;
+
+/// How long a daemon lets one clone run before it stops it, in seconds. A client waits a little
+/// longer than this for the answer.
+pub const CLONE_LIMIT_SECS: u64 = 600;
 
 /// The first version whose daemon lists and forgets the commands approved "always in this project"
 /// (`Query::AllowedCommands`, `Command::ForgetAllowedCommand`).
@@ -852,6 +982,52 @@ pub enum Query {
         path: String,
         tag: u64,
     },
+    /// Clone the git repository at `address` into a new folder, named after it, inside `parent`
+    /// on this daemon's computer (human clients only). `address` is an `https://`, `ssh://` or
+    /// `git://` address or the `user@host:path` form; `parent` is absolute or starts with `~`.
+    /// The answer is `Reply::Cloned` with the same `tag`.
+    CloneRepo {
+        address: String,
+        parent: String,
+        tag: u64,
+    },
+    /// Who is signed in to GitHub on this daemon's computer, as its GitHub command line (`gh`)
+    /// says (human clients only). The answer is `Reply::GitHubAccounts` with the same `tag`.
+    GitHubAccounts {
+        tag: u64,
+    },
+    /// The repositories the account signed in on this daemon's computer can clone (human clients
+    /// only): `owner`'s, or its own when none is named, narrowed to those matching `search` when
+    /// there is one. The answer is `Reply::GitHubRepos` with the same `tag`.
+    GitHubRepos {
+        owner: Option<String>,
+        search: Option<String>,
+        tag: u64,
+    },
+    /// Whose repositories `GitHubRepos` can list: the signed-in account, then its organisations
+    /// (human clients only). The answer is `Reply::GitHubOwners` with the same `tag`.
+    GitHubOwners {
+        tag: u64,
+    },
+    /// Which commit name and email git uses on this daemon's computer, and the folders where a
+    /// rule gives another (human clients only). Nothing is written. The answer is
+    /// `Reply::GitIdentities` with the same `tag`.
+    GitIdentities {
+        tag: u64,
+    },
+    /// Preview, write or remove a folder's rule (human clients only). The answer is
+    /// `Reply::GitIdentityRuleDone` with the same `tag`.
+    GitIdentityRule {
+        change: GitRuleChange,
+        tag: u64,
+    },
+    /// Do `request` to the checkout pane `term` is in (human clients only). The answer is
+    /// `Reply::GitDone` with the same `tag`.
+    Git {
+        term: u32,
+        request: GitRequest,
+        tag: u64,
+    },
     /// The conversations `agent` (`claude`, `codex`) saved for `folder` on this daemon's computer,
     /// newest first (human clients only). `folder` is absolute or starts with `~`. The answer
     /// echoes `tag`.
@@ -1070,10 +1246,104 @@ pub enum Reply {
         tag: u64,
         listing: FolderListing,
     },
+    /// How a `Query::CloneRepo` ended: the new folder's path with `/` separators, or one line
+    /// saying why nothing was cloned.
+    Cloned {
+        tag: u64,
+        outcome: Result<String, String>,
+    },
+    GitHubAccounts {
+        tag: u64,
+        report: GitHubReport,
+    },
+    GitHubRepos {
+        tag: u64,
+        answer: GitHubAnswer<GitHubRepoList>,
+    },
+    GitHubOwners {
+        tag: u64,
+        answer: GitHubAnswer<Vec<String>>,
+    },
+    /// How a `Query::Git` ended: one line saying what happened ("Pulled", "Pushed main"), or one
+    /// line saying why nothing did.
+    GitDone {
+        tag: u64,
+        outcome: Result<String, String>,
+    },
+    GitIdentities {
+        tag: u64,
+        report: GitIdentityReport,
+    },
+    /// How a `Query::GitIdentityRule` ended: the lines it would write, wrote or took away, by
+    /// file, or one line saying why nothing was done.
+    GitIdentityRuleDone {
+        tag: u64,
+        outcome: Result<Vec<GitConfigWrite>, String>,
+    },
     SavedConversations {
         tag: u64,
         found: SavedConversations,
     },
+}
+
+/// The most repositories one answer carries.
+pub const GITHUB_REPOS_MAX: usize = 200;
+/// The most owners one answer carries.
+pub const GITHUB_OWNERS_MAX: usize = 100;
+/// The most characters of a repository's description that are passed on.
+pub const GITHUB_DESCRIPTION_MAX_CHARS: usize = 300;
+
+/// What a question that needs a signed-in GitHub command line found. Having no `gh`, and nobody
+/// signed in, are answers a client shows a way out of, not errors.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GitHubAnswer<T> {
+    NotInstalled,
+    NotSignedIn,
+    /// One line saying why there is no list.
+    Failed(String),
+    Listed(T),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitHubRepoList {
+    pub repos: Vec<GitHubRepo>,
+    /// True when there are more than `GITHUB_REPOS_MAX`: a search narrows them.
+    pub more: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitHubRepo {
+    /// `owner/name`.
+    pub name: String,
+    /// One line, empty when it has none.
+    pub description: String,
+    pub private: bool,
+    /// When it was last pushed to, as GitHub writes a time; empty when unknown.
+    pub pushed_at: String,
+    /// The https address it is cloned from.
+    pub clone_url: String,
+}
+
+/// The most GitHub accounts one report carries.
+pub const GITHUB_ACCOUNTS_MAX: usize = 20;
+
+/// What `Query::GitHubAccounts` found. Never a token: only who is signed in.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitHubReport {
+    /// False when the machine has no GitHub command line; the rest is then empty.
+    pub installed: bool,
+    /// The accounts signed in to github.com whose sign-in works, the active one first. Empty when
+    /// nobody is signed in, which is not a problem.
+    pub accounts: Vec<GitHubAccount>,
+    /// One line saying why the accounts could not be read, when they could not.
+    pub problem: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitHubAccount {
+    pub login: String,
+    /// The account `gh` and git use when nothing says otherwise.
+    pub active: bool,
 }
 
 /// The most folders one listing carries; a folder with more says so in `truncated`.
@@ -1858,6 +2128,14 @@ impl ClientMsg {
             ClientMsg::Command(Command::ConversationClose { .. } | Command::ConversationUndoClose { .. }) => CHAT_CLOSE_SINCE,
             ClientMsg::Command(Command::ConversationAllowAlways { .. }) => ALLOW_ALWAYS_SINCE,
             ClientMsg::Query(Query::AllowedCommands) | ClientMsg::Command(Command::ForgetAllowedCommand { .. }) => ALLOWED_COMMANDS_SINCE,
+            ClientMsg::Query(Query::CloneRepo { .. }) => CLONE_SINCE,
+            ClientMsg::Query(Query::GitHubAccounts { .. }) => GITHUB_ACCOUNTS_SINCE,
+            ClientMsg::Query(Query::GitHubRepos { .. } | Query::GitHubOwners { .. }) => GITHUB_REPOS_SINCE,
+            ClientMsg::Query(Query::GitIdentities { .. }) => GIT_IDENTITIES_SINCE,
+            ClientMsg::Query(Query::GitIdentityRule { .. }) => GIT_RULES_SINCE,
+            ClientMsg::Query(Query::Git { request: GitRequest::Commit { .. }, .. }) => GIT_COMMIT_SINCE,
+            ClientMsg::Query(Query::Git { request: GitRequest::PullRequest, .. }) => GIT_PULL_REQUEST_SINCE,
+            ClientMsg::Query(Query::Git { .. }) => GIT_SYNC_SINCE,
             ClientMsg::Query(Query::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
             _ => COMPATIBLE_SINCE,
         }
@@ -2277,7 +2555,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 85);
+        assert_eq!(PROTOCOL_VERSION, 93);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2660,7 +2938,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 85);
+        assert_eq!(PROTOCOL_VERSION, 93);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3497,6 +3775,31 @@ mod tests {
         let forget = ClientMsg::Command(Command::ForgetAllowedCommand { project: PathBuf::from("/code"), command_sha256: "ab".into() });
         assert_eq!((list.introduced_in(), forget.introduced_in()), (ALLOWED_COMMANDS_SINCE, ALLOWED_COMMANDS_SINCE));
         const { assert!(ALLOWED_COMMANDS_SINCE > COMPATIBLE_SINCE && ALLOWED_COMMANDS_SINCE <= PROTOCOL_VERSION) };
+        let clone = ClientMsg::Query(Query::CloneRepo { address: "https://example.com/o/r.git".into(), parent: "~".into(), tag: 1 });
+        assert_eq!(clone.introduced_in(), CLONE_SINCE);
+        const { assert!(CLONE_SINCE > COMPATIBLE_SINCE && CLONE_SINCE <= PROTOCOL_VERSION) };
+        assert_eq!(ClientMsg::Query(Query::GitHubAccounts { tag: 1 }).introduced_in(), GITHUB_ACCOUNTS_SINCE);
+        const { assert!(GITHUB_ACCOUNTS_SINCE > COMPATIBLE_SINCE && GITHUB_ACCOUNTS_SINCE <= PROTOCOL_VERSION) };
+        let repos = Query::GitHubRepos { owner: None, search: None, tag: 1 };
+        for query in [repos, Query::GitHubOwners { tag: 1 }] {
+            assert_eq!(ClientMsg::Query(query).introduced_in(), GITHUB_REPOS_SINCE);
+        }
+        const { assert!(GITHUB_REPOS_SINCE > COMPATIBLE_SINCE && GITHUB_REPOS_SINCE <= PROTOCOL_VERSION) };
+        for request in [GitRequest::Fetch, GitRequest::Pull, GitRequest::Push] {
+            assert_eq!(ClientMsg::Query(Query::Git { term: 3, request, tag: 1 }).introduced_in(), GIT_SYNC_SINCE);
+        }
+        const { assert!(GIT_SYNC_SINCE > COMPATIBLE_SINCE && GIT_SYNC_SINCE <= PROTOCOL_VERSION) };
+        let commit = GitRequest::Commit { message: "m".into(), paths: None };
+        assert_eq!(ClientMsg::Query(Query::Git { term: 3, request: commit, tag: 1 }).introduced_in(), GIT_COMMIT_SINCE);
+        const { assert!(GIT_COMMIT_SINCE > GIT_SYNC_SINCE && GIT_COMMIT_SINCE <= PROTOCOL_VERSION) };
+        let open = Query::Git { term: 3, request: GitRequest::PullRequest, tag: 1 };
+        assert_eq!(ClientMsg::Query(open).introduced_in(), GIT_PULL_REQUEST_SINCE);
+        const { assert!(GIT_PULL_REQUEST_SINCE > GIT_COMMIT_SINCE && GIT_PULL_REQUEST_SINCE <= PROTOCOL_VERSION) };
+        assert_eq!(ClientMsg::Query(Query::GitIdentities { tag: 1 }).introduced_in(), GIT_IDENTITIES_SINCE);
+        const { assert!(GIT_IDENTITIES_SINCE > COMPATIBLE_SINCE && GIT_IDENTITIES_SINCE <= PROTOCOL_VERSION) };
+        let remove = Query::GitIdentityRule { change: GitRuleChange::Remove { folder: "/code".into() }, tag: 1 };
+        assert_eq!(ClientMsg::Query(remove).introduced_in(), GIT_RULES_SINCE);
+        const { assert!(GIT_RULES_SINCE > GIT_IDENTITIES_SINCE && GIT_RULES_SINCE <= PROTOCOL_VERSION) };
     }
 
     /// Listing saved conversations is a new query and a new reply: a daemon built before it is never

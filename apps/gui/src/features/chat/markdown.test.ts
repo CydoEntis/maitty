@@ -81,6 +81,24 @@ describe('block markdown', () => {
     expect(blocks[4]).toMatchObject({ inlines: [text('quoted\ntext')] })
   })
 
+  it('keeps numbered entries with blank lines between them as one list', () => {
+    const blocks = parseMarkdown('1. one\n\n2. two\n   more\n\n3. three\n\nafter')
+
+    expect(kinds(blocks)).toEqual(['list', 'paragraph'])
+    expect(blocks[0]).toMatchObject({ ordered: true, start: 1, items: [[text('one')], [text('two\nmore')], [text('three')]] })
+  })
+
+  it('counts a numbered list from the number it was written with', () => {
+    const blocks = parseMarkdown('1. one\n\n```\ncode\n```\n\n2. two')
+
+    expect(kinds(blocks)).toEqual(['list', 'code', 'list'])
+    expect(blocks[2]).toMatchObject({ ordered: true, start: 2 })
+  })
+
+  it('keeps a bullet list and a numbered list apart across a blank line', () => {
+    expect(kinds(parseMarkdown('- a\n\n1. b'))).toEqual(['list', 'list'])
+  })
+
   it('keeps a fenced block as code, blank lines and markup characters included', () => {
     const [block] = parseMarkdown('```ts\nconst a = **x**\n\n<script>alert(1)</script>\n```')
 

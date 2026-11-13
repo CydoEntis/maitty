@@ -415,11 +415,18 @@
 .mx-rename h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); }
 .mx-rename p { margin: 0; font-size: 12.5px; color: var(--muted); }
 .mx-rename input { height: 38px; padding: 0 12px; border-radius: 10px; background: var(--m-well); border: 1px solid var(--pane-line); color: var(--fg); font-size: 14px; outline: none; }
-.mx-rename input:focus { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+.mx-rename input:focus, .mx-rename select:focus { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+.mx-rename select { height: 38px; padding: 0 10px; border-radius: 10px; background: var(--m-well); border: 1px solid var(--pane-line); color: var(--fg); font-size: 14px; outline: none; }
 .mx-rename-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .mx-rename:focus-visible { outline: none; }
 .mx-rename.mx-getfile { max-width: 560px; }
 .mx-getfile-where { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mx-clone-into { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mx-clone-into input { flex: 1; min-width: 0; }
+/* A folder rule's preview (GitRuleDialog): each git config file, then the lines that go in it. */
+.mx-git-rule-preview { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow: auto; padding: 10px 12px; border-radius: 10px; background: var(--m-well); border: 1px solid var(--pane-line); }
+.mx-git-rule-preview span { display: block; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.mx-git-rule-preview pre { margin: 2px 0 0; font-family: var(--mono); font-size: 12px; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
 .mx-getfile-where code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; font-family: var(--mono, monospace); font-size: 12.5px; color: var(--muted); }
 .mx-getfile-list { display: flex; flex-direction: column; max-height: 260px; min-height: 96px; overflow-y: auto; border: 1px solid var(--pane-line); border-radius: 10px; background: var(--m-well); padding: 4px; }
 .mx-getfile-list p { margin: 8px; }
@@ -524,6 +531,14 @@
 .mx-machine-chip.is-quiet { color: var(--dim); }
 .mx-machine-chip.is-bad { color: var(--danger); }
 .mx-scard-button.is-danger { color: var(--danger); }
+/* Under a machine's row on the GitHub page: its accounts, who commits, and its folder rules. */
+.mx-github-details { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 0 16px 14px; font-size: 12.5px; color: var(--fg2); }
+.mx-github-details .mx-menu-caps { padding: 6px 0 0; }
+.mx-github-details p { margin: 0; overflow-wrap: anywhere; }
+.mx-github-details ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; align-self: stretch; }
+.mx-github-details li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.mx-github-details li > span { font-family: var(--mono); font-size: 12px; color: var(--fg); overflow-wrap: anywhere; }
+.mx-github-details li > small { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
 .mx-scard-button:disabled { opacity: .4; pointer-events: none; }
 .mx-scard-button:hover { background: var(--accent-soft); color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--accent-line); }
 .mx-scard-button.is-primary { background: var(--accent); color: var(--on-accent); box-shadow: none; font-weight: 600; }

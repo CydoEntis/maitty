@@ -20,6 +20,7 @@ mod remote_get;
 pub mod remote_chat;
 pub mod remote_paste;
 pub mod remote_policy;
+pub mod remote_repo;
 mod remote_scripts;
 pub mod remote_send;
 pub mod remote_snapshot;

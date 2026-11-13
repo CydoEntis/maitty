@@ -32,10 +32,11 @@ const loadTopFolder = (term: number) => repoTree(term, null)
 
 /** What opens over or beside the panes: Inspect, the palette, Settings and each dialog. */
 export function WorkspaceDialogs() {
-  const { signInAgent, sessionsQuery, mismatch, inspectOpen, focusMode, inspectTerm, ownsTerminals, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, heads, sessions, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting } = useWorkspace()
+  const { signInAgent, signInGitHub, gitHubSignInsEnded, sessionsQuery, mismatch, inspectOpen, focusMode, inspectTerm, ownsTerminals, focusedSession, projectOf, diffStat, inspectView, lookAt, setInspectView, setInspectOpen, flash, shortcutsOpen, platform, root, setShortcutsOpen, welcomeOpen, preferences, setPreferences, setWelcomeOpen, newSession, focusedMachineNumber, paletteOpen, paletteItems, setPaletteOpen, focusedId, sessionMap, needsElsewhere, setFocusMode, focusModeChord, worktreeFrom, createWorktree, setWorktreeFrom, heads, sessions, getFileId, setGetFileId, getFile, updateAsk, setUpdateAsk, updateNamed, closeAsk, setCloseAsk, renamingMachine, machineNicknames, setMachineNicknames, setRenamingMachine, renameId, renameInline, saveName, setRenameId, settingsSection, setSettingsSection, systemReducedMotion, systemDark, previewThemeSoon, showTestNotice, updater, restartNow, setPreviewTheme, online, runningVersion, machinesKnown, retryNamed, removeNamed, grantNamed, copyCommand, addNamed, cancelAdding, usageInfo, chooseStartFolder, toastMessage, updatedTo, setUpdatedTo, restarting } = useWorkspace()
   // An agent always has a Terminal tab. Pinned under the chat, its terminals are in the pane, and the tab offers to bring them back.
   const hasTerminals = focusedSession !== undefined && ownsTerminals(focusedSession)
-  usePreloadFiles(inspectTerm, loadTopFolder)
+  // Files reads this computer's checkouts, so nothing is read ahead for a session of another machine.
+  usePreloadFiles(focusedSession?.machineName === null ? inspectTerm : null, loadTopFolder)
   return (
     <>
       {/* A service on another protocol has its own card; this is for one that still talks but runs an older release. */}
@@ -60,9 +61,11 @@ export function WorkspaceDialogs() {
                 timeline={focusedSession.timeline}
                 checks={focusedSession.checks}
                 machine={focusedSession.machine}
+                machineName={focusedSession.machineName}
                 lookAt={lookAt}
                 {...(isShell(focusedSession) ? {} : { comments: { agent: agentName(focusedSession.process), onSend: (message: string) => sendAgentMessage(focusedSession, message) } })}
                 {...(focusedSession.machineName === null && focusedSession.repoRoot !== null ? { changeActions: { folder: focusedSession.repoRoot, machine: focusedSession.machine, suggested: suggestedCommitMessage(focusedSession) } } : {})}
+                {...(focusedSession.machineName !== null && inspectTerm !== null ? { changeActions: { folder: focusedSession.repoRoot ?? '', machine: focusedSession.machine, term: inspectTerm, suggested: suggestedCommitMessage(focusedSession) } } : {})}
                 onView={setInspectView}
                 onClose={() => { setInspectOpen(false) }}
                 onNotice={flash}
@@ -160,6 +163,7 @@ export function WorkspaceDialogs() {
                 machines={{ known: machinesKnown, list: heads.filter((head) => head.name !== null), onRetry: retryNamed, onRemove: removeNamed, onGrant: grantNamed, onUpdate: updateNamed, onCheckActivity: machineActivity, onCopyCommand: copyCommand, add: { windows: navigator.userAgent.includes('Windows'), loadHosts: listSshHosts, onAdd: addNamed, onCancel: cancelAdding } }}
                 usage={usageInfo}
                 onSignInAgent={signInAgent}
+                github={{ onSignIn: signInGitHub, signInsEnded: gitHubSignInsEnded }}
                 validateFolder={folderExists}
                 onChooseFolder={chooseStartFolder}
                 onClose={() => { setPreviewTheme(null); setSettingsSection(null) }}
