@@ -152,6 +152,19 @@ Only an accepted send is remembered, so a retry of a refused one is tried afresh
 memory (`daemon/terminal_sends.rs`, at most 1024 sends, oldest forgotten first): after a daemon restart
 a retry of an earlier send is a new send. A send without an operation behaves as before.
 
+The desktop app draws that nonce in `terminalSendOperation` (`features/chat/sendOperation.ts`): random, nonzero and
+below 2^53, so it passes through a JavaScript number into the `u64` exactly. `send_when_agent_ready` and
+`queue_follow_up` take it as `operation`. The desktop client asks the running daemon its version first and sends the
+operation only to one at `TERMINAL_SEND_OPERATIONS_SINCE` or later (`named_send`); an older daemon, or one the send has
+to start, gets the message without it. A send to another machine's pane carries none, since its line does not say which
+daemon version it reaches. The composer keeps the operation of a queued message whose send has finished and failed (a
+timeout included) and reuses it only when the same text is sent again within `FAILED_SEND_REUSE_MS` (30 s) with the
+box not edited in between; a send still pending, a different text, an edited or cleared draft and a later resend all
+draw a new one (`paneSendOperation`). A first message held for the starting agent carries an operation too, but it is
+handed over once and the id protects nothing further: if that call times out after the daemon took the message, the
+window's own fallback sends it again through the terminal, not through this command, so the daemon cannot recognise
+it and the message can be typed twice.
+
 `Command::Prewarm { cwd, cmd }` starts an agent ahead of its first message (`daemon/warm.rs`). It runs hidden, as a spare
 (no client is shown it, it alerts nobody and it is not saved), and the next `NewWorkspace` with the same command in the
 same folder is that agent, already running, instead of a new one. One is kept at a time: asking for another stops the

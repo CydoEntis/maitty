@@ -6,6 +6,7 @@ import { FAKE_CONVERSATION, FakeDaemonHistory } from '../fakeDaemonHistory'
 import { forgetComposers, updateComposer } from '../composerStore'
 import { carryDraft, entrustFirstMessage, forgetFirstMessages, heldFirstMessage, holdFirstMessage } from '../firstMessage'
 import { PASTE_END, PASTE_START, PASTE_SUBMIT_GAP_MS } from '../useChatComposer'
+import { FAILED_SEND_REUSE_MS } from '../sendOperation'
 import { ACTIVE_POLL_MS, IDLE_POLL_MS, forgetChatFeeds } from '../useChatFeed'
 import { chatFindOf } from '../chatSearch'
 import { ChatSession } from './ChatSession'
@@ -314,6 +315,78 @@ describe('a message written while a terminal agent works', () => {
     expect(typeInto).not.toHaveBeenCalled()
     expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Sending')).toHaveTextContent('and then add tests')
+  })
+
+  it('is queued again under the same operation after a timeout, and a new message gets a new one', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const daemon = new FakeDaemonHistory()
+    daemon.status = 'Working'
+    fake.current = daemon
+    const add = vi.fn<(text: string, first: boolean, operation: number) => Promise<void>>()
+      .mockRejectedValueOnce(new Error('the local daemon did not answer within 5 seconds'))
+      .mockResolvedValue(undefined)
+    const paneQueue = { queued: [], add, drop: () => Promise.resolve() }
+    render(<ChatSession link={LINK} agent="claude" online typeInto={vi.fn()} paneQueue={paneQueue} sessionId="s1" />)
+    await settle()
+    const box = screen.getByRole('textbox', { name: 'Message claude' })
+
+    await user.type(box, 'and then add tests{Enter}')
+    await settle(1)
+    expect(box).toHaveValue('and then add tests')
+    await user.type(box, '{Enter}')
+    await settle(1)
+    await user.type(box, 'and the docs{Enter}')
+    await settle(1)
+
+    const operations = add.mock.calls.map(([, , operation]) => operation)
+    expect(add.mock.calls.map(([text]) => text)).toEqual(['and then add tests', 'and then add tests', 'and the docs'])
+    expect(operations.every((operation) => Number.isSafeInteger(operation) && operation > 0)).toBe(true)
+    expect(operations[1]).toBe(operations[0])
+    expect(operations[2]).not.toBe(operations[0])
+  })
+
+  it('never reuses the number of a send that is still pending', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const daemon = new FakeDaemonHistory()
+    daemon.status = 'Working'
+    fake.current = daemon
+    const add = vi.fn<(text: string, first: boolean, operation: number) => Promise<void>>(() => new Promise<void>(() => undefined))
+    render(<ChatSession link={LINK} agent="claude" online typeInto={vi.fn()} paneQueue={{ queued: [], add, drop: () => Promise.resolve() }} sessionId="s1" />)
+    await settle()
+    const box = screen.getByRole('textbox', { name: 'Message claude' })
+
+    await user.type(box, 'and then add tests{Enter}')
+    await settle(1)
+    await user.type(box, 'and then add tests{Enter}')
+    await settle(1)
+
+    expect(add).toHaveBeenCalledTimes(2)
+    expect(add.mock.calls[1]?.[2]).not.toBe(add.mock.calls[0]?.[2])
+  })
+
+  it('takes a resend after the retry window, or of an edited draft, for a new message', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const daemon = new FakeDaemonHistory()
+    daemon.status = 'Working'
+    fake.current = daemon
+    const add = vi.fn<(text: string, first: boolean, operation: number) => Promise<void>>()
+      .mockRejectedValue(new Error('the local daemon did not answer within 5 seconds'))
+    render(<ChatSession link={LINK} agent="claude" online typeInto={vi.fn()} paneQueue={{ queued: [], add, drop: () => Promise.resolve() }} sessionId="s1" />)
+    await settle()
+    const box = screen.getByRole('textbox', { name: 'Message claude' })
+
+    await user.type(box, 'and then add tests{Enter}')
+    await settle(1)
+    act(() => { vi.advanceTimersByTime(FAILED_SEND_REUSE_MS + 1000) })
+    await user.type(box, '{Enter}')
+    await settle(1)
+    await user.clear(box)
+    await user.type(box, 'and then add tests{Enter}')
+    await settle(1)
+
+    const operations = add.mock.calls.map(([, , operation]) => operation)
+    expect(operations).toHaveLength(3)
+    expect(new Set(operations).size).toBe(3)
   })
 
   it('takes one back from the daemon to edit it, without drawing it as sent', async () => {

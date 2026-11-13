@@ -5,6 +5,7 @@
  */
 import { useSyncExternalStore } from 'react'
 import type { ReasoningPick } from './agentChoice'
+import { terminalSendOperation } from './sendOperation'
 
 const heldMessages = new Map<string, string>()
 const heldByDaemon = new Set<string>()
@@ -38,11 +39,11 @@ export function releaseFirstMessage(sessionId: string): void {
  * delivered even if this window closes first. The window keeps showing it. If the daemon does not take it, the
  * window sends it itself, as it does for a session that has no terminal for the daemon to type into.
  */
-export function entrustFirstMessage(sessionId: string, text: string, hand: (sessionId: string, text: string) => Promise<void>): void {
+export function entrustFirstMessage(sessionId: string, text: string, hand: (sessionId: string, text: string, operation: number) => Promise<void>): void {
   heldByDaemon.add(sessionId)
   notify()
   // `hand` may refuse before it asks (a session that is not a terminal), which must not stop the window sending it.
-  void Promise.resolve().then(() => hand(sessionId, text)).catch((error: unknown) => {
+  void Promise.resolve().then(() => hand(sessionId, text, terminalSendOperation())).catch((error: unknown) => {
     console.warn('The daemon did not take the first message, so the window sends it', error instanceof Error ? error.message : String(error))
     heldByDaemon.delete(sessionId)
     notify()

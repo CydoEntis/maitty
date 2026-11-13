@@ -56,7 +56,7 @@ export function WorkspacePane({ shown, pane, kept }: {
   // A pane's daemon holds what is sent while its agent works; a chat session's own daemon queue is its conversation's.
   const paneQueue = chatOnly ? undefined : {
     queued: session.queued,
-    add: (text: string, first: boolean) => queueFollowUp(session, text, first),
+    add: (text: string, first: boolean, operation: number) => queueFollowUp(session, text, first, operation),
     drop: (index: number, text: string) => dropQueuedFollowUp(session, index, text),
   }
   const showTerminal = () => {

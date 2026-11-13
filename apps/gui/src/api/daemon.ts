@@ -817,12 +817,13 @@ export async function loadTerminalReplay(conversation: Pick<Conversation, 'id'> 
 
 /**
  * Leaves a message with the pane's daemon for its working agent: typed in when the turn is over, whether or not
- * this window is open. `first` puts it ahead of the ones already waiting.
+ * this window is open. `first` puts it ahead of the ones already waiting. A retry carries the same `operation`
+ * (`terminalSendOperation`), so a daemon that took the first try does not queue it twice.
  */
-export async function queueFollowUp(conversation: Pick<Conversation, 'id'>, text: string, first: boolean): Promise<void> {
+export async function queueFollowUp(conversation: Pick<Conversation, 'id'>, text: string, first: boolean, operation: number): Promise<void> {
   const pane = addressOf(conversation.id)
   if (!isDesktop() || pane === null) throw new Error('Only an agent in a terminal takes a queued message')
-  await invokeParsed('queue_follow_up', NullSchema, { term: pane.term, text, first, ...machineArgs(pane) })
+  await invokeParsed('queue_follow_up', NullSchema, { term: pane.term, text, first, operation, ...machineArgs(pane) })
 }
 
 /** Takes back the queued message at `index`, while it still reads `text`: the queue moves when a turn ends. */
@@ -1020,10 +1021,10 @@ export async function markSeenOnDaemon(conversation: Pick<Conversation, 'id'>): 
 }
 
 /** Hands a message to a terminal session's daemon, which types it in once the agent starting there takes input. */
-export async function sendWhenAgentReady(sessionId: string, text: string): Promise<void> {
+export async function sendWhenAgentReady(sessionId: string, text: string, operation: number): Promise<void> {
   const pane = addressOf(sessionId)
   if (pane === null) throw new Error('Only a terminal session holds a message for its agent')
-  await invokeParsed('send_when_agent_ready', NullSchema, { term: pane.term, text, ...machineArgs(pane) })
+  await invokeParsed('send_when_agent_ready', NullSchema, { term: pane.term, text, operation, ...machineArgs(pane) })
 }
 
 export async function renameConversationOnDaemon(conversation: Pick<Conversation, 'id'>, title: string): Promise<void> {
