@@ -8751,6 +8751,83 @@ fn pin_and_archive_stick_survive_a_restart_and_never_stop_the_pane() {
     close(&mut d2, &[back]);
 }
 
+const MERGED_PR_URL: &str = "https://github.com/o/r/pull/7";
+const MERGED_PR: &str =
+    r#"{"number":7,"url":"https://github.com/o/r/pull/7","state":"MERGED","headRefOid":"abc"}"#;
+
+/// The PR watcher reads pull request #7 as merged for pane `t`, as its background task would.
+fn pr_merged_for(d: &mut Daemon, t: TermId) {
+    d.link_pr(t, Some(MERGED_PR_URL)).unwrap();
+    d.prs_read(vec![(
+        pr::Place::Link(MERGED_PR_URL.into()),
+        pr::Read::Found(MERGED_PR.into()),
+    )]);
+}
+
+#[test]
+fn a_finished_session_whose_pr_merged_stays_listed_by_default() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.set_status(t, Status::Idle, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_working_session_whose_pr_merged_stays_listed() {
+    let (mut d, _rx) = daemon();
+    d.cfg.sessions.put_away_merged = true;
+    let t = pane(&mut d);
+    d.set_status(t, Status::Working, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_finished_session_whose_pr_merged_is_put_away_once_and_brought_back_stays_back() {
+    let (mut d, _rx) = daemon();
+    d.cfg.sessions.put_away_merged = true;
+    d.command(
+        0,
+        Command::NewWorkspace {
+            cwd: Some(std::env::temp_dir()),
+            name: None,
+            cmd: None,
+        },
+    )
+    .unwrap();
+    let t = d.workspaces[0].tabs[0].focus;
+    d.set_status(t, Status::Done, "hook");
+    pr_merged_for(&mut d, t);
+    assert!(d.terms[&t].archived, "put away");
+
+    d.command(
+        0,
+        Command::ArchivePane {
+            term: t,
+            archived: false,
+        },
+    )
+    .unwrap();
+    pr_merged_for(&mut d, t);
+    assert!(!d.terms[&t].archived, "brought back stays back");
+
+    let (mut d2, _rx2) = daemon();
+    d2.cfg.sessions.put_away_merged = true;
+    d2.restore(d.saved());
+    let back = d2.workspaces[0].tabs[0].focus;
+    d2.set_status(back, Status::Idle, "hook");
+    pr_merged_for(&mut d2, back);
+    assert!(
+        !d2.terms[&back].archived,
+        "the same merge never puts it away again, even after a restart"
+    );
+    close(&mut d, &[t]);
+    close(&mut d2, &[back]);
+}
+
 #[test]
 fn a_change_to_one_pane_reaches_clients_as_a_delta_and_no_change_as_nothing() {
     let (mut d, _rx) = daemon();

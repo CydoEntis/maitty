@@ -8,7 +8,7 @@
 //! doesn't announce what was already known.
 
 use super::{Daemon, Ev};
-use crate::protocol::{PrChecks, PrInfo, PrReview, PrState, TermId};
+use crate::protocol::{PrChecks, PrInfo, PrReview, PrState, Status, TermId};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -579,6 +579,7 @@ impl Daemon {
                 }
             }
         }
+        self.put_away_merged();
         if limited {
             self.prs.hold_until = Some(Instant::now() + self.prs.backoff);
             self.prs.backoff = (self.prs.backoff * 2).min(BACKOFF_LONGEST);
@@ -597,6 +598,31 @@ impl Daemon {
             }
             None => self.prs.said = None,
             Some(_) => {}
+        }
+    }
+
+    /// With `sessions.put_away_merged`, put away each finished or idle session whose pull request
+    /// reads merged. Read from the state rather than the moment of the merge, so a session that
+    /// finishes after it, or a merge first seen after a restart, still goes.
+    fn put_away_merged(&mut self) {
+        if !self.cfg.sessions.put_away_merged {
+            return;
+        }
+        let merged: Vec<(TermId, String)> = self
+            .terms
+            .values()
+            .filter(|t| matches!(t.status, Status::Done | Status::Idle))
+            .filter_map(|t| {
+                let pr = self.pr_of(t).filter(|pr| pr.state == PrState::Merged)?;
+                (t.put_away_for.as_deref() != Some(pr.url.as_str())).then_some((t.id, pr.url))
+            })
+            .collect();
+        for (term, url) in merged {
+            if let Some(t) = self.terms.get_mut(&term) {
+                t.archived = true;
+                t.put_away_for = Some(url);
+                self.dirty = true;
+            }
         }
     }
 

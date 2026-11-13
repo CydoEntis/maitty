@@ -13,6 +13,7 @@ struct Kept {
     label: String,
     pinned: bool,
     archived: bool,
+    put_away_for: Option<String>,
     name: String,
     first_prompt: String,
     model: String,
@@ -32,6 +33,7 @@ impl Kept {
             label: t.label.clone(),
             pinned: t.pinned,
             archived: t.archived,
+            put_away_for: t.put_away_for.clone(),
             name: t.name.clone(),
             first_prompt: t.first_prompt.clone(),
             model: t.model.clone(),
@@ -47,6 +49,7 @@ impl Kept {
         (t.agent, t.session, t.cmd) = (self.agent, self.session, self.cmd);
         (t.label, t.name, t.first_prompt) = (self.label, self.name, self.first_prompt);
         (t.pinned, t.archived) = (self.pinned, self.archived);
+        t.put_away_for = self.put_away_for;
         (t.model, t.grants, t.started_by, t.tab_of) =
             (self.model, self.grants, self.started_by, self.tab_of);
         t.queue = self.queue;
@@ -283,6 +286,7 @@ impl Daemon {
             label: term.label.clone(),
             pinned: term.pinned,
             archived: term.archived,
+            put_away_for: term.put_away_for.clone(),
             started_by: term.started_by,
             owner: term.owner,
             tab_of: term.tab_of,
@@ -591,6 +595,7 @@ impl Daemon {
                                 t.model = pane.model.clone();
                                 t.label = pane.label.clone();
                                 (t.pinned, t.archived) = (pane.pinned, pane.archived);
+                                t.put_away_for = pane.put_away_for.clone();
                                 t.owner = pane.owner;
                                 t.queue = pane.queue.iter().cloned().collect();
                                 t.held_message =
