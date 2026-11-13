@@ -14,7 +14,7 @@
 
 use maitty_machines::MachineId;
 use maitty_machines::remote_snapshot::sanitize_snapshot;
-use maitty_shared::protocol::{FolderListing, GitHubReport, Reply, ServerMsg, Snapshot, Status, TermId};
+use maitty_shared::protocol::{FolderListing, GitHubAnswer, GitHubRepoList, GitHubReport, Reply, ServerMsg, Snapshot, Status, TermId};
 use maitty_shared::settings_view::SharedSettings;
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
@@ -97,6 +97,18 @@ pub enum Out {
         machine: MachineId,
         tag: u64,
         report: GitHubReport,
+    },
+    /// The repositories a machine's GitHub account can clone, already cleaned.
+    GitHubRepos {
+        machine: MachineId,
+        tag: u64,
+        answer: GitHubAnswer<GitHubRepoList>,
+    },
+    /// Whose repositories a machine can list, already cleaned.
+    GitHubOwners {
+        machine: MachineId,
+        tag: u64,
+        answer: GitHubAnswer<Vec<String>>,
     },
 }
 
@@ -198,6 +210,12 @@ impl Streams {
             }
             ServerMsg::Reply(Reply::GitHubAccounts { tag, report }) => {
                 out.push(Out::GitHubAccounts { machine, tag, report });
+            }
+            ServerMsg::Reply(Reply::GitHubRepos { tag, answer }) => {
+                out.push(Out::GitHubRepos { machine, tag, answer });
+            }
+            ServerMsg::Reply(Reply::GitHubOwners { tag, answer }) => {
+                out.push(Out::GitHubOwners { machine, tag, answer });
             }
             ServerMsg::State(snapshot) => self.publish(machine, snapshot, &mut out),
             ServerMsg::TermsChanged { changed, removed } => {

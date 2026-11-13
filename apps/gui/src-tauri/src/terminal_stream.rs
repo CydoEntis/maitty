@@ -23,7 +23,7 @@ use maitty_machines::link::Timing;
 use maitty_machines::machine_config::Grant;
 use maitty_machines::machine_ids::MachineIds;
 use maitty_machines::{MachineDef, MachineId, Outgoing};
-use maitty_shared::protocol::{ClientMsg, Command, FolderListing, GitHubReport, Query, Snapshot, Status, TermId};
+use maitty_shared::protocol::{ClientMsg, Command, FolderListing, GitHubAnswer, GitHubRepoList, GitHubReport, Query, Snapshot, Status, TermId};
 use maitty_shared::settings_view::{Appearance, NewSessionView, SettingKey, SettingValue, SharedSettings, SidebarSide, WindowStyle};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -54,6 +54,12 @@ const FOLDER_LISTING_EVENT: &str = "folder-listing";
 const REPOSITORY_CLONED_EVENT: &str = "repository-cloned";
 /// Who a machine says is signed in to GitHub there: `{machine, tag, report}`.
 const GITHUB_ACCOUNTS_EVENT: &str = "github-accounts";
+/// The repositories a machine's GitHub account can clone: `{machine, tag, state, why, listed}`.
+const GITHUB_REPOS_EVENT: &str = "github-repos";
+/// Whose repositories a machine can list: the same shape, `listed` a list of logins.
+const GITHUB_OWNERS_EVENT: &str = "github-owners";
+/// Longer than any owner or search the daemon takes.
+const MOST_GITHUB_WORD_BYTES: usize = 256;
 /// A machine's home folder, as its daemon reads it.
 const REMOTE_HOME: &str = "~";
 /// Longest repository address the daemon accepts.
@@ -360,6 +366,29 @@ impl Wire {
         self.send(machine_of(machine), ClientMsg::Query(Query::GitHubAccounts { tag }))
     }
 
+    /// Ask a machine's daemon (this computer's when none is named) for the repositories its GitHub
+    /// account can clone: `owner`'s, or its own when none is named, narrowed by `search`. The
+    /// daemon judges both; only what could not be a request is refused here. The answer comes back
+    /// as a `github-repos` event carrying `tag`.
+    pub fn github_repos(&self, machine: Option<u16>, owner: Option<&str>, search: Option<&str>, tag: u64) -> Result<(), String> {
+        let word = |text: Option<&str>| -> Result<Option<String>, String> {
+            match text.map(str::trim).filter(|text| !text.is_empty()) {
+                Some(text) if text.len() > MOST_GITHUB_WORD_BYTES || text.chars().any(char::is_control) => {
+                    Err("That owner or search cannot be sent".to_string())
+                }
+                text => Ok(text.map(str::to_owned)),
+            }
+        };
+        let (owner, search) = (word(owner)?, word(search)?);
+        self.send(machine_of(machine), ClientMsg::Query(Query::GitHubRepos { owner, search, tag }))
+    }
+
+    /// Ask a machine's daemon (this computer's when none is named) whose repositories it can list.
+    /// The answer comes back as a `github-owners` event carrying `tag`.
+    pub fn github_owners(&self, machine: Option<u16>, tag: u64) -> Result<(), String> {
+        self.send(machine_of(machine), ClientMsg::Query(Query::GitHubOwners { tag }))
+    }
+
     /// Ask this computer's daemon for the shared settings. The answer comes back as a
     /// `shared-settings` event, the same one a change anywhere raises.
     pub fn shared_settings(&self) -> Result<(), String> {
@@ -446,6 +475,26 @@ pub fn clone_repository(
 #[tauri::command]
 pub fn github_accounts(wire: tauri::State<'_, Wire>, machine: Option<u16>, tag: u64) -> Result<(), String> {
     wire.github_accounts(machine, tag)
+}
+
+/// Asks a machine (this computer when `machine` is left out) for the repositories its GitHub account
+/// can clone. The answer arrives as a `github-repos` event with the same `tag`.
+#[tauri::command]
+pub fn github_repos(
+    wire: tauri::State<'_, Wire>,
+    machine: Option<u16>,
+    owner: Option<String>,
+    search: Option<String>,
+    tag: u64,
+) -> Result<(), String> {
+    wire.github_repos(machine, owner.as_deref(), search.as_deref(), tag)
+}
+
+/// Asks a machine (this computer when `machine` is left out) whose repositories it can list. The
+/// answer arrives as a `github-owners` event with the same `tag`.
+#[tauri::command]
+pub fn github_owners(wire: tauri::State<'_, Wire>, machine: Option<u16>, tag: u64) -> Result<(), String> {
+    wire.github_owners(machine, tag)
 }
 
 /// Asks the daemon for the shared settings; the answer arrives as a `shared-settings` event.
@@ -662,6 +711,18 @@ pub enum Reaction {
         tag: u64,
         report: GitHubReport,
     },
+    /// The repositories a machine's GitHub account can clone, for the window that asked.
+    GitHubRepos {
+        machine: MachineId,
+        tag: u64,
+        answer: GitHubAnswer<GitHubRepoList>,
+    },
+    /// Whose repositories a machine can list, for the window that asked.
+    GitHubOwners {
+        machine: MachineId,
+        tag: u64,
+        answer: GitHubAnswer<Vec<String>>,
+    },
     /// A machine's whole snapshot, or none when this computer's line ended.
     Sessions {
         machine: MachineId,
@@ -749,6 +810,8 @@ fn reactions(handle: &HubHandle, outs: Vec<Out>) -> Vec<Reaction> {
             Out::Folders { machine, tag, listing } => Some(Reaction::Folders { machine, tag, listing }),
             Out::Cloned { machine, tag, outcome } => Some(Reaction::Cloned { machine, tag, outcome }),
             Out::GitHubAccounts { machine, tag, report } => Some(Reaction::GitHubAccounts { machine, tag, report }),
+            Out::GitHubRepos { machine, tag, answer } => Some(Reaction::GitHubRepos { machine, tag, answer }),
+            Out::GitHubOwners { machine, tag, answer } => Some(Reaction::GitHubOwners { machine, tag, answer }),
             Out::Sessions { machine, snapshot } => Some(Reaction::Sessions { machine, snapshot }),
             Out::WantReplay { machine, term } => {
                 let _ = handle.send(Outgoing {
@@ -803,10 +866,37 @@ struct CloneAnswer {
 }
 
 #[derive(Clone, Serialize)]
-struct GitHubAnswer {
+struct GitHubAccountsAnswer {
     machine: u16,
     tag: u64,
     report: GitHubReport,
+}
+
+/// A GitHub list as the window reads it: `state` is `listed`, `not-installed`, `not-signed-in` or
+/// `failed`; `why` is set for `failed` and `listed` for `listed`.
+#[derive(Clone, Serialize, Debug, PartialEq)]
+struct GitHubListAnswer<T> {
+    machine: u16,
+    tag: u64,
+    state: &'static str,
+    why: Option<String>,
+    listed: Option<T>,
+}
+
+fn github_list_answer<T>(machine: MachineId, tag: u64, answer: GitHubAnswer<T>) -> GitHubListAnswer<T> {
+    let (state, why, listed) = match answer {
+        GitHubAnswer::Listed(listed) => ("listed", None, Some(listed)),
+        GitHubAnswer::NotInstalled => ("not-installed", None, None),
+        GitHubAnswer::NotSignedIn => ("not-signed-in", None, None),
+        GitHubAnswer::Failed(why) => ("failed", Some(why), None),
+    };
+    GitHubListAnswer {
+        machine: machine.0,
+        tag,
+        state,
+        why,
+        listed,
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -897,12 +987,18 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
             Reaction::GitHubAccounts { machine, tag, report } => {
                 let _ = app.emit(
                     GITHUB_ACCOUNTS_EVENT,
-                    GitHubAnswer {
+                    GitHubAccountsAnswer {
                         machine: machine.0,
                         tag,
                         report,
                     },
                 );
+            }
+            Reaction::GitHubRepos { machine, tag, answer } => {
+                let _ = app.emit(GITHUB_REPOS_EVENT, github_list_answer(machine, tag, answer));
+            }
+            Reaction::GitHubOwners { machine, tag, answer } => {
+                let _ = app.emit(GITHUB_OWNERS_EVENT, github_list_answer(machine, tag, answer));
             }
             Reaction::Removed { machine } => {
                 maitty_desktop_client::forget_remote(machine.0);
@@ -963,6 +1059,19 @@ fn perform(app: &AppHandle, reactions: Vec<Reaction>) {
 mod tests {
     use super::*;
     use maitty_shared::protocol::ServerMsg;
+
+    #[test]
+    fn a_github_list_reaches_the_window_as_one_of_four_named_states() {
+        let said = |answer: GitHubAnswer<Vec<String>>| serde_json::to_value(github_list_answer(MachineId(3), 9, answer)).unwrap();
+        assert_eq!(
+            said(GitHubAnswer::Listed(vec!["me".into()])),
+            serde_json::json!({"machine": 3, "tag": 9, "state": "listed", "why": null, "listed": ["me"]})
+        );
+        assert_eq!(said(GitHubAnswer::NotInstalled)["state"], "not-installed");
+        assert_eq!(said(GitHubAnswer::NotSignedIn)["state"], "not-signed-in");
+        let failed = said(GitHubAnswer::Failed("rate limited".into()));
+        assert_eq!((failed["state"].as_str(), failed["why"].as_str()), (Some("failed"), Some("rate limited")));
+    }
 
     fn state(machine: u16, name: &str, kind: &'static str) -> MachineState {
         MachineState {

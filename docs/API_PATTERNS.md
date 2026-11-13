@@ -666,7 +666,13 @@ signed-in login, then its organisations (`gh org list`), at most `GITHUB_OWNERS_
 only; `gh` runs off the event loop and is stopped after `GITHUB_LIST_LIMIT_SECS` (30). What a login,
 a repository name and a time may look like is in `maitty_shared::github`; `clone_url` is always built
 from the checked name (`clone_address`), by the daemon and again when the answer comes from another
-machine (`remote_policy::vet`), never copied from what was printed or sent.
+machine (`remote_policy::vet`), never copied from what was printed or sent. The desktop host sends
+them through `github_repos(machine, owner, search, tag)` and `github_owners(machine, tag)` and raises
+`github-repos` and `github-owners` events: the tag, a `state` (`listed`, `not-installed`,
+`not-signed-in` or `failed`), `why` for a failure and `listed` for a list
+(`apps/gui/src/api/githubRepos.ts`). Their answers are expected for 75 seconds
+(`routing::answer_window`), which covers the daemon's two `gh` runs. In the window, a question whose
+answer is an event with the same tag goes through `apps/gui/src/api/taggedAnswers.ts`.
 
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store

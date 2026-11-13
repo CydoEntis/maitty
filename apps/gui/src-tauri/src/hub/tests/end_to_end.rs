@@ -86,6 +86,8 @@ impl Host {
                 | Reaction::Attention { .. }
                 | Reaction::Clipboard { .. }
                 | Reaction::GitHubAccounts { .. }
+                | Reaction::GitHubRepos { .. }
+                | Reaction::GitHubOwners { .. }
                 | Reaction::Settings(_) => {}
                 Reaction::ConversationChanged { conversation, generation } => self.changed.push((conversation, generation)),
                 Reaction::Sessions { machine, snapshot } => {

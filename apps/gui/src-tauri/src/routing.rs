@@ -19,6 +19,10 @@ const ASKED_MAX: usize = 64;
 /// takes to cross the line.
 const CLONE_ANSWER_MARGIN: Duration = Duration::from_secs(30);
 
+/// How long a list of GitHub repositories or owners is waited for. The daemon gives `gh` 15 seconds
+/// to say who is signed in, then `GITHUB_LIST_LIMIT_SECS` to list, and the answer has to cross.
+const GITHUB_LIST_ANSWER_WINDOW: Duration = Duration::from_secs(15 + maitty_shared::protocol::GITHUB_LIST_LIMIT_SECS + 30);
+
 /// The requests one machine has not answered yet, each as the moment its answer stops being expected.
 #[derive(Debug, Default)]
 pub struct ReplyAllowance {
@@ -65,6 +69,9 @@ pub fn answer_window(msg: &ClientMsg) -> Option<Duration> {
         ClientMsg::Query(maitty_shared::protocol::Query::CloneRepo { .. }) => {
             Some(Duration::from_secs(maitty_shared::protocol::CLONE_LIMIT_SECS) + CLONE_ANSWER_MARGIN)
         }
+        ClientMsg::Query(
+            maitty_shared::protocol::Query::GitHubRepos { .. } | maitty_shared::protocol::Query::GitHubOwners { .. },
+        ) => Some(GITHUB_LIST_ANSWER_WINDOW),
         ClientMsg::Command(_) | ClientMsg::Query(_) => Some(ANSWER_WINDOW),
         _ => None,
     }
@@ -144,6 +151,16 @@ mod tests {
         allowance.asked(now, ANSWER_WINDOW);
         assert!(allowance.awaiting(now + ANSWER_WINDOW - Duration::from_millis(1)));
         assert!(!allowance.awaiting(now + ANSWER_WINDOW));
+    }
+
+    #[test]
+    fn a_github_list_is_waited_for_longer_than_gh_is_given_to_make_it() {
+        use maitty_shared::protocol::{GITHUB_LIST_LIMIT_SECS, Query};
+        let repos = ClientMsg::Query(Query::GitHubRepos { owner: None, search: None, tag: 1 });
+        for msg in [repos, ClientMsg::Query(Query::GitHubOwners { tag: 2 })] {
+            let window = answer_window(&msg).expect("a list is answered");
+            assert!(window > Duration::from_secs(GITHUB_LIST_LIMIT_SECS) && window > ANSWER_WINDOW);
+        }
     }
 
     #[test]

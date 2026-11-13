@@ -1554,6 +1554,8 @@ pub fn run() {
             terminal_stream::list_folders,
             terminal_stream::clone_repository,
             terminal_stream::github_accounts,
+            terminal_stream::github_repos,
+            terminal_stream::github_owners,
             terminal_stream::get_shared_settings,
             terminal_stream::set_shared_setting,
             output_socket::open_terminal_socket,
