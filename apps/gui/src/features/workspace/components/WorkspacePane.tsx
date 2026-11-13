@@ -4,7 +4,7 @@ import { TerminalView } from '@/TerminalView'
 import { useWorkspace } from '../workspaceContext'
 import { chatAvailability, type PaneView } from '../model/chatView'
 import { toast } from '@/lib/toast'
-import { answerHelpers, dropQueuedFollowUp, queueFollowUp, sendTerminalInput } from '@/api/daemon'
+import { answerHelpers, dropQueuedFollowUp, isDesktop, queueFollowUp, sendTerminalInput } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { isChatSession } from '../model/chatSession'
 import { carryDraftToTerminal } from '../model/draftCarry'
@@ -23,6 +23,7 @@ import { isShell } from '../model/sidebar'
 import { moveRefusal } from '../model/moveToWorktree'
 import { guardLocal } from '@/lib/localOnly'
 import type { RewindPlace } from '@/features/chat/editFromHere'
+import { fileSearchOf } from '@/features/chat/fileMention'
 
 /** Whether a session can show a chat at all: an agent the app reads. A shell or another program has none, so it gets no switch. */
 function hasChat(availability: ReturnType<typeof chatAvailability>): boolean {
@@ -77,6 +78,7 @@ export function WorkspacePane({ shown, pane, kept }: {
   const rewindTerm = repoPaneOf(session)
   // A restore would also undo the files of another session in the same checkout.
   const rewindRefusal = guardLocal(session, 'rewind') ?? (rewindTerm === null ? null : sharedFolderRefusalOf(session))
+  const fileSearch = fileSearchOf(session, { term: rewindTerm, machineDown: head?.down === true, desktop: isDesktop() })
   const rewind: RewindPlace | undefined = rewindRefusal !== null ? { refusal: rewindRefusal } : rewindTerm !== null ? { term: rewindTerm } : undefined
   const dock = preferences.terminalDock
   // A shell is a terminal already: its further terminals stay in the side panel, never under it.
@@ -114,7 +116,7 @@ export function WorkspacePane({ shown, pane, kept }: {
           problem={problem}
           effort={session.agentEffort ?? null}
           rewind={rewind}
-          {...(rewindTerm === null ? {} : { fileSearch: { term: rewindTerm, folder: session.cwd, checkout: session.checkout } })}
+          {...(fileSearch === null ? {} : { fileSearch })}
           {...(chatOnly || session.machine !== LOCAL_MACHINE || session.branch === null ? {} : { branchMenu: { folder: session.cwd, onNewWorktree: () => { void moveToWorktree(session) }, ...(moveRefusal(session) === null ? {} : { newWorktreeBlocked: moveRefusal(session) ?? '' }) } })}
           paneStatus={session.status}
           usage={{ context: session.usage.context, limits: session.limits }}

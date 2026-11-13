@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fileMention, pathFromFolder, withPath } from './fileMention'
+import { fileMention, fileSearchOf, pathFromFolder, withPath } from './fileMention'
 
 describe('when @ opens the file picker', () => {
   it('opens for an @ at the start of the message', () => {
@@ -73,5 +73,35 @@ describe('a path read from the session folder', () => {
 
   it('keeps case for the folders of a path that is not a Windows drive path', () => {
     expect(pathFromFolder('Apps/x.ts', { folder: '/dev/app/apps', checkout: '/dev/app' })).toBe('../Apps/x.ts')
+  })
+})
+
+describe('where the @ picker looks for a session', () => {
+  const local = { machine: 0, machineName: null, cwd: '/dev/app/crates/core', checkout: '/dev/app' }
+  const remote = { machine: 2, machineName: 'build', cwd: '/home/me/app', checkout: '/home/me/app' }
+  const desktop = { term: null, machineDown: false, desktop: true }
+
+  it('asks this computer’s daemon through the pane for a local session', () => {
+    expect(fileSearchOf(local, { ...desktop, term: 7 })).toEqual({ term: 7, folder: '/dev/app/crates/core', checkout: '/dev/app' })
+  })
+
+  it('offers nothing for a local session with no pane to ask', () => {
+    expect(fileSearchOf(local, desktop)).toBeNull()
+  })
+
+  it('reads the folder index of a session on another machine that is up', () => {
+    expect(fileSearchOf(remote, { ...desktop, term: 7 })).toEqual({ machine: 'build', folder: '/home/me/app', offline: false })
+  })
+
+  it('marks the search offline when the session’s machine is down', () => {
+    expect(fileSearchOf(remote, { ...desktop, machineDown: true })).toEqual({ machine: 'build', folder: '/home/me/app', offline: true })
+  })
+
+  it('offers nothing for another machine whose name is not known', () => {
+    expect(fileSearchOf({ ...remote, machineName: null }, desktop)).toBeNull()
+  })
+
+  it('offers nothing for another machine in the browser build, where the host cannot index', () => {
+    expect(fileSearchOf(remote, { ...desktop, desktop: false })).toBeNull()
   })
 })
