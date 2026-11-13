@@ -544,6 +544,15 @@ is a fixed set of host commands that take a machine's name or number, never a pr
   passed), read from `gh`'s files, logged or sent. A login is kept only when it is letters, digits and
   dashes, at most 39 long, both where it is read and again when it arrives from another machine. Only a
   person's client may ask.
+- **Listing GitHub repositories** (`Query::GitHubRepos`, `Query::GitHubOwners`, `daemon/github.rs`) puts
+  two things from a client on `gh`'s command line, so both are checked first: an owner must be a login
+  (`maitty_shared::github::is_login`: letters, digits and dashes, no dash at either end, so it can never
+  be read as an option), and a search may hold only letters, digits, spaces, dots, underscores and
+  dashes, at most 100 characters, and is passed after `--`. A `:` is refused, so a search cannot carry a
+  GitHub qualifier that widens it past the owner. Each is one argument, never a shell line. A repository
+  is passed on only when its name is `owner/name` in GitHub's own characters, and the address to clone
+  is built from that name (`clone_address`), so text from `gh` or from another machine never becomes an
+  address by itself. Only a person's client may ask.
 
 No user accounts. Access to the daemon is access to its local socket: a named
 pipe on Windows, a Unix socket in the temp directory elsewhere, named per user

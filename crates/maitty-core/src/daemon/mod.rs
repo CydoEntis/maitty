@@ -238,6 +238,11 @@ pub enum Ev {
         tag: u64,
         report: crate::protocol::GitHubReport,
     },
+    /// A GitHub list `gh` was asked for off the loop, as the reply to send.
+    GitHubListed {
+        client: ClientId,
+        reply: Reply,
+    },
     FoldersReady {
         client: ClientId,
         tag: u64,
@@ -2197,6 +2202,7 @@ impl Daemon {
                 tag,
                 report,
             } => self.send(client, ServerMsg::Reply(Reply::GitHubAccounts { tag, report })),
+            Ev::GitHubListed { client, reply } => self.send(client, ServerMsg::Reply(reply)),
             Ev::RepoReady {
                 client,
                 tag,
@@ -2779,12 +2785,29 @@ impl Daemon {
                     {
                         ServerMsg::Error("Only a human client can clone a repository".into())
                     }
-                    Query::GitHubAccounts { .. }
+                    Query::GitHubAccounts { .. } | Query::GitHubRepos { .. } | Query::GitHubOwners { .. }
                         if self.clients.get(&client).is_some_and(|client| {
                             client.from.is_some() || client.structured.is_some()
                         }) =>
                     {
-                        ServerMsg::Error("Only a human client can ask who is signed in to GitHub".into())
+                        ServerMsg::Error("Only a human client can ask about this machine's GitHub account".into())
+                    }
+                    Query::GitHubRepos { owner, search, tag } => {
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let answer = github::repos(owner.as_deref(), search.as_deref());
+                            let reply = Reply::GitHubRepos { tag, answer };
+                            let _ = tx.blocking_send(Ev::GitHubListed { client, reply });
+                        });
+                        return;
+                    }
+                    Query::GitHubOwners { tag } => {
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let reply = Reply::GitHubOwners { tag, answer: github::owners() };
+                            let _ = tx.blocking_send(Ev::GitHubListed { client, reply });
+                        });
+                        return;
                     }
                     Query::GitHubAccounts { tag } => {
                         let tx = self.tx.clone();

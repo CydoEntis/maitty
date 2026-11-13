@@ -654,6 +654,20 @@ another machine keeps only logins GitHub could have given out and one clean `pro
 host sends it through `github_accounts(machine, tag)` and raises a `github-accounts` event with the tag
 and the report (`apps/gui/src/api/githubAccounts.ts` waits on it for 20 seconds).
 
+Protocol 87 adds `Query::GitHubRepos { owner, search, tag }` with `Reply::GitHubRepos { tag, answer }`,
+and `Query::GitHubOwners { tag }` with `Reply::GitHubOwners { tag, answer }` (`GITHUB_REPOS_SINCE`;
+`COMPATIBLE_SINCE` stays). Each `answer` is a `GitHubAnswer`: `NotInstalled`, `NotSignedIn`,
+`Failed(one line)` or `Listed(…)`; having no `gh` and nobody signed in are answers, not
+`ServerMsg::Error`. Repositories are `owner`'s, or the signed-in account's when none is named
+(`gh repo list`), narrowed by `search` when there is one (`gh search repos --owner`): at most
+`GITHUB_REPOS_MAX` (200), each with `name` (`owner/name`), a one-line `description` cut at 300
+characters, `private`, `pushed_at` and `clone_url`, and `more` when there were more. Owners are the
+signed-in login, then its organisations (`gh org list`), at most `GITHUB_OWNERS_MAX`. Human clients
+only; `gh` runs off the event loop and is stopped after `GITHUB_LIST_LIMIT_SECS` (30). What a login,
+a repository name and a time may look like is in `maitty_shared::github`; `clone_url` is always built
+from the checked name (`clone_address`), by the daemon and again when the answer comes from another
+machine (`remote_policy::vet`), never copied from what was printed or sent.
+
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
 ([ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)): totals, one entry per

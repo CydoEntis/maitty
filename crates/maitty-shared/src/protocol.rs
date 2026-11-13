@@ -11,7 +11,13 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 86;
+pub const PROTOCOL_VERSION: u32 = 87;
+
+/// The first version whose daemon lists the repositories its machine's GitHub account can clone
+/// (`Query::GitHubRepos`, `Query::GitHubOwners`).
+pub const GITHUB_REPOS_SINCE: u32 = 87;
+/// How long the daemon gives `gh` to list repositories or organisations.
+pub const GITHUB_LIST_LIMIT_SECS: u64 = 30;
 
 /// The first version whose daemon says who is signed in to GitHub on its machine
 /// (`Query::GitHubAccounts`).
@@ -846,6 +852,19 @@ pub enum Query {
     GitHubAccounts {
         tag: u64,
     },
+    /// The repositories the account signed in on this daemon's computer can clone (human clients
+    /// only): `owner`'s, or its own when none is named, narrowed to those matching `search` when
+    /// there is one. The answer is `Reply::GitHubRepos` with the same `tag`.
+    GitHubRepos {
+        owner: Option<String>,
+        search: Option<String>,
+        tag: u64,
+    },
+    /// Whose repositories `GitHubRepos` can list: the signed-in account, then its organisations
+    /// (human clients only). The answer is `Reply::GitHubOwners` with the same `tag`.
+    GitHubOwners {
+        tag: u64,
+    },
     List,
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
@@ -1060,6 +1079,52 @@ pub enum Reply {
         tag: u64,
         report: GitHubReport,
     },
+    GitHubRepos {
+        tag: u64,
+        answer: GitHubAnswer<GitHubRepoList>,
+    },
+    GitHubOwners {
+        tag: u64,
+        answer: GitHubAnswer<Vec<String>>,
+    },
+}
+
+/// The most repositories one answer carries.
+pub const GITHUB_REPOS_MAX: usize = 200;
+/// The most owners one answer carries.
+pub const GITHUB_OWNERS_MAX: usize = 100;
+/// The most characters of a repository's description that are passed on.
+pub const GITHUB_DESCRIPTION_MAX_CHARS: usize = 300;
+
+/// What a question that needs a signed-in GitHub command line found. Having no `gh`, and nobody
+/// signed in, are answers a client shows a way out of, not errors.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GitHubAnswer<T> {
+    NotInstalled,
+    NotSignedIn,
+    /// One line saying why there is no list.
+    Failed(String),
+    Listed(T),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitHubRepoList {
+    pub repos: Vec<GitHubRepo>,
+    /// True when there are more than `GITHUB_REPOS_MAX`: a search narrows them.
+    pub more: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitHubRepo {
+    /// `owner/name`.
+    pub name: String,
+    /// One line, empty when it has none.
+    pub description: String,
+    pub private: bool,
+    /// When it was last pushed to, as GitHub writes a time; empty when unknown.
+    pub pushed_at: String,
+    /// The https address it is cloned from.
+    pub clone_url: String,
 }
 
 /// The most GitHub accounts one report carries.
@@ -1833,6 +1898,7 @@ impl ClientMsg {
             ClientMsg::Query(Query::AllowedCommands) | ClientMsg::Command(Command::ForgetAllowedCommand { .. }) => ALLOWED_COMMANDS_SINCE,
             ClientMsg::Query(Query::CloneRepo { .. }) => CLONE_SINCE,
             ClientMsg::Query(Query::GitHubAccounts { .. }) => GITHUB_ACCOUNTS_SINCE,
+            ClientMsg::Query(Query::GitHubRepos { .. } | Query::GitHubOwners { .. }) => GITHUB_REPOS_SINCE,
             _ => COMPATIBLE_SINCE,
         }
     }
@@ -2237,7 +2303,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 86);
+        assert_eq!(PROTOCOL_VERSION, 87);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2509,7 +2575,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 86);
+        assert_eq!(PROTOCOL_VERSION, 87);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3351,5 +3417,10 @@ mod tests {
         const { assert!(CLONE_SINCE > COMPATIBLE_SINCE && CLONE_SINCE <= PROTOCOL_VERSION) };
         assert_eq!(ClientMsg::Query(Query::GitHubAccounts { tag: 1 }).introduced_in(), GITHUB_ACCOUNTS_SINCE);
         const { assert!(GITHUB_ACCOUNTS_SINCE > COMPATIBLE_SINCE && GITHUB_ACCOUNTS_SINCE <= PROTOCOL_VERSION) };
+        let repos = Query::GitHubRepos { owner: None, search: None, tag: 1 };
+        for query in [repos, Query::GitHubOwners { tag: 1 }] {
+            assert_eq!(ClientMsg::Query(query).introduced_in(), GITHUB_REPOS_SINCE);
+        }
+        const { assert!(GITHUB_REPOS_SINCE > COMPATIBLE_SINCE && GITHUB_REPOS_SINCE <= PROTOCOL_VERSION) };
     }
 }

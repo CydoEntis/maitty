@@ -1,5 +1,6 @@
 ﻿pub mod clock;
 pub mod conversation;
+pub mod github;
 pub mod handoff;
 pub mod hidden;
 pub mod host_env;

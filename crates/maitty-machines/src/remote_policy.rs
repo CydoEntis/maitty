@@ -13,7 +13,8 @@
 use crate::def::MachineDef;
 use crate::remote_snapshot::{ITEMS_MAX, PANE_DIM_MAX, sanitize_snapshot, sanitize_terms};
 use maitty_shared::hidden::sanitize;
-use maitty_shared::protocol::{Reply, ServerMsg};
+use maitty_shared::github::{clone_address, is_login, is_time};
+use maitty_shared::protocol::{GitHubAnswer, GitHubRepoList, Reply, ServerMsg};
 
 /// Most bytes of a remote clipboard write that are honoured.
 pub const CLIPBOARD_MAX_BYTES: usize = 64 * 1024;
@@ -172,6 +173,18 @@ pub fn vet(opts: &MachineOpts, asked: bool, machine: &str, msg: ServerMsg) -> Op
             tag,
             report: sanitize_github(report),
         }),
+        ServerMsg::Reply(Reply::GitHubRepos { tag, answer }) => ServerMsg::Reply(Reply::GitHubRepos {
+            tag,
+            answer: sanitize_answer(answer, sanitize_repos),
+        }),
+        ServerMsg::Reply(Reply::GitHubOwners { tag, answer }) => ServerMsg::Reply(Reply::GitHubOwners {
+            tag,
+            answer: sanitize_answer(answer, |mut owners: Vec<String>| {
+                owners.truncate(maitty_shared::protocol::GITHUB_OWNERS_MAX);
+                owners.retain(|owner| is_login(owner));
+                owners
+            }),
+        }),
         other => other,
     })
 }
@@ -180,15 +193,41 @@ pub fn vet(opts: &MachineOpts, asked: bool, machine: &str, msg: ServerMsg) -> Op
 /// that GitHub could have given out, and the problem one clean line.
 fn sanitize_github(mut report: maitty_shared::protocol::GitHubReport) -> maitty_shared::protocol::GitHubReport {
     report.accounts.truncate(maitty_shared::protocol::GITHUB_ACCOUNTS_MAX);
-    report
-        .accounts
-        .retain(|account| !account.login.is_empty() && account.login.len() <= LOGIN_MAX && account.login.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
+    report.accounts.retain(|account| is_login(&account.login));
     report.problem = report.problem.map(|why| sanitize(&cut_bytes(why, NAME_MAX), false));
     report
 }
 
-/// The longest login GitHub gives out.
-const LOGIN_MAX: usize = 39;
+/// A GitHub answer from another machine: its list cleaned by `clean`, or its reason one clean line.
+fn sanitize_answer<T>(answer: GitHubAnswer<T>, clean: impl FnOnce(T) -> T) -> GitHubAnswer<T> {
+    match answer {
+        GitHubAnswer::Listed(list) => GitHubAnswer::Listed(clean(list)),
+        GitHubAnswer::Failed(why) => GitHubAnswer::Failed(sanitize(&cut_bytes(why, NAME_MAX), false)),
+        other => other,
+    }
+}
+
+/// Repositories from another machine: no more than an answer carries, each named as GitHub names
+/// one, its clone address built here from that name and never taken from the machine, and its
+/// description and time what those can be.
+fn sanitize_repos(mut list: GitHubRepoList) -> GitHubRepoList {
+    list.repos.truncate(maitty_shared::protocol::GITHUB_REPOS_MAX);
+    list.repos.retain_mut(|repo| {
+        let Some(address) = clone_address(&repo.name) else {
+            return false;
+        };
+        repo.clone_url = address;
+        repo.description = sanitize(&repo.description, false)
+            .chars()
+            .take(maitty_shared::protocol::GITHUB_DESCRIPTION_MAX_CHARS)
+            .collect();
+        if !is_time(&repo.pushed_at) {
+            repo.pushed_at.clear();
+        }
+        true
+    });
+    list
+}
 
 /// A folder listing from another machine: every name and branch one clean line, no more entries
 /// than the protocol allows, and no name that is a path.
@@ -340,6 +379,47 @@ mod tests {
         };
         assert_eq!(report.accounts, vec![account("me")]);
         assert!(report.problem.is_some_and(|why| !why.contains(['\u{1b}', '\n'])));
+    }
+
+    #[test]
+    fn repositories_from_another_machine_are_named_cleaned_and_given_an_address_built_here() {
+        use maitty_shared::protocol::{GITHUB_DESCRIPTION_MAX_CHARS, GitHubAnswer, GitHubRepo, GitHubRepoList};
+        let repo = |name: &str| GitHubRepo {
+            name: name.into(),
+            description: format!("a\u{1b}[31mb\n{}", "d".repeat(400)),
+            private: true,
+            pushed_at: "<img>".into(),
+            clone_url: "ext::sh -c evil".into(),
+        };
+        let answer = GitHubAnswer::Listed(GitHubRepoList { repos: vec![repo("me/widgets"), repo("me/--upload-pack=x"), repo("../../etc")], more: true });
+        let Some(ServerMsg::Reply(Reply::GitHubRepos { tag: 4, answer: GitHubAnswer::Listed(list) })) =
+            vet(&nothing_on(), true, "box", ServerMsg::Reply(Reply::GitHubRepos { tag: 4, answer }))
+        else {
+            panic!("an answer that was asked for is kept");
+        };
+        assert!(list.more);
+        let [only] = &list.repos[..] else { panic!("{:?}", list.repos) };
+        assert_eq!((only.name.as_str(), only.clone_url.as_str(), only.pushed_at.as_str()), ("me/widgets", "https://github.com/me/widgets.git", ""));
+        assert_eq!(only.description.chars().count(), GITHUB_DESCRIPTION_MAX_CHARS);
+        assert!(!only.description.contains(['\u{1b}', '\n']));
+
+        let failed = ServerMsg::Reply(Reply::GitHubRepos { tag: 5, answer: GitHubAnswer::Failed("no\u{1b}[0m\nway".into()) });
+        let Some(ServerMsg::Reply(Reply::GitHubRepos { answer: GitHubAnswer::Failed(why), .. })) = vet(&nothing_on(), true, "box", failed) else {
+            panic!("a reason is kept");
+        };
+        assert!(!why.contains(['\u{1b}', '\n']));
+    }
+
+    #[test]
+    fn owners_from_another_machine_are_only_logins() {
+        use maitty_shared::protocol::GitHubAnswer;
+        let answer = GitHubAnswer::Listed(vec!["me".to_owned(), "<b>".to_owned(), "my-org".to_owned(), String::new()]);
+        let Some(ServerMsg::Reply(Reply::GitHubOwners { answer: GitHubAnswer::Listed(owners), .. })) =
+            vet(&nothing_on(), true, "box", ServerMsg::Reply(Reply::GitHubOwners { tag: 3, answer }))
+        else {
+            panic!("an answer that was asked for is kept");
+        };
+        assert_eq!(owners, ["me", "my-org"]);
     }
 
     #[test]

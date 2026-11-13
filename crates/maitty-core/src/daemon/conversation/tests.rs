@@ -2000,10 +2000,17 @@ async fn only_a_person_can_clone_or_ask_about_github_and_an_oversized_clone_is_a
         let refused = exchange(&mut session, 440, clone("https://example.invalid/o/r.git".into()), Some(from)).await;
         assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
 
-        let from = authenticated_pane(&mut session);
-        let who = crate::protocol::ClientMsg::Query(crate::protocol::Query::GitHubAccounts { tag: 9 });
-        let refused = exchange(&mut session, 442, who, Some(from)).await;
-        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+        use crate::protocol::Query;
+        let about_github = [
+            Query::GitHubAccounts { tag: 9 },
+            Query::GitHubRepos { owner: None, search: None, tag: 9 },
+            Query::GitHubOwners { tag: 9 },
+        ];
+        for (client, query) in (442..).zip(about_github) {
+            let from = authenticated_pane(&mut session);
+            let refused = exchange(&mut session, client, crate::protocol::ClientMsg::Query(query), Some(from)).await;
+            assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+        }
 
         let long = format!("https://example.invalid/{}", "a".repeat(4096));
         let answered = exchange(&mut session, 441, clone(long), None).await;
