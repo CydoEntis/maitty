@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type KeyboardEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type KeyboardEvent } from 'react'
 import { useWarmAgent, type WarmAgent, type WarmSpec } from '../useWarmAgent'
 import { toast } from '@/lib/toast'
 import { pasteFromHost, pickFromClipboard, unsupportedMessage } from '@/features/terminal/clipboardImage'
@@ -15,12 +15,12 @@ import { AgentPicker } from '@/features/chat/components/AgentPicker'
 import { PermissionMenu } from '@/features/chat/components/PermissionMenu'
 import { openAgentDocs } from '@/api/daemon'
 import { LOCAL_MACHINE } from '@/api/machines'
-import { chatAgentOf, type ChatAgent } from '../model/chatView'
+import { CHAT_AGENTS, chatAgentOf, type ChatAgent } from '../model/chatView'
 import { abilitiesOf, hasAbility } from '../model/agentAbilities'
 import { ageOf, nowSeconds, splitRecent, useFolderBranches, useGlances, useInstalledAgents, useSavedConversations, useSyncState } from '../model/newChatHost'
 import { Switch } from '@/components/ui/switch'
 import type { NewSessionProject } from '../model/newSession'
-import { suggestBranchName } from '../model/worktreeName'
+import { branchNameFromMessage, suggestBranchName } from '../model/worktreeName'
 import { Icon } from './glyphs'
 import { ChipMenu, type ChipItem } from './NewChatMenus'
 import { ResumeList } from './ResumeList'
@@ -72,6 +72,13 @@ const SWITCH_CHIPS = 4
 /** What the page offers to start with once a folder is picked; a click starts the chat with it. */
 const SUGGESTED_TASKS = ['Explain how this project is laid out', 'Review my uncommitted changes', 'Find and fix a failing test'] as const
 
+/** The permission mode an agent starts in when the page's own picks are another agent's: its usual one, where it has modes, and none under Codex's Yolo setting, whose flag cannot be combined with one. */
+function defaultModeOf(agent: ChatAgent, codexYolo: boolean): string {
+  const usual = START_MODE[agent]
+  const modes = abilitiesOf(agent).permissionModes?.modes ?? []
+  return modes.includes(usual) && !(agent === 'codex' && codexYolo) ? usual : 'default'
+}
+
 const lastPart = (path: string): string => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 const isPath = (text: string): boolean => /^(~|\/|[A-Za-z]:[\\/])/.test(text)
 /** The key that starts a chat in the background, as this platform writes it. */
@@ -99,6 +106,8 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const [branchPick, setBranchPick] = useState<{ folder: string; pick: BranchChoice } | null>(null)
   // Own copy: the agent works in a worktree of its own, so the checkout is untouched. On unless it is turned off.
   const [treeMode, setTreeMode] = useState(true)
+  // Other agents the same message also starts with, each on a new branch in a worktree of its own.
+  const [alsoPicked, setAlsoPicked] = useState<ReadonlySet<ChatAgent>>(() => new Set())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const background = useBackgroundStarts(onStart)
@@ -138,8 +147,14 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   // A branch chosen for one folder means nothing in another.
   const explicit = branchPick?.folder === folder ? branchPick.pick : null
   const { state: sync, busy: pulling, pull } = useSyncState(remote ? '' : folder, true)
-  // With Own copy on and no branch chosen, the chat gets a new branch under a suggested name, in a worktree.
-  const suggested = useMemo(() => (treeMode && branches !== null ? suggestBranchName(new Set([...branches.branches.map((entry) => entry.name), ...takenNames])) : null), [treeMode, branches, takenNames])
+  const takenBranches = useMemo(() => new Set([...(branches?.branches ?? []).map((entry) => entry.name), ...takenNames]), [branches, takenNames])
+  // Rolled once per list of names in use, so a message with no usable words does not reroll it on every key.
+  const twoWordName = useMemo(() => (treeMode && branches !== null ? suggestBranchName(takenBranches) : null), [treeMode, branches, takenBranches])
+  // A page opened with a message (a full chat's summary) keeps two words: every summary begins alike.
+  const fromMessage = (sent: string, taken: ReadonlySet<string>) => (seed === null ? branchNameFromMessage(sent, taken) : null)
+  // With Own copy on and no branch chosen, the chat gets a new branch named after what it sends, in a worktree.
+  const suggestedFor = (sent: string) => (twoWordName === null ? null : fromMessage(sent, takenBranches) ?? twoWordName)
+  const suggested = suggestedFor(message)
   const chosen = useMemo(() => explicit ?? (treeMode && suggested !== null ? { name: suggested, create: true, worktree: true } : null), [explicit, treeMode, suggested])
   const branch = chosen
   const isInstalled = (id: string) => (installed === null ? chatAgentOf(id) !== null : installed.includes(id))
@@ -152,6 +167,8 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
 
   const pickAgent = (next: ChatAgent) => {
     setAgent(next)
+    // The chat's own agent is not one of the others.
+    setAlsoPicked((now) => new Set([...now].filter((other) => other !== next)))
     // A mode is the agent's own too.
     setMode(START_MODE[next])
     // A model is the agent's own; the other agent's name means nothing to it.
@@ -161,6 +178,14 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   // The Yolo setting already starts Codex with full access, and its flag cannot be combined with a mode's.
   const forcedFull = agent === 'codex' && codexYolo
   const startMode = !forcedFull && modes.includes(mode) ? mode : 'default'
+  // Only agents this computer is known to have: while the list is unread, none is offered.
+  const alsoOffered = remote || branches === null || installed === null ? [] : CHAT_AGENTS.filter((other) => other !== agent && installed.includes(other))
+  const alsoWith = treeMode ? alsoOffered.filter((other) => alsoPicked.has(other)) : []
+  const alsoWhy = useId()
+  const toggleAlso = (other: ChatAgent, on: boolean) => {
+    if (!treeMode) return
+    setAlsoPicked((now) => new Set(on ? [...now, other] : [...now].filter((name) => name !== other)))
+  }
   // A branch or a worktree is made when the chat starts, so only a chat on the folder as it is can have its agent started ahead.
   const warmSpec = useMemo<WarmSpec | null>(
     () => (remote || folder === '' || agentMissing || branch !== null ? null : { folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode }),
@@ -171,15 +196,44 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const requestFor = (task: string, resume: string | null): NewChatRequest => {
     // A saved conversation continues in the folder it was saved in, so a worktree is left out for this start.
     const startBranch = remote || (resume !== null && branch?.worktree === true) ? null : branch
-    return { folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode, message: buildAttachmentMessage(task.trim(), attachments), branch: startBranch, machine, machineName: targetLabel, resume }
+    // A suggested task is sent instead of the box's text, so a branch the page named is named after the task.
+    const named = explicit === null && startBranch !== null ? { ...startBranch, name: suggestedFor(task) ?? startBranch.name } : startBranch
+    return { folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode, message: buildAttachmentMessage(task.trim(), attachments), branch: named, machine, machineName: targetLabel, resume }
   }
+  // The page's model, effort and mode are the main agent's; each other agent ticked starts on its own defaults, on a new
+  // branch in a worktree of its own. A saved conversation is the main agent's, so resuming one starts no others.
+  const alsoRequests = (main: NewChatRequest, task: string): NewChatRequest[] => {
+    if (main.resume !== null) return []
+    const taken = new Set([...takenBranches, ...(main.branch === null ? [] : [main.branch.name])])
+    return alsoWith.map((other) => {
+      const name = fromMessage(task, taken) ?? suggestBranchName(taken)
+      taken.add(name)
+      return { ...main, agent: other, model: DEFAULT_PICK, reasoning: START_REASONING, mode: defaultModeOf(other, codexYolo), branch: { name, create: true, worktree: true } }
+    })
+  }
+  const takeNames = (requests: readonly NewChatRequest[]) => {
+    const names = requests.flatMap((request) => (request.branch?.create === true ? [request.branch.name] : []))
+    if (names.length > 0) setTakenNames((now) => new Set([...now, ...names]))
+  }
+  // The others start in the background beside the main start; the box keeps the message until the main one opens, so a
+  // failed other has nothing to put back. They are unticked once they go, so trying the main start again starts it alone.
   const start = (task: string = message, resume: string | null = null) => {
     if (busy || folder === '' || agentMissing) return
     setBusy(true)
     setError(null)
-    onStart(requestFor(task, resume))
-      .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not start the chat')) })
+    const request = requestFor(task, resume)
+    const others = alsoRequests(request, task)
+    onStart(request)
+      .catch((failure: unknown) => {
+        const reason = errorMessage(failure, 'Could not start the chat')
+        setError(others.length > 0 ? `Could not start the chat with ${AGENT_LABEL[request.agent]}: ${reason}` : reason)
+      })
       .finally(() => { setBusy(false); reloadBranches() })
+    if (others.length > 0) {
+      takeNames(others)
+      background.launch(others, null)
+      setAlsoPicked(new Set())
+    }
   }
   // The box is emptied for the next chat and every other choice stays. A new branch's name is taken, so the next start
   // gets another. Another machine's chat is typed into a shell there and opened to do it, so there it is a plain start.
@@ -190,12 +244,10 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
     }
     if (busy || folder === '' || agentMissing) return
     const request = requestFor(message, null)
-    const newBranch = request.branch?.create === true ? request.branch.name : null
-    if (newBranch !== null) {
-      setTakenNames((now) => new Set([...now, newBranch]))
-      if (explicit?.create === true) setBranchPick(null)
-    }
-    background.launch(request, { text: message, attachments })
+    const requests = [request, ...alsoRequests(request, message)]
+    takeNames(requests)
+    if (request.branch?.create === true && explicit?.create === true) setBranchPick(null)
+    background.launch(requests, { text: message, attachments })
     setMessage('')
     updateComposer(NEW_CHAT_DRAFT, (state) => ({ ...state, attachments: [] }))
   }
@@ -442,13 +494,29 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
               {folder !== '' && <span className="mx-tray-fact" title={folder}>{folder}</span>}
             </div>
           </div>
+          {alsoOffered.length > 0 && (
+            <div className="mx-nc-also" role="group" aria-label="Also start with">
+              <span className="mx-nc-switch-label">Also start with</span>
+              {alsoOffered.map((other) => (
+                <label key={other} className="mx-nc-also-agent">
+                  <input type="checkbox" aria-disabled={!treeMode} aria-describedby={treeMode ? undefined : alsoWhy} checked={alsoWith.includes(other)} onChange={(event) => { toggleAlso(other, event.target.checked) }} />
+                  {AGENT_LABEL[other]}
+                </label>
+              ))}
+              {!treeMode && <span id={alsoWhy} className="mx-nc-also-why">Each agent needs a copy of its own. Turn on Own copy to start several.</span>}
+            </div>
+          )}
           {error !== null && <p role="alert" className="mx-composer-error">{error}</p>}
           {background.failed.map((failed) => (
             <p key={failed.key} role="alert" className="mx-composer-error">
-              {`Could not start ${failedStartLabel(failed.name)}: ${failed.reason} `}
-              <button type="button" className="mx-text-button" aria-label={`Put back ${failedStartLabel(failed.name)}`} onClick={() => { putBack(failed.key) }}>Put back</button>
-              {' · '}
-              <button type="button" className="mx-text-button" aria-label={`Dismiss ${failedStartLabel(failed.name)}`} onClick={() => { background.dismiss(failed.key) }}>Dismiss</button>
+              {`Could not start ${failedStartLabel(failed)}: ${failed.reason} `}
+              {failed.draft !== null && (
+                <>
+                  <button type="button" className="mx-text-button" aria-label={`Put back ${failedStartLabel(failed)}`} onClick={() => { putBack(failed.key) }}>Put back</button>
+                  {' · '}
+                </>
+              )}
+              <button type="button" className="mx-text-button" aria-label={`Dismiss ${failedStartLabel(failed)}`} onClick={() => { background.dismiss(failed.key) }}>Dismiss</button>
             </p>
           ))}
           {agentMissing && (
