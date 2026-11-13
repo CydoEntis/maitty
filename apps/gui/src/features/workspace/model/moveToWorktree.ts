@@ -1,8 +1,8 @@
 import type { SessionView } from './session'
 import { suggestBranchName } from './worktreeName'
 
-/** The ids Claude and Codex use are UUID-like; anything else is not typed into a shell. */
-const SESSION_ID = /^[A-Za-z0-9-]{8,80}$/
+/** The ids the daemon lists as saved; anything else is not typed into a shell. A letter or digit comes first, so an id is never read as a flag. */
+const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 /** A folder that could end a quoted word or start a substitution in either shell is refused, not escaped. */
 const UNSAFE_FOLDER_CHARS = new Set(['"', "'", '`', '$', '%'])
 const FIRST_PRINTABLE = 0x20

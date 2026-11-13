@@ -361,7 +361,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
                 <li key={task}><button type="button" disabled={busy || agentMissing} onClick={() => { start(task) }}><span aria-hidden="true">→</span>{task}</button></li>
               ))}
             </ul>
-            <ResumeList read={saved} folderName={folderName} leavesCopy={branch?.worktree === true} disabled={busy || agentMissing} now={now} onPick={(id) => { start(message, id) }} />
+            <ResumeList read={saved} folderName={folderName} leavesCopy={branch?.worktree === true} withMessage={!empty} disabled={busy || agentMissing} now={now} onPick={(id) => { start(message, id) }} />
           </>
         )}
       </div>

@@ -238,6 +238,19 @@ describe('resuming a saved conversation from the new chat page', () => {
     await waitFor(() => { expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ folder: '/dev/growth', resume: ID, branch: null })) })
   })
 
+  it('says a typed message goes to the conversation picked, and sends it there', async () => {
+    saved.read.mockResolvedValue([{ id: ID, first_message: 'Fix the login redirect', last_active: HOURS_AGO_2 }])
+    const onStart = vi.fn<(request: NewChatRequest) => Promise<void>>().mockResolvedValue(undefined)
+    page(onStart)
+    await screen.findByRole('list', { name: 'Resume' })
+    const note = 'Your message is sent to the conversation you pick.'
+    expect(screen.queryByText(note)).not.toBeInTheDocument()
+    await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'now add a test')
+    expect(screen.getByText(note)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Fix the login redirect/ }))
+    await waitFor(() => { expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ resume: ID, message: 'now add a test' })) })
+  })
+
   it('asks for the agent picked: Codex\'s own conversations for a Codex chat', async () => {
     codexPage(() => Promise.resolve())
     await waitFor(() => { expect(saved.read).toHaveBeenLastCalledWith('codex', '/dev/growth') })
