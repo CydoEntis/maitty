@@ -2562,6 +2562,8 @@ mod agent_command_tests {
             branch: Some("dev".into()),
             title: Some("Fix the parser".into()),
             at: 1_700_000_000,
+            worktree: None,
+            repo: None,
         }
     }
 
