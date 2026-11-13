@@ -70,6 +70,16 @@ describe('a branch name from the first message', () => {
     expect(branchNameFromMessage('feature', new Set(['feature/login']))).toBe('feature-2')
   })
 
+  it('counts a name in use whatever its case, since Windows and macOS refs ignore case', () => {
+    expect(branchNameFromMessage('Fix it', new Set(['Fix-It']))).toBe('fix-it-2')
+    expect(branchNameFromMessage('feature', new Set(['Feature/login']))).toBe('feature-2')
+  })
+
+  it('is nothing for a name Windows reserves or git means by HEAD, so the two-word name is used', () => {
+    for (const message of ['con', 'PRN', 'aux', 'nul', 'com1', 'lpt9', 'COM0', 'head']) expect(branchNameFromMessage(message, new Set())).toBeNull()
+    expect(branchNameFromMessage('con job', new Set())).toBe('con-job')
+  })
+
   it('is nothing when the message has no usable words, so the two-word name is used', () => {
     expect(branchNameFromMessage('   ', new Set())).toBeNull()
   })

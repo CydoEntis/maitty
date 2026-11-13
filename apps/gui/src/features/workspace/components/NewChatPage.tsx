@@ -150,8 +150,11 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const takenBranches = useMemo(() => new Set([...(branches?.branches ?? []).map((entry) => entry.name), ...takenNames]), [branches, takenNames])
   // Rolled once per list of names in use, so a message with no usable words does not reroll it on every key.
   const twoWordName = useMemo(() => (treeMode && branches !== null ? suggestBranchName(takenBranches) : null), [treeMode, branches, takenBranches])
-  // With Own copy on and no branch chosen, the chat gets a new branch named after the message, in a worktree.
-  const suggested = useMemo(() => (twoWordName === null ? null : branchNameFromMessage(message, takenBranches) ?? twoWordName), [twoWordName, message, takenBranches])
+  // A page opened with a message (a full chat's summary) keeps two words: every summary begins alike.
+  const fromMessage = (sent: string, taken: ReadonlySet<string>) => (seed === null ? branchNameFromMessage(sent, taken) : null)
+  // With Own copy on and no branch chosen, the chat gets a new branch named after what it sends, in a worktree.
+  const suggestedFor = (sent: string) => (twoWordName === null ? null : fromMessage(sent, takenBranches) ?? twoWordName)
+  const suggested = suggestedFor(message)
   const chosen = useMemo(() => explicit ?? (treeMode && suggested !== null ? { name: suggested, create: true, worktree: true } : null), [explicit, treeMode, suggested])
   const branch = chosen
   const isInstalled = (id: string) => (installed === null ? chatAgentOf(id) !== null : installed.includes(id))
@@ -193,15 +196,17 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const requestFor = (task: string, resume: string | null): NewChatRequest => {
     // A saved conversation continues in the folder it was saved in, so a worktree is left out for this start.
     const startBranch = remote || (resume !== null && branch?.worktree === true) ? null : branch
-    return { folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode, message: buildAttachmentMessage(task.trim(), attachments), branch: startBranch, machine, machineName: targetLabel, resume }
+    // A suggested task is sent instead of the box's text, so a branch the page named is named after the task.
+    const named = explicit === null && startBranch !== null ? { ...startBranch, name: suggestedFor(task) ?? startBranch.name } : startBranch
+    return { folder, agent, model: choice.model, reasoning: choice.reasoning, mode: startMode, message: buildAttachmentMessage(task.trim(), attachments), branch: named, machine, machineName: targetLabel, resume }
   }
   // The page's model, effort and mode are the main agent's; each other agent ticked starts on its own defaults, on a new
   // branch in a worktree of its own. A saved conversation is the main agent's, so resuming one starts no others.
-  const alsoRequests = (main: NewChatRequest): NewChatRequest[] => {
+  const alsoRequests = (main: NewChatRequest, task: string): NewChatRequest[] => {
     if (main.resume !== null) return []
     const taken = new Set([...takenBranches, ...(main.branch === null ? [] : [main.branch.name])])
     return alsoWith.map((other) => {
-      const name = branchNameFromMessage(message, taken) ?? suggestBranchName(taken)
+      const name = fromMessage(task, taken) ?? suggestBranchName(taken)
       taken.add(name)
       return { ...main, agent: other, model: DEFAULT_PICK, reasoning: START_REASONING, mode: defaultModeOf(other, codexYolo), branch: { name, create: true, worktree: true } }
     })
@@ -217,7 +222,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
     setBusy(true)
     setError(null)
     const request = requestFor(task, resume)
-    const others = alsoRequests(request)
+    const others = alsoRequests(request, task)
     onStart(request)
       .catch((failure: unknown) => {
         const reason = errorMessage(failure, 'Could not start the chat')
@@ -239,7 +244,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
     }
     if (busy || folder === '' || agentMissing) return
     const request = requestFor(message, null)
-    const requests = [request, ...alsoRequests(request)]
+    const requests = [request, ...alsoRequests(request, message)]
     takeNames(requests)
     if (request.branch?.create === true && explicit?.create === true) setBranchPick(null)
     background.launch(requests, { text: message, attachments })

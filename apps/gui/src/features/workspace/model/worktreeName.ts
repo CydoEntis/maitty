@@ -4,6 +4,8 @@ const ANIMALS = ['badger', 'crane', 'elk', 'finch', 'hare', 'heron', 'kite', 'ly
 const TRIES = 8
 /** The longest a branch named after a message is, before any -2 it takes. */
 const SLUG_MAX = 40
+/** Names Windows will not make a file of, and git's `HEAD`, which a branch must not shadow. */
+const RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9]|head)$/
 
 /** `name`, or the first of `name-2`, `name-3`, … that is free. */
 function freeName(name: string, taken: ReadonlySet<string>): string {
@@ -32,7 +34,7 @@ export function suggestBranchName(taken: ReadonlySet<string>, random: () => numb
  * The first words of a message as a branch name, or null when it has none: lowercase ASCII letters
  * and digits joined by `-`, at most 40 characters cut between words. Accented letters become their
  * plain ones; anything else (punctuation, `/`, `!`, other scripts) only separates words, so the name
- * can never hold `..`, `.lock` or a leading `-` that git refuses.
+ * can never hold `..`, `.lock` or a leading `-` that git refuses. A whole name in `RESERVED` is null too.
  */
 export function branchSlug(message: string): string | null {
   const words = message.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
@@ -43,20 +45,23 @@ export function branchSlug(message: string): string | null {
     slug = next
   }
   if (slug === '' && words[0] !== undefined) slug = words[0].slice(0, SLUG_MAX)
-  return slug === '' ? null : slug
+  return slug === '' || RESERVED.test(slug) ? null : slug
 }
 
 /**
  * A free branch named after the message (`fix-login`, then `fix-login-2`, …), or null when the
- * message has no usable words. A branch `x/…` counts as `x` in use, since git cannot hold both.
+ * message has no usable words. A branch `x/…` counts as `x` in use, since git cannot hold both,
+ * and case is ignored, since refs on Windows and macOS are files whose names ignore it.
  */
 export function branchNameFromMessage(message: string, taken: ReadonlySet<string>): string | null {
   const slug = branchSlug(message)
   if (slug === null) return null
-  const blocked = new Set(taken)
+  const blocked = new Set<string>()
   for (const name of taken) {
-    const folder = name.indexOf('/')
-    if (folder > 0) blocked.add(name.slice(0, folder))
+    const lower = name.toLowerCase()
+    blocked.add(lower)
+    const folder = lower.indexOf('/')
+    if (folder > 0) blocked.add(lower.slice(0, folder))
   }
   return freeName(slug, blocked)
 }

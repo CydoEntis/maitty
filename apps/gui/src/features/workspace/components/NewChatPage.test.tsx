@@ -112,6 +112,24 @@ describe('the new chat page', () => {
     expect(screen.getByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })).toBeInTheDocument()
   })
 
+  it('names the branch after a suggested task when that is what is sent', async () => {
+    const onStart = vi.fn<(request: NewChatRequest) => Promise<void>>().mockResolvedValue(undefined)
+    page(onStart)
+    await screen.findByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })
+    await userEvent.click(screen.getByRole('button', { name: /Review my uncommitted changes/ }))
+    await waitFor(() => { expect(onStart.mock.calls[0]?.[0].branch?.name).toBe('review-my-uncommitted-changes') })
+  })
+
+  it('keeps the two-word name for a page opened with a message, such as a chat’s summary', async () => {
+    render(
+      <div className="mx-app">
+        <NewChatPage machine={0} machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="claude" browse={() => Promise.resolve(null)} onStart={() => Promise.resolve()} onOtherMachine={() => undefined} onCancel={() => undefined}
+          seed={{ folder: '/dev/growth', message: 'This continues an earlier chat whose context was full.' }} />
+      </div>,
+    )
+    expect(await screen.findByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })).toBeInTheDocument()
+  })
+
   it('stops following the message once a branch is named', async () => {
     const onStart = vi.fn<(request: NewChatRequest) => Promise<void>>().mockResolvedValue(undefined)
     page(onStart)
@@ -421,6 +439,16 @@ describe('starting a chat and going on writing', () => {
     await userEvent.type(box(), 'fix the login{Enter}')
 
     expect(onStart.mock.calls.map(([request]) => request.branch?.name)).toEqual(['fix-the-login', 'fix-the-login-2', 'fix-the-login-3'])
+  })
+
+  it('names each ticked agent’s branch after a suggested task when that is what is sent', async () => {
+    const onStart = vi.fn<Start>(() => new Promise(() => undefined))
+    page(onStart)
+    await ready()
+    await userEvent.click(within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' }))
+    await userEvent.click(screen.getByRole('button', { name: /Review my uncommitted changes/ }))
+
+    expect(onStart.mock.calls.map(([request]) => request.branch?.name)).toEqual(['review-my-uncommitted-changes', 'review-my-uncommitted-changes-2'])
   })
 
   it('names a failed main start by its agent when others went with it, and a retry starts only the main agent', async () => {
