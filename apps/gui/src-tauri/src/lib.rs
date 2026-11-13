@@ -610,6 +610,15 @@ async fn add_branch_worktree(folder: PathBuf, branch: String) -> Result<serde_js
         .map_err(|error| format!("{error:#}"))
 }
 
+/// The conversations `agent` saved for `folder`, for the new chat page's Resume list; null when the service
+/// running is older. This computer's daemon only, which checks the agent and the folder.
+#[tauri::command]
+async fn saved_conversations(agent: String, folder: String) -> Result<serde_json::Value, String> {
+    maitty_desktop_client::saved_conversations(agent, folder)
+        .await
+        .map_err(|error| format!("{error:#}"))
+}
+
 /// Removes worktrees of the project with the daemon, which closes what runs in them first: each folder with
 /// whether to go on when it holds uncommitted changes (they are lost). A branch is kept unless it is already
 /// merged. The daemon answers at once and does the removing in the background; a worktree something still runs
@@ -1488,6 +1497,7 @@ pub fn run() {
             new_chat::git_branches,
             new_chat::git_switch_branch,
             add_branch_worktree,
+            saved_conversations,
             new_chat::git_sync_state,
             new_chat::git_pull,
             new_chat::open_agent_docs,

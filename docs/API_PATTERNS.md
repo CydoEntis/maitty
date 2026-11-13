@@ -662,7 +662,7 @@ cut, and it is passed on only while a request to that machine is waiting.
 
 Protocol 85 adds `Query::SavedConversations { agent, folder, tag }` and `Reply::SavedConversations { tag, found }`
 (`daemon/conversation/saved.rs`): the conversations Claude or Codex saved for a folder on the daemon's computer, for a
-client offering to resume one. `found` is `Listed` (at most 20, newest first: the agent's own id, the first thing the
+client offering to resume one. `found` is `Listed` (at most 20, newest first: the agent's own id (letters, digits, `-` and `_`, at most 128, a letter or digit first so it is never read as a flag; any other is left out), the first thing the
 person typed as one clean line of at most 200 characters, and when the file was last written, in unix seconds; empty
 when the folder has none) or `NotSupported` for any other agent. Claude's come from its transcripts for that folder
 (`$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`; the transcript's own `cwd` must be the folder), Codex's
@@ -673,7 +673,10 @@ Codex's instructions and environment), with the same rules the transcript follow
 clients only; the files are read on a blocking task, at most 500 looked at, 1 MiB from the start of each, and an
 unreadable one is skipped and logged by path only. Both came with their own `introduced_in` arms
 (`SAVED_CONVERSATIONS_SINCE`); `COMPATIBLE_SINCE` stays 78, since an older daemon is never asked and an older client
-never sent the reply. This computer only: another machine's answer is ignored (`remote_policy`).
+never sent the reply. This computer only: another machine's answer is ignored (`remote_policy`). The desktop command
+is `saved_conversations { agent, folder }` (`maitty_desktop_client::saved_conversations`), asked on a connection of its
+own with `tag` 0; it answers `found` as serde writes it (`{"Listed": [...]}` or `"NotSupported"`), or null without
+asking when the daemon running is older than 85, since that daemon would never answer.
 
 Protocol 86 adds `Query::ClosedSessions` and `Reply::ClosedSessions`: the agent sessions that closed
 for good or whose agent exited with an error, newest first, at most 50 (what is kept and when is in

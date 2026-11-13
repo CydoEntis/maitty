@@ -1521,6 +1521,25 @@ pub async fn allowed_commands(daemon_executable: PathBuf) -> Result<Value> {
     }
 }
 
+/// The conversations `agent` saved for `folder` on this computer, newest first, as the daemon's
+/// `SavedConversations`. Null when the daemon running is older than the question: it would never answer.
+pub async fn saved_conversations(agent: String, folder: String) -> Result<Value> {
+    let message = ClientMsg::Query(Query::SavedConversations { agent, folder, tag: 0 });
+    answered_within(REQUEST_TIMEOUT, async {
+        let (mut connection, version) = ipc::open_for_user_knowing_version()
+            .await
+            .context("connecting to the local daemon")?;
+        if !daemon_reads(&message, version) {
+            return Ok(Value::Null);
+        }
+        match ask(&mut connection, &message).await? {
+            Reply::SavedConversations { found, .. } => Ok(serde_json::to_value(found)?),
+            _ => bail!("daemon returned an unexpected saved conversations reply"),
+        }
+    })
+    .await
+}
+
 /// Take back a command approved "always in this project".
 pub async fn forget_allowed_command(
     project: PathBuf,
@@ -2461,6 +2480,19 @@ mod agent_command_tests {
         ));
         assert!(daemon_reads(&drop, PROTOCOL_VERSION));
         assert!(!daemon_reads(&drop, DROP_QUEUED_SINCE - 1));
+    }
+
+    #[test]
+    fn a_daemon_from_before_saved_conversations_is_not_asked_for_them() {
+        use super::{ClientMsg, Query, daemon_reads};
+        use maitty_shared::protocol::{PROTOCOL_VERSION, SAVED_CONVERSATIONS_SINCE};
+        let ask = ClientMsg::Query(Query::SavedConversations {
+            agent: "claude".into(),
+            folder: "~/app".into(),
+            tag: 0,
+        });
+        assert!(daemon_reads(&ask, PROTOCOL_VERSION));
+        assert!(!daemon_reads(&ask, SAVED_CONVERSATIONS_SINCE - 1));
     }
 
     #[test]
