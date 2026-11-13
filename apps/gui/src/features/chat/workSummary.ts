@@ -47,6 +47,20 @@ export function workStatus(steps: readonly WorkStep[]): ItemStatus {
   return steps.at(-1)?.status ?? 'completed'
 }
 
+/**
+ * Claude's built-in tools that only read or search, by their whole name. A name matched by pattern could be an MCP
+ * tool that writes (`mcp__fs__search_and_replace`). Codex reads and searches through shell commands, which always show.
+ */
+const QUIET_TOOLS: ReadonlySet<string> = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'WebSearch', 'WebFetch', 'ToolSearch'])
+
+/**
+ * A run that can be hidden by Settings › Chat › Hide successful tool calls: every step one of `QUIET_TOOLS` that
+ * completed. A command or any other tool may have changed files, so it always shows, as does an edit.
+ */
+export function isQuietRun(steps: readonly WorkStep[]): boolean {
+  return steps.every((step) => step.kind === 'tool' && step.status === 'completed' && QUIET_TOOLS.has(step.name))
+}
+
 /** How long the run took by the daemon's own times, first start to last finish; null when it gave none. */
 export function workDurationMs(steps: readonly WorkStep[]): number | null {
   const started = steps[0]?.timing.startedAtMs ?? null
