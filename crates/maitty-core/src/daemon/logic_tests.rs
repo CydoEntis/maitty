@@ -3120,10 +3120,13 @@ fn a_codex_helper_its_files_show_finished_stops_holding_when_its_stop_was_lost()
 fn a_helper_that_dies_without_reporting_frees_its_session_after_the_hour() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
+    let mut seen = viewer(&mut d);
     let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
     say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "UserPromptSubmit", None));
     say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "SubagentStart", Some(true)));
     say(&mut d, turn_end_report(t, "claude", Some(&["a1"])));
+    // It has been working for over an hour, so its finish is a real one.
+    d.terms.get_mut(&t).expect("pane").status_since = term::unix_now() - 2 * 60 * 60;
     let within = Instant::now() - super::status::SUBAGENTS_QUIET_AT_MOST + Duration::from_secs(60);
     let p = d.terms.get_mut(&t).expect("pane");
     (p.done_held, p.subagent_seen) = (Some(within), Some(within));
@@ -3135,12 +3138,100 @@ fn a_helper_that_dies_without_reporting_frees_its_session_after_the_hour() {
     (p.done_held, p.subagent_seen) = (Some(past), Some(past));
     rests_at_its_idle_prompt(&mut d, t, "✳ project");
     assert_eq!(d.terms[&t].status, Status::Done, "not held forever");
+    assert_eq!(times_told_done(&mut seen), 1, "and its finish is said once");
     assert!(d.terms[&t].subagents.is_empty());
     assert_eq!(
         d.terms[&t].subagent_activity[0].state,
         SubagentState::ConnectionLost,
         "kept as unconfirmed, not as completed"
     );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_helper_that_dies_off_screen_still_has_its_finish_said_after_the_hour() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let mut seen = viewer(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "claude", HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, "claude", Some(&["a1"])));
+    let past = Instant::now() - super::status::SUBAGENTS_QUIET_AT_MOST - Duration::from_secs(60);
+    let p = d.terms.get_mut(&t).expect("pane");
+    p.status_since = term::unix_now() - 2 * 60 * 60;
+    (p.done_held, p.subagent_seen) = (Some(past), Some(past));
+    // No idle prompt on screen: the hour alone ends it.
+    d.update_statuses();
+    assert_eq!(d.terms[&t].status, Status::Done);
+    assert_eq!(times_told_done(&mut seen), 1, "its finish is said once");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn an_interrupted_codex_turn_held_on_a_helper_is_not_finished_an_hour_later() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, "codex", None));
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Idle, "Interrupt", None));
+    assert_eq!(d.terms[&t].status, Status::Idle);
+    let past = Instant::now() - super::status::SUBAGENTS_QUIET_AT_MOST - Duration::from_secs(60);
+    let p = d.terms.get_mut(&t).expect("pane");
+    p.subagent_seen = Some(past);
+    if let Some(held) = p.done_held.as_mut() {
+        *held = past;
+    }
+    d.update_statuses();
+    assert_eq!(
+        d.terms[&t].status,
+        Status::Idle,
+        "the interrupt ended the turn; nothing is left held to finish it later"
+    );
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_codex_file_finished_in_the_same_second_as_the_helper_started_still_counts() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    let say = |d: &mut Daemon, msg| d.apply_hook(msg, Some(true), Vec::new());
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Working, "UserPromptSubmit", None));
+    say(&mut d, report_with_helper(t, "codex", HookStatus::Working, "SubagentStart", Some(true)));
+    say(&mut d, turn_end_report(t, "codex", None));
+    d.terms.get_mut(&t).expect("pane").session = Some("root".into());
+    let started = d.terms[&t].subagent_activity[0].clone();
+    let finished = SubagentActivity {
+        state: SubagentState::Completed,
+        ..started.clone()
+    };
+    d.codex_usage(
+        vec![usage::CodexPaneFacts {
+            term: t,
+            session: Some("root".into()),
+            usage: None,
+            subagents: Vec::new(),
+            subagent_activity: vec![finished],
+        }],
+        None,
+    );
+    assert_eq!(d.terms[&t].subagent_activity[0].state, SubagentState::Completed);
+    // A working record stamped in the same second does not undo a finish.
+    d.codex_usage(
+        vec![usage::CodexPaneFacts {
+            term: t,
+            session: Some("root".into()),
+            usage: None,
+            subagents: Vec::new(),
+            subagent_activity: vec![started],
+        }],
+        None,
+    );
+    assert_eq!(d.terms[&t].subagent_activity[0].state, SubagentState::Completed);
+    rests_at_its_idle_prompt(&mut d, t, "project");
+    assert_eq!(d.terms[&t].status, Status::Done);
     close(&mut d, &[t]);
 }
 

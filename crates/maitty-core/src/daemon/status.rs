@@ -284,6 +284,7 @@ impl Daemon {
                 || (matches!(status, HookStatus::Idle) && event != "SessionStart")
             {
                 t.subagents.clear();
+                t.done_held = None;
                 let now = term::unix_now();
                 for activity in &mut t.subagent_activity {
                     if activity.state.active() {
@@ -1222,7 +1223,10 @@ impl Daemon {
             {
                 t.subagents.clear();
                 t.subagent_seen = None;
-                t.done_held = None;
+                // A hold that ends here is the end of the work: no wake-up turn will say it.
+                if t.done_held.take().is_some() {
+                    t.awaiting_background = false;
+                }
                 self.dirty = true;
                 let now = term::unix_now();
                 for activity in &mut t.subagent_activity {
@@ -1240,6 +1244,7 @@ impl Daemon {
             if why == "subagents went quiet"
                 && let Some(t) = self.terms.get_mut(&id)
             {
+                t.awaiting_background = false;
                 let now = term::unix_now();
                 for activity in &mut t.subagent_activity {
                     if activity.state.active() {

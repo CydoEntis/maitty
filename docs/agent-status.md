@@ -261,8 +261,10 @@ not cancelled); the agent's idle prompt, which it shows once its own turn has en
 background helper carries on; a session start in the middle of a turn (compaction); and a
 stop for a helper maitty never saw start, which removes nobody else. A stop with no id
 removes only the last helper started. A helper that says nothing for an hour is taken to
-have died: it stops holding its parent and is kept as unconfirmed. A Codex helper whose stop
-was lost stops holding as soon as its own session file shows it completed or aborted. When a
+have died: it stops holding its parent, which finishes and says so once, and it is kept as
+unconfirmed. An interrupt or a new session ends any hold. A Codex helper whose stop was lost
+stops holding as soon as its own session file shows it completed or aborted, even in the
+same second it started. When a
 Claude stop listed the helpers as running, the last one stopping shows done unannounced, and
 the stop of the wake-up turn that follows is the finish that is announced.
 
