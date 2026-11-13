@@ -73,7 +73,9 @@ Scope and order live in **Plane**, not a repo file (see *Project-specific: plann
    ran and passed in this worktree.
 4. **Handoff:** the outcome in plain language; important files changed; the commands you ran and
    their real results; docs updated; new dependencies, migrations or config; known limits and the
-   next step. Separate verified facts from proposals.
+   next step. Separate verified facts from proposals. A UI change also carries the line
+   `Seen on screen: yes/no, where`, filled in from the
+   [every-surface check](docs/UI.md#project-specific-every-surface-check).
 
 ## Non-negotiables
 
@@ -144,7 +146,8 @@ cargo check --target aarch64-apple-darwin
 
 For UI changes, also look at the screen: tests render frames with `TestBackend`
 (`MAITTY_SHOW=1 cargo test <name> -- --nocapture` prints them), and a live check
-runs a nested server with `MAITTY_SOCKET=<name> maitty`.
+runs a nested server with `MAITTY_SOCKET=<name> maitty`. What to look at is the
+[every-surface check](docs/UI.md#project-specific-every-surface-check).
 
 ## Project-specific: workflow and tooling
 

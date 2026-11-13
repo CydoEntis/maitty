@@ -90,6 +90,27 @@ outcome.
 - Memoize only when there is a measured problem or a clear structural reason.
 - Give images explicit dimensions and use modern formats.
 
+## Project-specific: every-surface check
+
+A UI change is not done until it has been seen working on each place it shows. Tests
+passing is not that. Before the handoff, go through this list on a running build of the
+worktree (how to run one is in `AGENTS.md`, *verification gate*):
+
+- **Every entry point.** Each way in: the key, the menu row, the click, the command
+  search, the right-click menu, the CLI.
+- **Both clients.** The TUI and the desktop app, where the feature exists in both.
+- **Each agent.** Every agent it applies to (Claude Code, Codex, Gemini, OpenCode, a
+  plain shell), not only the one it was built with.
+- **The way back.** Each state it can reach has a way out, and the way out was used:
+  Esc, close, cancel, undo, an error, an empty list.
+- **This computer and another machine.** A local session and one on another machine,
+  or the refusal a local-only feature shows there.
+
+Leave out a line that does not apply, and say why. The handoff then carries the line
+`Seen on screen: yes/no, where`: `yes` names the surfaces looked at, by a person or
+through a rendered frame; `no` names what was not looked at and why. A surface nobody
+looked at is reported as not seen, never as passing.
+
 ## Project-specific: design system
 
 The optional desktop GUI is a separate React application in `apps/gui/`. Its
