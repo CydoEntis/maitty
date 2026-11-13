@@ -16,6 +16,7 @@ mod contain;
 mod conversation;
 mod folders;
 mod git;
+mod github;
 mod helpers;
 mod identity;
 mod last_lines;
@@ -231,6 +232,11 @@ pub enum Ev {
         client: ClientId,
         tag: u64,
         outcome: Result<String, String>,
+    },
+    GitHubAccountsReady {
+        client: ClientId,
+        tag: u64,
+        report: crate::protocol::GitHubReport,
     },
     FoldersReady {
         client: ClientId,
@@ -2186,6 +2192,11 @@ impl Daemon {
                 tag,
                 outcome,
             } => self.send(client, ServerMsg::Reply(Reply::Cloned { tag, outcome })),
+            Ev::GitHubAccountsReady {
+                client,
+                tag,
+                report,
+            } => self.send(client, ServerMsg::Reply(Reply::GitHubAccounts { tag, report })),
             Ev::RepoReady {
                 client,
                 tag,
@@ -2767,6 +2778,21 @@ impl Daemon {
                         }) =>
                     {
                         ServerMsg::Error("Only a human client can clone a repository".into())
+                    }
+                    Query::GitHubAccounts { .. }
+                        if self.clients.get(&client).is_some_and(|client| {
+                            client.from.is_some() || client.structured.is_some()
+                        }) =>
+                    {
+                        ServerMsg::Error("Only a human client can ask who is signed in to GitHub".into())
+                    }
+                    Query::GitHubAccounts { tag } => {
+                        let tx = self.tx.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let report = github::accounts();
+                            let _ = tx.blocking_send(Ev::GitHubAccountsReady { client, tag, report });
+                        });
+                        return;
                     }
                     Query::CloneRepo { address, parent, tag } => {
                         // Checked here too, so an address or a path that is far too long never

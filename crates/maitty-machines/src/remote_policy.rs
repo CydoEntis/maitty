@@ -168,9 +168,27 @@ pub fn vet(opts: &MachineOpts, asked: bool, machine: &str, msg: ServerMsg) -> Op
                 Err(why) => Err(sanitize(&cut_bytes(why, NAME_MAX), false)),
             },
         }),
+        ServerMsg::Reply(Reply::GitHubAccounts { tag, report }) => ServerMsg::Reply(Reply::GitHubAccounts {
+            tag,
+            report: sanitize_github(report),
+        }),
         other => other,
     })
 }
+
+/// A GitHub report from another machine: no more accounts than a report carries, every login one
+/// that GitHub could have given out, and the problem one clean line.
+fn sanitize_github(mut report: maitty_shared::protocol::GitHubReport) -> maitty_shared::protocol::GitHubReport {
+    report.accounts.truncate(maitty_shared::protocol::GITHUB_ACCOUNTS_MAX);
+    report
+        .accounts
+        .retain(|account| !account.login.is_empty() && account.login.len() <= LOGIN_MAX && account.login.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
+    report.problem = report.problem.map(|why| sanitize(&cut_bytes(why, NAME_MAX), false));
+    report
+}
+
+/// The longest login GitHub gives out.
+const LOGIN_MAX: usize = 39;
 
 /// A folder listing from another machine: every name and branch one clean line, no more entries
 /// than the protocol allows, and no name that is a path.
@@ -304,6 +322,24 @@ mod tests {
         };
         assert!(!why.contains(['\u{7}', '\n']) && why.len() <= NAME_MAX, "{why:?}");
         assert!(vet(&nothing_on(), false, "box", cloned(Ok("/x".into()))).is_none());
+    }
+
+    #[test]
+    fn a_github_report_from_another_machine_keeps_only_real_logins_and_one_clean_line() {
+        use maitty_shared::protocol::{GitHubAccount, GitHubReport};
+        let account = |login: &str| GitHubAccount { login: login.into(), active: false };
+        let report = GitHubReport {
+            installed: true,
+            accounts: vec![account("me"), account("<img src=x>"), account(""), account(&"a".repeat(40))],
+            problem: Some("gh said\u{1b}[31m no\nsecond".into()),
+        };
+        let Some(ServerMsg::Reply(Reply::GitHubAccounts { tag: 6, report })) =
+            vet(&nothing_on(), true, "box", ServerMsg::Reply(Reply::GitHubAccounts { tag: 6, report }))
+        else {
+            panic!("an answer that was asked for is kept");
+        };
+        assert_eq!(report.accounts, vec![account("me")]);
+        assert!(report.problem.is_some_and(|why| !why.contains(['\u{1b}', '\n'])));
     }
 
     #[test]

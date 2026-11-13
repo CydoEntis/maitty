@@ -641,6 +641,17 @@ character); the daemon is the judge of the address. A reply from another machine
 answer for 30 seconds after a request; a clone's is expected for the daemon's limit plus 30 seconds
 (`routing::answer_window`), and a quick answer to something else never uses up that wait.
 
+Protocol 86 adds `Query::GitHubAccounts { tag }` and `Reply::GitHubAccounts { tag, report }`
+(`GITHUB_ACCOUNTS_SINCE`; `COMPATIBLE_SINCE` stays): who is signed in to github.com on the daemon's
+computer, as its GitHub command line says (`gh auth status --json hosts`,
+`crates/maitty-core/src/daemon/github.rs`). `report` is `installed` (false when the machine has no
+`gh`), `accounts` (login and whether it is the active one, active first, at most
+`GITHUB_ACCOUNTS_MAX`, only sign-ins that still work) and `problem` (one line when `gh` could not be
+read: too old to answer in JSON, or no answer in 15 seconds). Nobody signed in is an empty list, not a
+problem. Human clients only; `gh` runs off the event loop and cannot ask a question. A report from
+another machine keeps only logins GitHub could have given out and one clean `problem` line
+(`remote_policy::vet`). A program run with a time limit goes through `proc::run_within`.
+
 Protocol 70 adds `Query::UsageReport { period }` (`day`, `week` or `month`; rolling windows
 ending today, UTC) and `Reply::UsageReport`, answered from the daemon's usage store
 ([ADR 0009](adr/0009-usage-is-provider-reported-never-estimated.md)): totals, one entry per

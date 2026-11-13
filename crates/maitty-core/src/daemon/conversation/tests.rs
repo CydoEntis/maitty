@@ -1962,7 +1962,7 @@ async fn approved_commands_are_listed_and_taken_back_by_a_person_only() {
 }
 
 #[tokio::test]
-async fn only_a_person_can_have_a_repository_cloned_and_an_oversized_request_is_answered_at_once() {
+async fn only_a_person_can_clone_or_ask_about_github_and_an_oversized_clone_is_answered_at_once() {
     let mut session = conversation_fixture("conversation-approval").await;
     let outcome = AssertUnwindSafe(async {
         let clone = |address: String| {
@@ -1970,6 +1970,11 @@ async fn only_a_person_can_have_a_repository_cloned_and_an_oversized_request_is_
         };
         let from = authenticated_pane(&mut session);
         let refused = exchange(&mut session, 440, clone("https://example.invalid/o/r.git".into()), Some(from)).await;
+        assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
+
+        let from = authenticated_pane(&mut session);
+        let who = crate::protocol::ClientMsg::Query(crate::protocol::Query::GitHubAccounts { tag: 9 });
+        let refused = exchange(&mut session, 442, who, Some(from)).await;
         assert!(matches!(refused, ServerMsg::Error(ref message) if message.contains("Only a human")), "{refused:?}");
 
         let long = format!("https://example.invalid/{}", "a".repeat(4096));

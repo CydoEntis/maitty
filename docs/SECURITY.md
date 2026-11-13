@@ -531,6 +531,12 @@ is a fixed set of host commands that take a machine's name or number, never a pr
   address and may hold no path separator or other character a folder name cannot. Only a person's
   client may ask; a pane's or an agent's connection is refused. The daemon reads no credential: git uses
   whatever the machine already has, and fails when it would have to ask.
+- **Who is signed in to GitHub** (`Query::GitHubAccounts`, `daemon/github.rs`) runs the machine's own
+  `gh auth status --json hosts` with fixed arguments and nothing from the client in them. Only the
+  logins and which one is active leave the daemon; a token is never asked for (`--show-token` is never
+  passed), read from `gh`'s files, logged or sent. A login is kept only when it is letters, digits and
+  dashes, at most 39 long, both where it is read and again when it arrives from another machine. Only a
+  person's client may ask.
 
 No user accounts. Access to the daemon is access to its local socket: a named
 pipe on Windows, a Unix socket in the temp directory elsewhere, named per user
