@@ -546,6 +546,11 @@ fail with a "read-only" error; `Rename` and `Archive` fail as for an unknown id 
 closed as a pane). A client the pane does not belong to (ADR 0004) gets "No such conversation". The
 history is the provider's own transcript projected through the same entries a structured runtime
 produces (`conversation/follow_transcript.rs`); nothing read from the file sets any status.
+In a Claude transcript a slash command is a user message holding the command as typed
+(`/plugin marketplace add x`). What a command Claude ran itself printed (`<local-command-stdout>`,
+`<local-command-stderr>`) is a completed `commandExecution` entry labelled with that command, and it
+completes the command's turn; a command that printed nothing gets no such entry. `<system-reminder>`,
+`<local-command-caveat>` and `isMeta` lines are never shown.
 
 `ConversationSend` carries an optional `choice` (`TurnChoice { model, effort }`, `#[serde(default)]`, no
 protocol bump; a send from before it decodes as no choice). The daemon validates it (a plain model name that

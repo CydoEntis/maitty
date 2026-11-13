@@ -57,6 +57,8 @@ pub(in crate::daemon) struct Transcript {
     /// The mode and model the file last said (Claude: `permissionMode` on a line, the model of an assistant message).
     meta: crate::conversation::SessionMeta,
     tools: HashMap<String, PendingTool>,
+    /// The command Claude ran itself and has not printed for yet: it names the row its output gets.
+    local_command: Option<String>,
 }
 
 impl Transcript {
@@ -75,6 +77,7 @@ impl Transcript {
             last_user_text: None,
             meta: crate::conversation::SessionMeta::default(),
             tools: HashMap::new(),
+            local_command: None,
         }
     }
 
@@ -191,11 +194,7 @@ impl Transcript {
                     return;
                 };
                 match content {
-                    Value::String(text) => {
-                        if !is_claude_chrome(text) {
-                            self.user_message(&uuid, &without_paste_tags(text), at_ms, notes);
-                        }
-                    }
+                    Value::String(text) => self.claude_user_text(&uuid, text, at_ms, notes),
                     Value::Array(blocks) => self.claude_user_blocks(&uuid, blocks, at_ms, notes),
                     _ => {}
                 }
@@ -209,12 +208,66 @@ impl Transcript {
                     self.claude_assistant_block(&format!("{uuid}:{index}"), block, at_ms, notes);
                 }
             }
-            Some("system")
-                if line.get("subtype").and_then(Value::as_str) == Some("turn_duration") =>
-            {
-                self.close_turn("completed", at_ms, notes);
-            }
+            Some("system") => match line.get("subtype").and_then(Value::as_str) {
+                Some("turn_duration") => self.close_turn("completed", at_ms, notes),
+                // Claude writes a command it ran itself either as a user line or as this one.
+                Some("local_command") => {
+                    if let Some(text) = line.get("content").and_then(Value::as_str) {
+                        self.claude_user_text(&uuid, text, at_ms, notes);
+                    }
+                }
+                _ => {}
+            },
             _ => {}
+        }
+    }
+
+    fn claude_user_text(
+        &mut self,
+        uuid: &str,
+        text: &str,
+        at_ms: Option<u64>,
+        notes: &mut Vec<Note>,
+    ) {
+        match claude_line(text) {
+            ClaudeLine::Said => self.user_message(uuid, &without_paste_tags(text), at_ms, notes),
+            ClaudeLine::Command(command) => {
+                self.user_message(uuid, &command, at_ms, notes);
+                self.local_command = Some(command);
+            }
+            ClaudeLine::CommandOutput(output) => {
+                self.claude_command_output(uuid, &output, at_ms, notes);
+            }
+            ClaudeLine::Hidden => {}
+        }
+    }
+
+    /// What a command Claude ran itself printed, as a finished step under the command. Nothing
+    /// answers such a command, so its turn ends here; one that printed nothing gets no step.
+    fn claude_command_output(
+        &mut self,
+        uuid: &str,
+        output: &str,
+        at_ms: Option<u64>,
+        notes: &mut Vec<Note>,
+    ) {
+        let command = self.local_command.take();
+        if !output.trim().is_empty() {
+            let turn = self.turn_id(at_ms, notes);
+            let item = json!({
+                "id": uuid,
+                "type": "commandExecution",
+                "command": command.as_deref().unwrap_or_default(),
+                "status": "completed",
+                "aggregatedOutput": bounded_output(output.trim()),
+            });
+            notes.push(self.note("item/completed", item_params(&turn, item, at_ms)));
+        }
+        // Output whose command line was not read (the start of a long file is skipped) may sit in
+        // a turn that is still the agent's.
+        if command.is_some() {
+            self.close_turn("completed", at_ms, notes);
+            self.last_user_text = None;
         }
     }
 
@@ -253,8 +306,8 @@ impl Transcript {
                 _ => {}
             }
         }
-        if !text.is_empty() && !is_claude_chrome(&text) {
-            self.user_message(uuid, &without_paste_tags(&text), at_ms, notes);
+        if !text.is_empty() {
+            self.claude_user_text(uuid, &text, at_ms, notes);
         }
     }
 
@@ -629,18 +682,62 @@ fn item_params(turn: &str, mut item: Value, at_ms: Option<u64>) -> Value {
     params
 }
 
-/// What Claude writes into the transcript as a "user" line that no one typed: slash-command
-/// echoes and local command output.
-fn is_claude_chrome(text: &str) -> bool {
-    let text = text.trim_start();
-    [
-        "<command-name>",
-        "<local-command-",
-        "<system-reminder>",
-        "<command-message>",
-    ]
-    .iter()
-    .any(|tag| text.starts_with(tag))
+/// What the text of a Claude "user" line is. Claude writes more there than what was typed.
+enum ClaudeLine {
+    Said,
+    /// A slash command, as it was typed: `/plugin marketplace add x`.
+    Command(String),
+    /// What a command Claude ran itself printed; empty when it printed nothing.
+    CommandOutput(String),
+    /// Notes for the agent (`<system-reminder>`, `<local-command-caveat>`), not the conversation.
+    Hidden,
+}
+
+const COMMAND_OUTPUT_TAGS: [&str; 2] = ["local-command-stdout", "local-command-stderr"];
+
+fn claude_line(text: &str) -> ClaudeLine {
+    let start = text.trim_start();
+    if start.starts_with("<command-name>") || start.starts_with("<command-message>") {
+        return slash_command(start).map_or(ClaudeLine::Hidden, ClaudeLine::Command);
+    }
+    if COMMAND_OUTPUT_TAGS
+        .iter()
+        .any(|tag| start.starts_with(&format!("<{tag}>")))
+    {
+        let printed: Vec<&str> = COMMAND_OUTPUT_TAGS
+            .iter()
+            .filter_map(|tag| tagged(start, tag))
+            .filter(|part| !part.trim().is_empty())
+            .collect();
+        return ClaudeLine::CommandOutput(printed.join("
+"));
+    }
+    if start.starts_with("<local-command-") || start.starts_with("<system-reminder>") {
+        return ClaudeLine::Hidden;
+    }
+    ClaudeLine::Said
+}
+
+/// The command a slash-command line records, with its arguments: Claude writes the two apart, as
+/// `<command-name>/plugin</command-name>` and `<command-args>marketplace add x</command-args>`.
+fn slash_command(text: &str) -> Option<String> {
+    let name = tagged(text, "command-name")?.trim();
+    if name.is_empty() {
+        return None;
+    }
+    let args = tagged(text, "command-args").map_or("", str::trim);
+    Some(if args.is_empty() {
+        name.to_owned()
+    } else {
+        format!("{name} {args}")
+    })
+}
+
+/// The text between `<tag>` and `</tag>`, when the text has both.
+fn tagged<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
+    let (_, after) = text.split_once(&format!("<{tag}>"))?;
+    let (inside, _) = after.split_once(&format!("</{tag}>"))?;
+    Some(inside)
 }
 
 /// A message with the `<pasted_content id="…">` / `</pasted_content id="…">` markers Claude Code puts
