@@ -648,6 +648,10 @@ In a Claude transcript a slash command is a user message holding the command as 
 `<local-command-stderr>`) is a completed `commandExecution` entry labelled with that command, and it
 completes the command's turn; a command that printed nothing gets no such entry. `<system-reminder>`,
 `<local-command-caveat>` and `isMeta` lines are never shown.
+A Claude `thinking` block with text and a Codex `response_item` of type `reasoning` with summary text
+become `Reasoning` entries, cleaned, masked and cut like the structured runtimes' (the block's
+`signature` and Codex's `content` and `encrypted_content` are never read); `redacted_thinking` and a
+reasoning with no text are skipped. They reach a client through the same `daemon::for_client`.
 
 `ConversationSend` carries an optional `choice` (`TurnChoice { model, effort }`, `#[serde(default)]`, no
 protocol bump; a send from before it decodes as no choice). The daemon validates it (a plain model name that

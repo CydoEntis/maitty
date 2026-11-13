@@ -84,7 +84,7 @@ fn a_claude_turn_becomes_messages_tool_steps_and_a_finished_turn() {
         claude_user("u1", "fix the build"),
         claude_assistant(
             "a1",
-            json!({ "type": "thinking", "thinking": "", "signature": "x" }),
+            json!({ "type": "thinking", "thinking": "Build first, then look.", "signature": "x" }),
         ),
         claude_assistant("a2", json!({ "type": "text", "text": "I will run cargo." })),
         claude_assistant(
@@ -111,9 +111,15 @@ fn a_claude_turn_becomes_messages_tool_steps_and_a_finished_turn() {
 
     let items = items(&history);
     assert_eq!(message(items[0]), (&Role::User, "fix the build"));
-    assert_eq!(message(items[1]), (&Role::Assistant, "I will run cargo."));
     assert_eq!(
-        items[2].content,
+        items[1].content,
+        Content::Reasoning {
+            text: "Build first, then look.".into()
+        }
+    );
+    assert_eq!(message(items[2]), (&Role::Assistant, "I will run cargo."));
+    assert_eq!(
+        items[3].content,
         Content::Tool {
             kind: "commandExecution".into(),
             output: "Finished dev".into(),
@@ -123,21 +129,21 @@ fn a_claude_turn_becomes_messages_tool_steps_and_a_finished_turn() {
             duration_ms: None,
         }
     );
-    assert_eq!(items[2].state, ItemState::Completed);
+    assert_eq!(items[3].state, ItemState::Completed);
     // The label is the tool's name for a tool that has no command, as the structured adapter's.
     let Content::Tool {
         label,
         input,
         output,
         ..
-    } = &items[3].content
+    } = &items[4].content
     else {
         panic!("not a tool step")
     };
     assert_eq!(label, "Edit ");
     assert_eq!(input.as_ref().unwrap()["file_path"], "/w/a.rs");
     assert_eq!(output, "edited");
-    assert_eq!(message(items[4]), (&Role::Assistant, "Done."));
+    assert_eq!(message(items[5]), (&Role::Assistant, "Done."));
     let turns = turns(&history);
     assert_eq!(turns.len(), 1);
     assert_eq!(turns[0].state, ItemState::Completed);
@@ -583,7 +589,7 @@ fn a_codex_turn_becomes_messages_commands_a_patch_and_a_finished_turn() {
             "response_item:message",
             json!({ "role": "user", "content": [{ "type": "input_text", "text": "<environment_context>" }] }),
         ),
-        codex(at, "response_item:reasoning", json!({ "summary": [] })),
+        codex(at, "response_item:reasoning", json!({ "summary": [{ "type": "summary_text", "text": "Look at the files." }], "encrypted_content": "gAAAA" })),
         codex(
             at,
             "response_item:message",
@@ -643,9 +649,15 @@ fn a_codex_turn_becomes_messages_commands_a_patch_and_a_finished_turn() {
 
     let items = items(&history);
     assert_eq!(message(items[0]), (&Role::User, "list files"));
-    assert_eq!(message(items[1]), (&Role::Assistant, "Listing."));
     assert_eq!(
-        items[2].content,
+        items[1].content,
+        Content::Reasoning {
+            text: "Look at the files.".into()
+        }
+    );
+    assert_eq!(message(items[2]), (&Role::Assistant, "Listing."));
+    assert_eq!(
+        items[3].content,
         Content::Tool {
             kind: "commandExecution".into(),
             output: "a\nb".into(),
@@ -660,7 +672,7 @@ fn a_codex_turn_becomes_messages_commands_a_patch_and_a_finished_turn() {
         duration_ms,
         output,
         ..
-    } = &items[3].content
+    } = &items[4].content
     else {
         panic!("not a tool step")
     };
@@ -668,13 +680,13 @@ fn a_codex_turn_becomes_messages_commands_a_patch_and_a_finished_turn() {
         (*exit_code, *duration_ms, output.as_str()),
         (Some(2), Some(1500), "boom")
     );
-    assert_eq!(items[3].state, ItemState::Failed);
+    assert_eq!(items[4].state, ItemState::Failed);
     let Content::Tool {
         kind,
         label,
         output,
         ..
-    } = &items[4].content
+    } = &items[5].content
     else {
         panic!("not a file change")
     };
@@ -683,7 +695,7 @@ fn a_codex_turn_becomes_messages_commands_a_patch_and_a_finished_turn() {
         ("fileChange", "Edited src/a.rs")
     );
     assert!(output.contains("+new") && output.contains("src/a.rs (update)"));
-    assert_eq!(items[4].state, ItemState::Completed);
+    assert_eq!(items[5].state, ItemState::Completed);
     let turns = turns(&history);
     assert_eq!(turns.len(), 1);
     assert_eq!(turns[0].source.turn, "turn-a");
@@ -927,4 +939,75 @@ fn the_markers_claude_puts_around_a_paste_are_not_shown_as_said() {
     assert_eq!(without_paste_tags(said), "Errors occurred\nretry it\n");
     assert_eq!(without_paste_tags("plain words"), "plain words");
     assert_eq!(without_paste_tags("keep <pasted_content oops"), "keep <pasted_content oops");
+}
+
+fn reasoning_texts(history: &History) -> Vec<&str> {
+    history
+        .entries
+        .iter()
+        .filter_map(|e| match &e.content {
+            Content::Reasoning { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn claude_thinking_without_text_or_redacted_is_not_kept() {
+    let lines = vec![
+        claude_user("u1", "go"),
+        claude_assistant(
+            "a1",
+            json!({ "type": "thinking", "thinking": "  ", "signature": "x" }),
+        ),
+        claude_assistant("a2", json!({ "type": "redacted_thinking", "data": "gAAAA" })),
+    ];
+
+    assert!(reasoning_texts(&history_of(Format::Claude, &lines)).is_empty());
+}
+
+#[test]
+fn a_codex_reasoning_with_no_summary_text_is_not_kept() {
+    let at = "2026-11-04T10:00:00.000Z";
+    let lines = vec![
+        codex(at, "event_msg:user_message", json!({ "message": "go" })),
+        codex(
+            at,
+            "response_item:reasoning",
+            json!({ "summary": [], "encrypted_content": "gAAAA" }),
+        ),
+        codex(
+            at,
+            "response_item:reasoning",
+            json!({ "summary": [{ "type": "summary_text", "text": " " }], "content": null }),
+        ),
+    ];
+
+    assert!(reasoning_texts(&history_of(Format::Codex, &lines)).is_empty());
+}
+
+#[test]
+fn followed_reasoning_is_masked_cleaned_and_cut_and_its_signature_is_dropped() {
+    let token = fake_token();
+    let huge = "y".repeat(MAX_MESSAGE_BYTES * 2);
+    let lines = vec![
+        claude_user("u1", "go"),
+        claude_assistant(
+            "a1",
+            json!({ "type": "thinking", "thinking": format!("use \u{1b}[31m{token}\u{1b}[0m"), "signature": "SIGNATURE-BYTES" }),
+        ),
+        claude_assistant(
+            "a2",
+            json!({ "type": "thinking", "thinking": huge, "signature": "x" }),
+        ),
+    ];
+
+    let history = history_of(Format::Claude, &lines);
+
+    let texts = reasoning_texts(&history);
+    assert_eq!(texts.len(), 2);
+    assert!(texts[0].contains("[redacted]") && !texts[0].contains(&token));
+    assert!(!texts[0].contains('\u{1b}'));
+    assert!(texts[1].len() < 64 * 1024 + 64 && texts[1].ends_with("cut off"));
+    assert!(!format!("{history:?}").contains("SIGNATURE-BYTES"));
 }
