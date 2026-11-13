@@ -93,6 +93,9 @@ pub enum Act {
     MachineReconnect(MachineId),
     /// The Machines dialog with this machine chosen.
     MachineOpen(MachineId),
+    /// Start an agent in a folder of this computer with a conversation it saved: (folder,
+    /// agent, the agent's id for the conversation).
+    Resume(PathBuf, String, String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -888,6 +891,7 @@ impl App {
                 }
             }
             Act::MachineOpen(machine) => self.open_machines_on(machine),
+            Act::Resume(dir, agent, id) => self.resume_saved(dir, &agent, &id),
             // A terminal that belongs to a chat is named through the chat, so every client
             // shows the same name.
             Act::RenamePane(t)

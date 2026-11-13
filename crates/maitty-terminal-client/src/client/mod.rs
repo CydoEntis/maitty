@@ -35,6 +35,7 @@ mod remote_image_tests;
 mod remote_snapshot_tests;
 mod render;
 pub mod restart_prompt;
+mod resume;
 mod routing;
 mod screen;
 mod send_file;
@@ -495,6 +496,8 @@ pub struct App {
     /// The same for Codex's lifecycle hooks: installed, and whether Codex has been told to trust them.
     codex_hooks: Option<maitty_provider_codex::HooksState>,
     codex_hooks_asked: bool,
+    /// The saved-conversation lists asked of the daemon and not all answered yet.
+    resume: resume::Resume,
     /// The theme browser's tab: the Light themes when true, else the Dark ones.
     theme_tab_light: bool,
     /// What changed in it (and any releases between), for the update dialog.
@@ -814,6 +817,7 @@ impl App {
             claude_hooks_asked: false,
             codex_hooks: None,
             codex_hooks_asked: false,
+            resume: Default::default(),
             theme_tab_light: false,
             update_notes: Vec::new(),
             update_checked: None,
@@ -2226,3 +2230,5 @@ mod mcp_machine_tests;
 mod remote_status_tests;
 #[cfg(test)]
 mod routing_tests;
+#[cfg(test)]
+mod resume_tests;

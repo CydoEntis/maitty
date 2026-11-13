@@ -337,6 +337,12 @@ impl App {
                     *items = Some(list);
                 }
             }
+            // Saved conversations are listed for this computer's own folders only.
+            ServerMsg::Reply(Reply::SavedConversations { tag, found })
+                if machine == MachineId::LOCAL =>
+            {
+                self.saved_conversations_arrived(tag, found)
+            }
             ServerMsg::Reply(Reply::Text(text)) if self.check_asked_of(machine) => {
                 self.check_output_arrived(text)
             }

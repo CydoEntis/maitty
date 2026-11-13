@@ -290,6 +290,8 @@ Rules for keys and their labels: one key per action (no alias keys; a user's own
 
 **Menu.** Sections a blank row apart, each under a `muted` title that says what its rows are for, labels capitalised, no letter lit: `NEW` (Shell here, Session..., Pane beside this); `TOOLS` (Files, Changes, Branches, History, References); `FIND` (Inbox, Search commands, All keys); `SIDEBAR` (Collapse sidebar); then Settings, untitled. The arrows move over rows and skip the headers; the selected row has an accent `▌`. In a short window the blank rows give way first, then the titles, so every row that does something stays (`leader.rs` `MenuRoom`). No row shows a key (a bare letter reads as one that works anywhere), but the leader key that does the same runs the row inside the Menu too; there is no footer. "Shell here" is leader `n` (a plain shell where you are) and "Session..." the New session dialog (Ctrl+T).
 
+**Resume a conversation here** (Search commands only, `Action::ResumeConversation`, `resume-conversation`; `client/resume.rs`). It asks this computer's daemon for the conversations Claude and Codex saved for the selected pane's folder (`Query::SavedConversations`, one per agent; the answers arrive as messages) and, once both are in, opens a menu by the pane of the nine newest across both agents: `Claude · 3h ago · <the first message>`, cut to 44 columns. Enter or a click starts that agent in a new pane in the folder with the agent's resume command from its `[[agents]]` definition (`claude --resume <id>`, `codex resume <id>`); an id other than letters, digits, `-` and `_` is refused with an error toast. With none saved it says so in one toast line, `no saved Claude or Codex chats`. A pane on another machine gets the local-only toast (see *features that need a pane's files*).
+
 **Agent launchers.** Typing an agent (`claude`, `codex`, `gemini`, `opencode`, a quick agent) in a Maitty shell in a git repo's main checkout starts it in a new worktree (`worktree.per_agent`); anywhere else, or in a folder that is not a git repo, it starts where you are, silently. It works from any shell because `<data>/shell/bin/` is first on the pane's `PATH`; see ARCHITECTURE › Agent launchers. No toast or warning is shown for main folders.
 
 **New sessions** (`client/screen/newsession.rs`). Leader `n` starts a session with no form: agent `sessions.agent` (`last used` is the last agent started from Maitty, kept as `last_agent` in `maitty-ui.json`, else claude), project the one under the sidebar cursor or the one you are in, `sessions.where` (`new worktree`, which falls back to the folder in a project that is not a git repo, or `this folder`). The task is typed in the session, whose row reads `<agent> · new · type to begin` with the accent `○`. A new tab (leader `t`) takes only the shell that answers it: it waits ten seconds at most, takes only a pane that did not exist when the tab was asked for and that no agent started (another pane taking the focus leaves it waiting), and starting any other session before it arrives cancels the tab, so that session gets its own row and tab bar rather than becoming a tab of the one you were in.
@@ -722,8 +724,8 @@ Not applicable: the Hairline look was removed; Floating is the only look.
 
 ## Project-specific: features that need a pane's files
 
-Files, Changes, Find, Branches, References, connecting an agent, and worktree
-actions read or change the files of the pane they apply to. (Pasting an image is not on this list in
+Files, Changes, Find, Branches, References, connecting an agent, worktree
+actions and the TUI's Resume a conversation here read or change the files of the pane they apply to. (Pasting an image is not on this list in
 the desktop app: it works for panes on other machines, see below. The terminal app's own list is
 unchanged.) For a pane on another machine they do
 nothing but show one error toast, always in this form: "<Feature> is local-only in v1: the files

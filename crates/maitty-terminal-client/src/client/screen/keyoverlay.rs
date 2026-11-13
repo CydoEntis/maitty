@@ -170,7 +170,9 @@ fn group_of(a: &Action) -> &'static str {
         return g;
     }
     match a {
-        A::NewWorkspace | A::CloseWorkspace | A::NewSession | A::AgentStatusSetup => "SESSIONS",
+        A::NewWorkspace | A::CloseWorkspace | A::NewSession | A::AgentStatusSetup | A::ResumeConversation => {
+            "SESSIONS"
+        }
         A::SplitLeft
         | A::SplitUp
         | A::FocusNext
