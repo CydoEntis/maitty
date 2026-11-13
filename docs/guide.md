@@ -243,6 +243,13 @@ show a separate sleep screen or wake animation.
 
 Sessions stay visible in the sidebar until you close them. Idle, completed, and merged-worktree sessions are never hidden automatically.
 
+In the desktop app you can tidy the list yourself: right-click a finished or idle session (an agent in a terminal, or a
+shell) and choose **Put away**. A toast offers **Undo** for 6 seconds. The session keeps running; it leaves the status,
+project and machine lists and waits in the folded **Put away** section at the end of the session list, above Terminals. Click its arrow, or
+choose **Bring back** in its menu, to list it as before. If a put-away session needs you, it shows under **Needs you**
+until you have answered it, then goes back under Put away. A chat started in the desktop app has no Put away; close it
+instead.
+
 ## Follow-ups and snapshots
 
 `Enter` in shortcut mode (or **Message** in the row's menu) writes an agent a follow-up without leaving where you are. While the agent is

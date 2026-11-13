@@ -240,7 +240,14 @@ Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
    clicking one shows its own chat in the session's pane until you pick a session or **Back to main session**. Rename is
    in place (double-click, F2 or the menu). Right-click menus share `MenuPopup` (focus, arrow keys, Esc, kept inside the
    window). Split layouts are this window's own state, up to four panes, mixed right and down with draggable dividers; a
-   session closes with a 6 second Undo. Crewmates (`features/crew/`) is not mounted: the redesign leaves it undesigned.
+   session closes with a 6 second Undo. **Put away** (the row menu of a finished or idle session in a daemon terminal,
+   shells too) sets the pane's `archived` flag (`Command::ArchivePane`) with a 6 second Undo; it closes, stops and moves
+   nothing, so the session keeps running, stays in the daemon's list and keeps its worktree in use. Put-away sessions are
+   listed only under the folded **Put away** section at the foot of the list (`model/sidebar.ts`, `splitPutAway`), each
+   with **Bring back** (its hover button and its menu). The rail shows no trace of put-away sessions (one that needs you
+   still shows), and the tray menu still lists a put-away finished session. While Needs you would list one it is
+   listed there instead, still put away on the daemon; once it no longer needs you it goes back under Put away. A chat
+   cannot be put away: its daemon archive is how a chat is closed. Crewmates (`features/crew/`) is not mounted: the redesign leaves it undesigned.
 3. A terminal sits on the workspace card's own ground (`--main`, xterm's background and ANSI black), so a pane reads as
    part of the card and not as a box inside it.
 4. The window's state is put together once, in `features/workspace/useWorkspaceState.ts`, and `DesktopApp` hands it to

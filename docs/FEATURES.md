@@ -52,6 +52,7 @@ conversation continuity are planned in phases 34–37:
 - Resume a conversation Claude or Codex saved for the folder from the new chat page — built 2026-11-13, not yet seen in the desktop app — `apps/gui/src/features/workspace/components/ResumeList.tsx`, `crates/maitty-core/src/daemon/conversation/saved.rs`
 - Recent sessions: reopen an agent session closed on this computer, from the sidebar's foot or the palette; a row whose removed folder was a worktree is made again by the service and reopened, any other removed folder says "folder removed; cannot be made again" — built 2026-11-13, not yet seen in the desktop app — `apps/gui/src/features/workspace/components/RecentSessionsDialog.tsx`, `crates/maitty-core/src/daemon/closed_sessions.rs`
 - Close with a six-second Undo, in the desktop app and the TUI — shipped — `UNDO_WINDOW` in `crates/maitty-core/src/daemon/mod.rs`, `apps/gui/src/features/workspace/useClosing.ts`, `crates/maitty-terminal-client/src/client/screen/closing.rs`
+- Put away a finished or idle session in the desktop app, with a six-second Undo: it keeps running under a folded Put away section with Bring back, and shows under Needs you while it needs you — built 2026-11-13, not yet seen in the desktop app — `apps/gui/src/features/workspace/usePutAway.ts`, `splitPutAway` in `apps/gui/src/features/workspace/model/sidebar.ts`
 - Fleets, ships, the tab bar and the Crewmates switch are gone from the desktop app (the redesign supersedes them); `features/crew/` stays in the tree, unmounted, until Crewmates is designed
 
 **Code and git**
