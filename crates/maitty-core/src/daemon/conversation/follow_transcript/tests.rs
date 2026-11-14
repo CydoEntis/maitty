@@ -1091,7 +1091,7 @@ fn a_recorded_claude_transcript_replays_to_its_history_in_order() {
             duration_ms: None,
         }
     );
-    // The follower has no question model: a question is a tool step carrying the question and its
+    // The transcript follower has no question model (the structured Claude adapter does): a question is a tool step carrying the question and its
     // options as input, and the answer as output.
     assert_eq!(
         items[5].content,

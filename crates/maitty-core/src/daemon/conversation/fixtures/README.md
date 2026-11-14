@@ -17,7 +17,8 @@ Windows replays the same.
 Record a new one by running the agent on a throwaway task in a scratch folder, then reading its
 file under `~/.claude/projects/<folder>/<session>.jsonl`. Only learn the line shapes from it. Do
 not copy a recorded line into the repo and edit it; write each line fresh from the shape, so a
-forgotten field cannot leak. Clean-up checklist for a new fixture:
+forgotten field cannot leak. That recording holds your real prompts and paths: keep it local and
+never paste it into an issue, a chat or a model. Clean-up checklist for a new fixture:
 
 1. Every text, command, path, file name and tool output is invented. No real project, user, host,
    email or repo name.
