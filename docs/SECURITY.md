@@ -148,7 +148,7 @@ the webview itself never navigates. What the page then does is the browser's to 
 
 `agent_auth_status` and `agent_sign_out` (`agent_auth.rs`) ask an agent's own command line whether
 its account is signed in (`claude auth status --json`, `codex login status`) and end the sign-in
-(`claude auth logout`, `codex logout`), for Settings › Agents. The program is the one the host finds
+(`claude auth logout`, `codex logout`), for Settings › Permissions. The program is the one the host finds
 on PATH, the arguments are constants, the webview supplies only the agent's name (any other name is
 refused), and each run is stopped after 15 seconds. The host reads no credential file and keeps
 none: the window is told who is signed in (the account's email and plan, as the agent prints them),
@@ -239,7 +239,7 @@ A chat's **Always in this project** (`ConversationAllowAlways`, ADR 0005) is kep
 `chat-allowed-commands.json` in Maitty's data folder: the project and the hash of the exact command as the
 provider sent it (not the text shown, which has secrets hidden). Only a human client can send it; the daemon
 refuses it from a pane or a structured client, and for anything but a command request. Residual risk: a process
-running as the same OS user can edit that file, as with `check-approvals.json`. A person takes a rule back with `ForgetAllowedCommand` (Settings → Agents), refused from a pane; the daemon drops it from memory and the file at once.
+running as the same OS user can edit that file, as with `check-approvals.json`. A person takes a rule back with `ForgetAllowedCommand` (Settings → Permissions), refused from a pane; the daemon drops it from memory and the file at once.
 
 What a pull request's reviewers and bots wrote reaches the pane's agent as a queued message
 (`sessions.pr_wake`, on by default), so it is untrusted text: it is cut short, flattened to one
