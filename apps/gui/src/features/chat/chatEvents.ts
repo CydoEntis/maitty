@@ -60,6 +60,15 @@ export type MessageEvent = ItemFields & {
   readonly text: string
 }
 
+/**
+ * The agent's reasoning summary, as the daemon kept it. It is model output: shown to the person as plain text and
+ * never logged, searched for secrets or sent anywhere.
+ */
+export type ReasoningEvent = ItemFields & {
+  readonly kind: 'reasoning'
+  readonly text: string
+}
+
 /** One card per file; a Codex patch that touches three files is three events. */
 export type EditEvent = ItemFields & {
   readonly kind: 'edit'
@@ -174,6 +183,7 @@ export type TurnEvent = {
 
 export type ChatEvent =
   | MessageEvent
+  | ReasoningEvent
   | EditEvent
   | CommandEvent
   | TodoEvent
