@@ -76,7 +76,7 @@ const SUGGESTED_TASKS = ['Explain how this project is laid out', 'Review my unco
 function defaultModeOf(agent: ChatAgent, codexYolo: boolean): string {
   const usual = START_MODE[agent]
   const modes = abilitiesOf(agent).permissionModes?.modes ?? []
-  return modes.includes(usual) && !(agent === 'codex' && codexYolo) ? usual : 'default'
+  return modes.includes(usual) && !(abilitiesOf(agent).yoloExcludesMode && codexYolo) ? usual : 'default'
 }
 
 const lastPart = (path: string): string => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
@@ -176,7 +176,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   }
   const modes = abilitiesOf(agent).permissionModes?.modes ?? []
   // The Yolo setting already starts Codex with full access, and its flag cannot be combined with a mode's.
-  const forcedFull = agent === 'codex' && codexYolo
+  const forcedFull = abilitiesOf(agent).yoloExcludesMode && codexYolo
   const startMode = !forcedFull && modes.includes(mode) ? mode : 'default'
   // Only agents this computer is known to have: while the list is unread, none is offered.
   const alsoOffered = remote || branches === null || installed === null ? [] : CHAT_AGENTS.filter((other) => other !== agent && installed.includes(other))
