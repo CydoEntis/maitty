@@ -212,9 +212,11 @@ describe('a subagent’s own chat', () => {
     render(<ChatSession link={link()} agent="claude" online subagent={subagent} />)
     await settle()
 
-    expect(screen.getAllByRole('status').some((node) => node.textContent.startsWith('Subagent'))).toBe(true)
+    const bar = screen.getAllByRole('status').find((node) => node.textContent.includes('Subagent'))
+    expect(bar).toBeDefined()
     expect(screen.getByText('Write drafts tests', { selector: 'strong' })).toBeInTheDocument()
-    expect(screen.getByText('· done in 1m 10s')).toBeInTheDocument()
+    expect(bar).toHaveTextContent('done in 1m 10s')
+    expect(bar).toHaveTextContent('read-only')
     const log = screen.getByRole('log', { name: 'Subagent Write drafts tests' })
     expect(within(log).getByText('Write drafts tests for the routes.')).toBeInTheDocument()
     expect(within(log).getByText('Wrote 12 tests.')).toBeInTheDocument()

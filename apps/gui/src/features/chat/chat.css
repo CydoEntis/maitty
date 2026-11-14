@@ -3,7 +3,7 @@
    theme token; amber (`--needs`) is only ever "needs you". */
 
 .mx-chat-layer { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; min-height: 0; background: transparent; font-family: var(--ui); line-height: normal; cursor: default; }
-.mx-pane-body.is-chat > :not(.mx-chat-layer) { visibility: hidden; }
+.mx-pane-body.is-chat > :not(.mx-chat-layer, .mx-subs) { visibility: hidden; }
 .mx-pane-body.is-chat { padding: 0; }
 /* The chat's size is the person's: `--chat-zoom` draws all of it larger or smaller (Settings › Chat text size), and
    `--chat-width` is how wide its column of messages and its message box may run. */
@@ -465,9 +465,10 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-tray-fact.is-worktree { color: var(--ansi-blue); }
 
 /* A subagent's own chat: the bar that names it and leads back. */
-.mx-sub-bar { flex: none; display: flex; align-items: center; gap: 8px; margin: 10px 20px 0; padding: 8px 12px; border-radius: 10px; background: rgba(var(--hl), calc(.04 * var(--hk))); border: 1px solid rgba(var(--hl), calc(.09 * var(--hk))); font-size: 12.5px; color: var(--fg2); }
-.mx-sub-bar strong { color: var(--fg); font-weight: 600; }
+.mx-sub-bar { flex: none; display: flex; min-width: 0; min-height: 36px; align-items: center; gap: 8px; margin: 10px 20px 0; padding: 0 6px 0 10px; border: 1px solid var(--line); background: var(--m-well); font-size: 12.5px; color: var(--muted); }
 .mx-sub-bar-dim { color: var(--dim); }
+.mx-sub-bar-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--fg); }
+.mx-sub-bar-time { flex: none; font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
 .mx-sub-back { font-size: 12px; color: var(--accent-text); }
 .mx-sub-back:hover { text-decoration: underline; }
 .mx-sub-note { margin: 0; font-size: 12.5px; color: var(--dim); }
@@ -488,3 +489,33 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-composer-note { margin: 6px 4px 0; font-size: 12px; color: var(--dim); }
 .mx-composer-note-action { border: 0; padding: 0; background: none; font: inherit; color: var(--fg2); text-decoration: underline; cursor: pointer; }
 .mx-composer-note-action:hover { color: var(--fg); }
+
+/* The running subagents (`RunningSubagents`): a 34px bar floating under the pane's header, as wide as the chat's
+   column, on the menu surface. Opening it extends it downward over the feed without moving it; the feed fades behind
+   it, more while it is open. It floats over the terminal view the same way. */
+.mx-subs { position: absolute; top: 0; left: 0; right: 0; z-index: 4; display: flex; justify-content: center; padding: 8px 12px 0; pointer-events: none; }
+.mx-subs-fade { position: absolute; top: 0; left: 0; right: 0; height: 22px; background: linear-gradient(var(--bg), transparent); -webkit-backdrop-filter: blur(1.5px); backdrop-filter: blur(1.5px); -webkit-mask-image: linear-gradient(#000 40%, transparent); mask-image: linear-gradient(#000 40%, transparent); transition: height var(--t-base, .18s) var(--ease, ease); }
+.mx-subs.is-open .mx-subs-fade { height: 44px; }
+.mx-subs-card { position: relative; display: flex; width: 100%; max-width: var(--chat-width, 760px); flex-direction: column; border: 1px solid var(--line2); border-radius: var(--r-panel); background: var(--card); box-shadow: var(--sh-pop); font-family: var(--ui); line-height: normal; pointer-events: auto; animation: mxRise .2s var(--ease, ease) both; }
+.mx-subs-bar { display: flex; min-width: 0; height: 34px; align-items: center; gap: 8px; padding: 0 4px 0 12px; font-size: 12.5px; color: var(--muted); }
+.mx-subs-spin { display: inline-flex; width: 14px; flex: none; justify-content: center; color: var(--working); }
+.mx-subs-count { flex: none; font-weight: 600; color: var(--fg); }
+.mx-subs-first { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-subs-task { color: var(--fg2); }
+.mx-subs-activity { font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
+.mx-subs-more { flex: none; font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--dim); }
+.mx-subs-list { list-style: none; margin: 0; padding: 0; max-height: min(440px, 60vh); overflow: auto; border-top: 1px solid var(--line); }
+.mx-subs-item + .mx-subs-item { border-top: 1px solid var(--line); }
+.mx-subs-row { display: flex; width: 100%; min-height: 44px; align-items: center; gap: 9px; padding: 5px 12px; text-align: left; outline: none; }
+.mx-subs-row:hover { background: var(--m-hover); }
+.mx-subs-row:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
+.mx-subs-text { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 1px; }
+.mx-subs-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--fg); }
+.mx-subs-kind { margin-left: 7px; font-size: 11.5px; font-weight: 400; color: var(--dim); }
+.mx-subs-latest { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.mx-subs-time { flex: none; font-family: var(--mono); font-size: 11.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.mx-subs-detail { display: flex; flex-direction: column; gap: 6px; padding: 0 12px 12px 35px; }
+.mx-subs-detail p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--fg2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.mx-subs-detail p.is-mono { font-family: var(--mono); font-size: 12px; }
+.mx-subs-label { font-size: 11px; font-weight: 600; color: var(--dim); }
+@media (prefers-reduced-motion: reduce) { .mx-subs-card { animation: none; } .mx-subs-fade { transition: none; } }

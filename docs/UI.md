@@ -237,8 +237,8 @@ Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
    creation order (`model/sidebar.ts`, `bySidebarOrder`). The command palette still lists the most urgent first. A machine can
    be grouped by project and folded. There are no fleets, ships, tabs or tab bar: choosing a session shows the layout it
    is in (`model/layout.ts`), else one of its own. A session's **subagents** are the daemon's `TermInfo.subagent_activity`
-   (`model/subagents.ts`), shown under their session (small icons when it is not selected, a row each when it is);
-   clicking one shows its own chat in the session's pane until you pick a session or **Back to main session**. Rename is
+   (`model/subagents.ts`), shown while they run in a bar floating over their session's pane (`RunningSubagents`), not in
+   the sidebar; **Open its chat** on a row shows its own chat in the pane until you pick a session or **‹ Main session**. Rename is
    in place (double-click, F2 or the menu). Right-click menus share `MenuPopup` (focus, arrow keys, Esc, kept inside the
    window). Split layouts are this window's own state, up to four panes, mixed right and down with draggable dividers; a
    session closes with a 6 second Undo. **Put away** (the row menu of a finished or idle session in a daemon terminal,

@@ -4,6 +4,8 @@ import { AgentsCard } from '@/features/chat/components/AgentsCard'
 import { Markdown } from '@/features/chat/components/Markdown'
 import { PlanCard } from '@/features/chat/components/PlanCard'
 import { ApprovalTray, PromptTray } from '@/features/chat/components/QuestionTray'
+import { RunningSubagents } from '@/features/chat/components/RunningSubagents'
+import { toSubagentView } from '@/features/workspace/model/subagents'
 import { CommandStep, EditStep } from '@/features/chat/components/StepCards'
 import { ThoughtRow } from '@/features/chat/components/ThoughtRow'
 import { WorkCard } from '@/features/chat/components/WorkCard'
@@ -51,6 +53,29 @@ const started = (ms: number) => ({ startedAtMs: ms, completedAtMs: ms + TOOK_MS 
 const IDLE = () => Promise.resolve()
 const ACTIONS = { answer: () => undefined, answerInput: () => undefined, remember: () => undefined, busy: false }
 const PLAN = { text: '#### Partial refunds\n1. Subtract earlier refunds in `refundable()`.\n2. Add `POST /orders/:id/refunds`.\n3. Test the limits.', cut: false }
+
+/** When the gallery opened, in unix seconds; the helpers started a little before. */
+const MS_PER_SECOND = 1_000
+const FIRST_RAN_SECONDS = 42
+const SECOND_RAN_SECONDS = 95
+const NOW_SECONDS = Math.floor(Date.now() / MS_PER_SECOND)
+const STARTED = { first: NOW_SECONDS - FIRST_RAN_SECONDS, second: NOW_SECONDS - SECOND_RAN_SECONDS }
+const SUBAGENTS = [
+  toSubagentView({ id: 's1', name: 'Explore', state: 'Working', task: 'Find every caller of refundable()', startedAt: STARTED.first, updatedAt: 0, latest: 'Grep "refundable(" in src/', result: null }),
+  toSubagentView({ id: 's2', name: 'code-reviewer', state: 'Working', task: 'Review the refunds migration', startedAt: STARTED.second, updatedAt: 0, latest: 'Read db/migrations/0042_refunds.sql', result: null }),
+  toSubagentView({ id: 's3', name: 'Explore', state: 'AwaitingApproval', task: 'Run the load test', startedAt: null, updatedAt: 0, latest: null, result: null }),
+]
+
+/** The running-subagents bar over a stand-in pane, closed and open. */
+export function SubagentsBars() {
+  const pane = (open: boolean) => (
+    <div className="relative h-[300px] overflow-hidden border border-(--line) bg-(--bg)">
+      <div className="px-5 pt-14 text-sm leading-relaxed text-(--fg2)">The conversation scrolls under the bar. The partial refunds endpoint is in and its tests pass; the helpers are still checking the callers and the migration.</div>
+      <RunningSubagents subagents={SUBAGENTS} onOpen={() => undefined} startOpen={open} />
+    </div>
+  )
+  return <div className="flex flex-col gap-4">{pane(false)}{pane(true)}</div>
+}
 
 /** The waiting cards over a stand-in for the message box, one of each kind. */
 export function WaitingCards() {
