@@ -147,6 +147,9 @@ pub struct Term {
     /// The permission prompt the agent's own hook said it is stopped on, cleaned; kept only
     /// while the pane needs you (`Term::ask_now`). In memory only.
     pub ask: Option<PermissionAsk>,
+    /// The agent whose hook reported `ask`: the screen check for it follows this, not `agent`,
+    /// which a later report can change or clear while the prompt is still up.
+    pub ask_agent: Option<String>,
     /// The last hook it reported (its event) and the last thing the screen showed that
     /// changed its status, each with when (unix seconds): the evidence "why" lays out.
     pub last_hook: Option<(String, u64)>,
@@ -951,6 +954,7 @@ impl Term {
             interrupted: None,
             exit: None,
             ask: None,
+            ask_agent: None,
             last_hook: None,
             last_hook_at: None,
             hooked_process_seen: false,

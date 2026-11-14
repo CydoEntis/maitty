@@ -18,7 +18,7 @@ import { startedWithYolo } from '../yoloSessions'
 import { CODEX_MODE_COMMAND, CODEX_MODE_REFUSED, CODEX_START_MODES, DANGER_MODES, modeFromScreen, modeLabel } from '../chatMeta'
 import type { ApprovalDecision } from '../chatEvents'
 import type { PermissionAsk } from '@/data/preview'
-import { ANSWER_KEY, ANSWER_KEYS, ANSWER_STEP_MS, answerKeys, choiceKey, type AskChoice } from '../permissionAsk'
+import { ANSWER_KEY, ANSWER_STEP_MS, answerKeys, choiceKey, type AskChoice } from '../permissionAsk'
 import { draftWithQuote, pickedText, type PickedText } from '../selectionActions'
 import { peekComposer } from '../composerStore'
 import { COPY_TOAST_ID, COPY_TOAST_MS } from '@/features/terminal/copyToast'
@@ -185,7 +185,8 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
   // The transcript has no entry for a terminal agent's prompt until it is answered, so the chat shows it from the hook's report.
   const stoppedOnPrompt = link.readOnly === true && feed.status === 'Blocked'
   const answersPrompt = stoppedOnPrompt && typeInto !== undefined && (ask?.answerable === true || (ask?.choices?.length ?? 0) > 0 || (ask?.questions?.length ?? 0) > 1)
-  const answerPrompt = typeInto === undefined ? undefined : (choice: AskChoice) => typeInto(ANSWER_KEYS[choice]).then(refresh)
+  const promptKeys = abilitiesOf(agent).answerKeys
+  const answerPrompt = typeInto === undefined || promptKeys === null ? undefined : (choice: AskChoice) => typeInto(promptKeys[choice]).then(refresh)
   // A menu the chat has no buttons for is answered with the keys a person would press, in the agent's own terminal.
   const sendKeys = typeInto === undefined ? undefined : (keys: string) => typeInto(keys).then(refresh)
   const readScreen = useMemo(() => (sessionId === undefined ? undefined : () => loadTerminalScreen({ id: sessionId, generation: 0 })), [sessionId])
