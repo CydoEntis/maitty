@@ -48,7 +48,7 @@ describe('a Markdown document the agent wrote', () => {
   it('is read as a title and its first lines', () => {
     expect(documentOf(written('docs/plan.md', added('# Refunds plan', '', 'First we add the endpoint.', '## Steps', 'Then the tests.')))).toEqual({
       title: 'Refunds plan',
-      excerpt: 'First we add the endpoint. Then the tests.',
+      excerpt: 'First we add the endpoint.\nThen the tests.',
       lineCount: 5,
       text: '# Refunds plan\n\nFirst we add the endpoint.\n## Steps\nThen the tests.',
     })

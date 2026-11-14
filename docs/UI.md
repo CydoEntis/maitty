@@ -1020,7 +1020,8 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
     never navigates the webview: a click hands the address to the host (`open_link`), which opens it in the person's
     default browser, and the toast that says so offers **Copy link**. Outside the desktop app a click copies it.
   - *Saving a block* (`exportBlock.ts`, `saveBlock.ts`): a code block has **Copy** and **Save**; a table has **Copy**
-    (as Markdown) and **Markdown**, **CSV** and **HTML**. A save goes to the export folder of Settings › General
+    (as Markdown) and **Markdown**, **CSV** and **HTML**. Both are cards whose buttons sit in the head above the content,
+    so nothing hangs loose under a table where it reads as part of the next paragraph. A save goes to the export folder of Settings › General
     (Downloads until one is picked with the system's folder picker) under "what date time.ext", and a toast says where.
     A code block saves as `.md`, `.html`, `.csv` or `.json` when that is its language and as `.txt` otherwise. A CSV
     cell that a spreadsheet would run as a formula is written with a leading `'`; an HTML table's cells are escaped text.

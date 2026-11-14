@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { toast } from '@/lib/toast'
 import type { WrittenDocument } from '../writtenDocument'
 import { copyText as writeClipboard } from '@/lib/clipboard'
+import { Markdown } from './Markdown'
 
 function copyText(text: string): void {
   writeClipboard(text).then(
@@ -30,9 +31,9 @@ export function DocumentCard({ path, document }: DocumentCardProps) {
       </div>
       <div className="mx-doc-text">
         <span className="mx-doc-title">{document.title ?? name}</span>
-        {!open && document.excerpt !== '' && <span className="mx-doc-excerpt">{document.excerpt}</span>}
+        {!open && document.excerpt !== '' && <Markdown className="mx-doc-excerpt" text={document.excerpt} />}
       </div>
-      {open && <pre className="mx-doc-body">{document.text}</pre>}
+      {open && <Markdown className="mx-doc-body" text={document.text} />}
       <div className="mx-doc-actions">
         <button type="button" className="mx-soft-btn" aria-expanded={open} onClick={() => { setOpen((current) => !current) }}>{open ? 'Close' : 'Read'}</button>
         <button type="button" className="mx-quiet-btn" onClick={() => { copyText(document.text) }}>Copy</button>
