@@ -13,6 +13,7 @@ const fake = vi.hoisted(() => ({
   submitMessage: vi.fn<(conversation: { id: string; generation: number }, operation: number, text: string, choice?: { model?: string; effort?: string }) => Promise<unknown>>(),
   cancelTurn: vi.fn<(conversation: { id: string; generation: number }) => Promise<void>>(),
   dequeueMessage: vi.fn<(conversation: { id: string; generation: number }, operation: number) => Promise<void>>(),
+  sendQueuedMessageNow: vi.fn<(conversation: { id: string; generation: number }, operation: number) => Promise<void>>(),
   approveRequest: vi.fn<(conversation: { id: string; generation: number }, requestId: number | string, decision: string) => Promise<void>>(),
 }))
 
@@ -21,6 +22,7 @@ vi.mock('@/api/daemon', async (importOriginal) => ({
   submitMessage: fake.submitMessage,
   cancelTurn: fake.cancelTurn,
   dequeueMessage: fake.dequeueMessage,
+  sendQueuedMessageNow: fake.sendQueuedMessageNow,
   approveRequest: fake.approveRequest,
   readConversationPage: (_id: number, cursor: unknown) => {
     if (fake.current === null) throw new Error('no fake daemon')
@@ -38,6 +40,8 @@ beforeEach(() => {
   fake.submitMessage.mockReset()
   fake.cancelTurn.mockReset()
   fake.dequeueMessage.mockReset()
+  fake.sendQueuedMessageNow.mockReset()
+  fake.sendQueuedMessageNow.mockResolvedValue(undefined)
   fake.approveRequest.mockReset()
   fake.submitMessage.mockResolvedValue({})
   fake.cancelTurn.mockResolvedValue(undefined)
@@ -306,6 +310,53 @@ describe('while the agent works', () => {
     expect(box).toHaveValue('')
   })
 
+  it('sends a queued message now through the daemon, by its operation number', async () => {
+    const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
+    daemonQueues(daemon)
+    fake.sendQueuedMessageNow.mockImplementation((_conversation, operation) => {
+      daemon.queued = daemon.queued.filter((message) => message.operation !== operation)
+      return Promise.resolve()
+    })
+    await user.type(box, 'steer left{Enter}')
+    await settle()
+
+    await user.click(screen.getByRole('button', { name: 'Send now' }))
+    await settle(2000)
+
+    expect(fake.sendQueuedMessageNow).toHaveBeenCalledWith(TARGET, 1)
+    expect(screen.queryByRole('list', { name: 'Queued messages' })).not.toBeInTheDocument()
+    expect(fake.submitMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the message queued and says why when the daemon refuses to send it now', async () => {
+    const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
+    daemonQueues(daemon)
+    fake.sendQueuedMessageNow.mockRejectedValue(new Error('the turn ended a moment ago'))
+    await user.type(box, 'steer left{Enter}')
+    await settle()
+
+    await user.click(screen.getByRole('button', { name: 'Send now' }))
+    await settle(2000)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('the turn ended a moment ago')
+    expect(screen.getByRole('list', { name: 'Queued messages' })).toHaveTextContent('steer left')
+  })
+
+  it('offers no Send now while a request waits for an answer', async () => {
+    const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
+    daemonQueues(daemon)
+    await user.type(box, 'steer left{Enter}')
+    await settle()
+    expect(screen.getByRole('button', { name: 'Send now' })).toBeInTheDocument()
+
+    daemon.status = 'Blocked'
+    daemon.approvals = [{ request_id: 9, kind: 'Command', turn_id: 't1', command: 'rm -rf build', choices: ['Accept', 'Decline'] }]
+    await settle(5000)
+
+    expect(screen.getByRole('list', { name: 'Queued messages' })).toHaveTextContent('steer left')
+    expect(screen.queryByRole('button', { name: 'Send now' })).not.toBeInTheDocument()
+  })
+
   it('stacks several queued messages behind the first one sent, and spreads them out on a click', async () => {
     const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
     daemonQueues(daemon)
@@ -318,8 +369,8 @@ describe('while the agent works', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(1)
     expect(within(list).getByRole('listitem')).toHaveTextContent('first')
     expect(within(list).getByRole('listitem')).toHaveTextContent('1 of 3')
-    // A chat the daemon runs takes a message only when the turn ends, so its cards offer no way to push one in.
-    expect(screen.queryByRole('button', { name: 'Send now' })).not.toBeInTheDocument()
+    // Every queued message can be sent now, not only one a terminal agent holds.
+    expect(within(list).getByRole('button', { name: 'Send now' })).toBeInTheDocument()
     // The count in its header is what says more wait behind it; nothing sits beside the stack.
     expect(screen.queryByRole('list', { name: 'More queued messages' })).not.toBeInTheDocument()
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { cancelTurn, dequeueMessage, submitMessage } from '@/api/daemon'
+import { cancelTurn, dequeueMessage, sendQueuedMessageNow, submitMessage } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
 import { useLatest } from '@/lib/useLatest'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
@@ -147,7 +147,8 @@ export type ChatComposer = {
   editQueued: (id: number) => void
   /**
    * Types a queued message into the agent now, in the turn that is running, as typing in its terminal does: the agent
-   * reads it at its next step instead of when the turn ends. Only for an agent in a terminal.
+   * reads it at its next step instead of when the turn ends. For a chat the daemon runs, the daemon sends it now
+   * (steered into the turn, or the turn stopped for it) and a refusal leaves it queued; absent while a request waits for an answer.
    */
   sendQueuedNow?: ((id: number) => void) | undefined
   /** Sends the draft; while the agent works the daemon holds it and sends it when the turn ends. */
@@ -357,7 +358,18 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
 
   const sendQueuedNow = useCallback((operation: number) => {
     // Typed text answers a prompt the agent is showing, so nothing is pushed in while it asks something.
-    if (operation >= 0 || disabledReason !== null || sending) return
+    if (disabledReason !== null || sending) return
+    if (operation >= 0) {
+      // The daemon holds it: it answers only once the message was taken, and refuses with a reason (the turn ended, an
+      // approval waits) otherwise, so the message is still in its queue then and the next read shows it.
+      sendQueuedMessageNow({ id: String(conversation), generation: link.generation }, operation)
+        .then(refresh)
+        .catch((failure: unknown) => {
+          setError(errorMessage(failure, 'Could not send the queued message now'))
+          refresh()
+        })
+      return
+    }
     const taking = takeBack(operation)
     if (taking === null) return
     // Typed in only once the daemon has let go of it, or it would go in twice.
@@ -373,7 +385,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
         setError(errorMessage(failure, 'Could not send the queued message now'))
       },
     )
-  }, [disabledReason, sending, send, takeBack, conversation])
+  }, [disabledReason, sending, send, takeBack, conversation, link.generation, refresh])
 
   const removeQueued = useCallback((operation: number) => {
     if (operation < 0) {
@@ -435,5 +447,5 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not interrupt the turn')) })
   }, [running, feed.cancelling, conversation, link.generation, refresh, typeText])
 
-  return { conversationKey: link.conversation, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, editQueued, sendQueuedNow: typing ? sendQueuedNow : undefined, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !holding, error, sendText: send, echo }
+  return { conversationKey: link.conversation, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, editQueued, sendQueuedNow: disabledReason === null || typing ? sendQueuedNow : undefined, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !holding, error, sendText: send, echo }
 }

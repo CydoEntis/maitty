@@ -1485,6 +1485,31 @@ pub async fn dequeue_conversation(
     }
 }
 
+/// Sends a message waiting in a chat's queue now, instead of when the turn ends. The daemon answers `Ok` only once the
+/// message was taken (steered into the turn, or the turn stopped for it) and an error with the reason when it was
+/// refused, so the message is still queued then. A local daemon built before the command is told so in words, since
+/// it would never answer; another machine's is asked as it is and answers or times out.
+pub async fn send_conversation_now(
+    id: u64,
+    generation: u64,
+    operation: u64,
+    daemon: impl Into<Daemon>,
+) -> Result<Value> {
+    let message = ClientMsg::Command(Command::ConversationSendNow {
+        id: maitty_shared::conversation::ConversationId(id),
+        generation,
+        operation,
+    });
+    let reply = match daemon.into() {
+        Daemon::Local(_) => ask_running_daemon_if_it_reads(&message).await?,
+        Daemon::Remote(remote) => remote.request(message).await?,
+    };
+    match reply {
+        Reply::Ok => Ok(Value::Null),
+        _ => bail!("daemon returned an unexpected send now reply"),
+    }
+}
+
 pub async fn approve_conversation(
     id: u64,
     generation: u64,
@@ -2694,6 +2719,21 @@ mod agent_command_tests {
         ));
         assert!(daemon_reads(&drop, PROTOCOL_VERSION));
         assert!(!daemon_reads(&drop, DROP_QUEUED_SINCE - 1));
+    }
+
+    #[test]
+    fn sending_a_queued_chat_message_now_is_asked_only_of_a_daemon_that_reads_it() {
+        use super::{ClientMsg, Command, daemon_reads, refuse_unless_daemon_reads};
+        use maitty_shared::conversation::ConversationId;
+        use maitty_shared::protocol::{PROTOCOL_VERSION, SEND_NOW_SINCE};
+        let now = ClientMsg::Command(Command::ConversationSendNow {
+            id: ConversationId(3),
+            generation: 2,
+            operation: 5,
+        });
+        assert!(daemon_reads(&now, PROTOCOL_VERSION));
+        assert!(!daemon_reads(&now, SEND_NOW_SINCE - 1));
+        assert!(refuse_unless_daemon_reads(&now, SEND_NOW_SINCE - 1).is_err());
     }
 
     #[test]
