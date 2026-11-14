@@ -11,8 +11,10 @@ type Props = {
   onRemove: (id: number) => void
   /** Takes the message out of the queue and puts its words and files back in the message box. */
   onEdit: (id: number) => void
-  /** Sends a message into the turn that is running; absent where only the turn's end can take one. */
+  /** Sends a message into the turn that is running; absent while the agent asks something, or where the chat cannot send. */
   onSendNow?: ((id: number) => void) | undefined
+  /** The messages being sent now: their button waits for the daemon's answer. */
+  sendingNow?: ReadonlySet<number> | undefined
 }
 
 function fileCount(count: number): string {
@@ -26,7 +28,7 @@ function fileCount(count: number): string {
  * and Remove. A message's files show as the chips a sent message has, never as
  * the lines that name them to the agent.
  */
-export function QueuedMessages({ agent, queue, onRemove, onEdit, onSendNow }: Props) {
+export function QueuedMessages({ agent, queue, onRemove, onEdit, onSendNow, sendingNow }: Props) {
   const [spread, setSpread] = useState(false)
   const many = queue.length > 1
   // A stack that is down to one message starts closed the next time it grows.
@@ -51,8 +53,8 @@ export function QueuedMessages({ agent, queue, onRemove, onEdit, onSendNow }: Pr
               <span className="mx-queued-head">
                 <span className="mx-queued-place" title={sentWhen}>Queued{many && <span className="mx-queue-place">{`${String(index + 1)} of ${String(queue.length)}`}</span>}</span>
                 <span className="mx-spacer" />
-                {onSendNow !== undefined && message.id < 0 && (
-                  <button type="button" className="mx-queued-tool is-send" aria-label="Send now" title={`Send it to ${agent} now, without waiting for the turn to end`} onClick={() => { onSendNow(message.id) }}><Icon name="arrowUp" size={12} /></button>
+                {onSendNow !== undefined && (
+                  <button type="button" className="mx-queued-tool is-send" aria-label="Send now" disabled={sendingNow?.has(message.id) === true} title={`Send it to ${agent} now, without waiting for the turn to end`} onClick={() => { onSendNow(message.id) }}><Icon name="arrowUp" size={12} /></button>
                 )}
                 <button type="button" className="mx-queued-tool" aria-label="Edit" title="Take it back into the message box to change it" onClick={() => { onEdit(message.id) }}><Icon name="pencil" size={11} /></button>
                 <button type="button" className="mx-queued-tool" aria-label="Remove queued message" title="Remove" onClick={() => { onRemove(message.id) }}><Icon name="close" size={10} /></button>

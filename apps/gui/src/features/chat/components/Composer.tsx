@@ -104,7 +104,7 @@ const PERCENT = 100
  * while a request waits for an answer, or the daemon is offline, the box is off and says why.
  */
 export function Composer({ agent, composer, conversation, commandsFrom, question = null, facts, waiting = false, files }: Props) {
-  const { setDraft, attachments, attach, readOnly, queue, removeQueued, editQueued, sendQueuedNow, submit, stop, running, sending, disabledReason, error } = composer
+  const { setDraft, attachments, attach, readOnly, queue, removeQueued, editQueued, sendQueuedNow, sendingNow, submit, stop, running, sending, disabledReason, error } = composer
   const storedDraft = useComposerDraft(composer.conversationKey ?? NO_CONVERSATION)
   const restoreNote = useComposerSlice(composer.conversationKey ?? NO_CONVERSATION, (state) => state.note)
   const draft = composer.draft ?? storedDraft
@@ -235,7 +235,7 @@ export function Composer({ agent, composer, conversation, commandsFrom, question
   return (
     <div ref={box} className="mx-composer">
       <div className="mx-composer-column">
-        <QueuedMessages agent={agent} queue={queue} onRemove={removeQueued} onEdit={(id) => { editQueued(id); text.current?.focus() }} onSendNow={sendQueuedNow} />
+        <QueuedMessages agent={agent} queue={queue} onRemove={removeQueued} onEdit={(id) => { editQueued(id); text.current?.focus() }} onSendNow={sendQueuedNow} sendingNow={sendingNow} />
         {question}
         <div className={`mx-box${off ? ' is-locked' : ''}`}>
           {picking && (

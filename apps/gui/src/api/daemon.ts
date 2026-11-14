@@ -909,6 +909,19 @@ export async function dequeueMessage(conversation: Pick<Conversation, 'id' | 'ge
   })
 }
 
+/**
+ * Sends a message waiting in the daemon's queue now, without waiting for the turn to end. The daemon answers only once the
+ * message was taken; a refusal rejects with its reason and the message stays queued.
+ */
+export async function sendQueuedMessageNow(conversation: Pick<Conversation, 'id' | 'generation'>, operation: number): Promise<void> {
+  await invokeParsed('send_conversation_now', NullSchema, {
+    id: splitConversationKey(Number(conversation.id)).id,
+    ...machineArgOfKey(Number(conversation.id)),
+    generation: conversation.generation,
+    operation,
+  })
+}
+
 export async function approveRequest(conversation: Pick<Conversation, 'id' | 'generation'>, requestId: number | string, decision: 'Accept' | 'AcceptForSession' | 'Decline' | 'Cancel'): Promise<void> {
   await invokeParsed('approve_conversation', NullSchema, {
     id: splitConversationKey(Number(conversation.id)).id,
