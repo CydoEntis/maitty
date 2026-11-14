@@ -34,45 +34,31 @@
 .mx-pane-ring { position: absolute; inset: 0; z-index: 30; pointer-events: none; border-radius: var(--r14); box-shadow: inset 0 0 0 1.5px transparent; transition: box-shadow .15s; }
 .mx-pane.is-focused .mx-pane-ring { box-shadow: inset 0 0 0 1.5px var(--accent-line), 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
 
-.mx-pane-head { flex: none; height: calc(42px * var(--pad, 1)); display: flex; align-items: center; gap: 10px; padding: 0 8px 0 12px; cursor: default; }
+/* The pane header (desktop frame, section 4): the agent's tile and badge, the title, then the view tabs and controls. */
+.mx-pane-head { flex: none; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); cursor: default; }
 .mx-pane-head.is-draggable { cursor: grab; }
-.mx-pane-icon { position: relative; width: 26px; height: 26px; flex: none; }
-.mx-pane-icon .mx-app-icon.size-26 { width: 26px; height: 26px; border-radius: 8px; font-size: 11.5px; }
-.mx-pane-icon .mx-badge { right: -4px; bottom: -4px; width: 14px; height: 14px; border-radius: calc(4px * var(--rk)); font-size: 9px; font-weight: 800; line-height: 1; }
-.mx-pane-icon .mx-badge.is-working { background: var(--bg); overflow: hidden; color: var(--working); font-family: var(--mono); }
-.mx-pane-icon .mx-badge.is-working .mx-spin { font-size: 9px; line-height: 1; }
-.mx-pane-icon .mx-badge.is-unknown { width: 13px; height: 13px; background: var(--bg); border: 1.5px dashed var(--dim); box-shadow: none; }
-.mx-pane-title { flex: 1; min-width: 64px; display: flex; flex-direction: column; gap: 1px; white-space: nowrap; overflow: hidden; }
-.mx-pane-name { font-size: calc(15px * var(--tab-text, 1)); line-height: calc(19px * var(--tab-text, 1)); font-weight: 600; letter-spacing: -.01em; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
-.mx-pane-where { display: flex; align-items: center; gap: 8px; min-width: 0; line-height: 14px; }
-.mx-pane-cwd { font-size: 11px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
-.mx-pane-branch.is-worktree { color: var(--ansi-blue); }
-.mx-pane-branch { display: flex; align-items: center; gap: 4px; flex: none; font-family: var(--mono); font-size: 10.5px; color: var(--ansi-mag); }
+.mx-pane-icon { position: relative; width: 20px; height: 20px; flex: none; }
+.mx-pane-title { flex: 1; min-width: 64px; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; }
+.mx-pane-name { font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -.01em; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
 .mx-pane-pr { flex: none; font-family: var(--mono); font-size: 10.5px; color: var(--dim); }
 .mx-pane-pr.is-bad { color: var(--danger); }
 .mx-pane-pr.is-good { color: var(--ok); }
 .mx-pane-pr.is-waiting { color: var(--working); }
-.mx-pane-controls { display: flex; align-items: center; gap: 0; margin-left: auto; }
-.mx-pane-control { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--dim); transition: background-color .14s ease, color .14s ease; }
-.mx-pane-control:not(:disabled):hover { background: rgba(var(--hl), calc(.09 * var(--hk))); color: var(--fg); }
+.mx-pane-controls { display: flex; align-items: center; gap: 2px; margin-left: auto; height: 100%; }
+.mx-pane-control { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: var(--r-control); color: var(--dim); transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.mx-pane-control:not(:disabled):hover { background: var(--m-hover); color: var(--fg); }
 .mx-pane-control.is-close:not(:disabled):hover { background: var(--danger-soft); color: var(--danger); }
 .mx-pane-control:disabled { opacity: .3; }
-.mx-pane-control.is-armed { background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-line); color: var(--danger); }
 
-/* The Chat · Terminal · Work switch: words in a sunken tray, the chosen one raised. */
-.mx-view-switch {
-  display: flex; height: 28px; flex: none; align-items: center; gap: 2px; margin-right: 4px; padding: 2px;
-  border: 1px solid var(--line); border-radius: var(--r-control); background: var(--m-well);
-}
-.mx-view-option { display: inline-flex; height: 22px; align-items: center; gap: 5px; padding: 0 8px; border-radius: calc(var(--r-control) - 2px); font-size: 12px; font-weight: 500; color: var(--muted); transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+/* The view tabs: plain words the height of the header, the chosen one underlined in the accent. */
+.mx-view-switch { display: flex; align-items: stretch; gap: 16px; height: 100%; margin-right: 10px; flex: none; }
+.mx-view-option { display: flex; align-items: center; padding: 0 1px; font-size: 12.5px; font-weight: 500; color: var(--dim); transition: color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
 .mx-view-option:hover { color: var(--fg); }
-.mx-view-option[aria-checked="true"] { background: var(--m-raise); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line2); }
-.mx-view-option:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--focus); }
+.mx-view-option[aria-checked="true"] { color: var(--fg); box-shadow: inset 0 -2px 0 var(--accent); }
+.mx-view-option:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.mx-view-option { gap: 5px; }
 .mx-view-count { font-family: var(--mono); font-size: 10.5px; font-weight: 600; color: var(--dim); font-variant-numeric: tabular-nums; }
 .mx-view-needs { width: 7px; height: 7px; border-radius: 2px; background: var(--needs); }
-.mx-pane-control.is-on { color: var(--fg); background: rgba(var(--hl), calc(.09 * var(--hk))); }
-.mx-pane-panel { position: relative; }
-.mx-pane-dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--done); box-shadow: 0 0 0 1.5px var(--m-pane); }
 
 .mx-pane-body { position: relative; flex: 1; min-height: 0; padding: 4px 10px 6px; font-family: var(--mono); line-height: 1.6; cursor: text; display: flex; }
 .mx-pane-body > * { flex: 1; min-width: 0; min-height: 0; }

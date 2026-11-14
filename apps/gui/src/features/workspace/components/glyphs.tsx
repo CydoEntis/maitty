@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { SquareCheck, SquareExclamationPoint, SquarePause, TreePine } from 'lucide-react'
+import { TreePine } from 'lucide-react'
 import { attachSpinner, currentGlyph, isWebSpinner, isWideSpinner, spinnerFrames, useSpinnerStyle } from '@/lib/spinner-clock'
 import { WebSpinner } from '@/components/WebSpinner'
 import { SHELL_PROCESS, type SessionStatus } from '../model/session'
@@ -58,6 +58,10 @@ const ICON_DRAWINGS = {
   chart: ({ size = 14 }: IconProps) => <Svg size={size} strokeWidth={1.8}><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></Svg>,
   splitRight: () => <Svg size={16} strokeWidth={1.6}><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><path d="M12 4.5v15" /></Svg>,
   splitDown: () => <Svg size={16} strokeWidth={1.6}><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><path d="M3 12h18" /></Svg>,
+  panelLeft: () => <Svg size={15} strokeWidth={1.7}><rect x="3" y="4.5" width="18" height="15" rx="1" /><path d="M9 4.5v15" /></Svg>,
+  panelBottom: () => <Svg size={15} strokeWidth={1.7}><rect x="3" y="4.5" width="18" height="15" rx="1" /><path d="M3 14.5h18" /></Svg>,
+  panelRight: () => <Svg size={15} strokeWidth={1.7}><rect x="3" y="4.5" width="18" height="15" rx="1" /><path d="M15 4.5v15" /></Svg>,
+  filter: () => <Svg size={15} strokeWidth={1.9}><path d="M4 6h16M7 12h10M10 18h4" /></Svg>,
   sidePanel: () => <Svg size={16} strokeWidth={1.6}><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><path d="M14.5 4.5v15" /></Svg>,
   drawer: () => <Svg size={16} strokeWidth={1.6}><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><path d="M3 14.5h18" /></Svg>,
   maximize: () => <Svg size={15} strokeWidth={1.8}><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></Svg>,
@@ -122,41 +126,41 @@ const ICONS: Record<string, IconKind> = {
 }
 const SHELL_ICON: IconKind = { kind: 'shell', glyph: '>_' }
 
-type IconSize = 14 | 18 | 20 | 22 | 24 | 26 | 28 | 32
+type IconSize = 14 | 16 | 18 | 20 | 22 | 24 | 26 | 28 | 32
 
-export function AppIcon({ process, size, dimmed = false }: { process: string; size: IconSize; dimmed?: boolean }) {
+/**
+ * An agent's or program's tile. `flat` is the frame's tile (sidebar rows, the pane header): the mark in its own colour
+ * on the raised surface with a hairline, instead of the mark on its brand gradient.
+ */
+export function AppIcon({ process, size, dimmed = false, flat = false }: { process: string; size: IconSize; dimmed?: boolean; flat?: boolean }) {
   const program = process.split(/\s+/)[0] ?? ''
   const icon = ICONS[program] ?? (program === SHELL_PROCESS || program === '' ? SHELL_ICON : null)
-  const className = `mx-app-icon size-${String(size)}${dimmed ? ' is-dimmed' : ''}`
+  const className = `mx-app-icon size-${String(size)}${dimmed ? ' is-dimmed' : ''}${flat ? ' is-flat' : ''}`
   if (icon) return <span className={`${className} is-${icon.kind}`} aria-hidden="true">{icon.glyph}</span>
   // Any other agent or program: its first letter on a colour taken from its name, so each stays recognisable.
   return <span className={`${className} is-tinted`} style={programStyle(program)} aria-hidden="true">{program.charAt(0).toUpperCase()}</span>
 }
 
-/** Heavier than Lucide's default, so the mark inside the square still reads at a badge's 12px. */
-const BADGE_STROKE = 2.4
-
-/** The badge on a sidebar row's icon: a shape per status, so colour is never the only signal. */
+/**
+ * The 9px badge on an agent's tile: a square per status with its own glyph, so colour is never the only signal (needs
+ * you `!` on the needs colour, done `✓`, failed `×`, held by the plan limit `‖`, working the spinner Settings picked).
+ * An idle session has none; its tile dims instead.
+ */
 export function StatusBadge({ status }: { status: SessionStatus }) {
   switch (status) {
     case 'working':
-      // The spinner Settings picked, in the working colour on the tile's own background.
-      return <span className="mx-badge is-working"><Spinner className="" /></span>
+      return <span className="mx-badge is-working" aria-hidden="true"><Spinner className="" /></span>
     case 'needs':
-      return <span className="mx-badge is-needs" aria-hidden="true"><SquareExclamationPoint strokeWidth={BADGE_STROKE} /></span>
+      return <span className="mx-badge is-needs" aria-hidden="true">!</span>
     case 'limited':
-      return <span className="mx-badge is-limited" aria-hidden="true"><SquarePause strokeWidth={BADGE_STROKE} /></span>
+      return <span className="mx-badge is-limited" aria-hidden="true">‖</span>
     case 'done':
-      return <span className="mx-badge is-done" aria-hidden="true"><SquareCheck strokeWidth={BADGE_STROKE} /></span>
+      return <span className="mx-badge is-done" aria-hidden="true">✓</span>
     case 'error':
-      return <span className="mx-badge is-error" aria-hidden="true"><SquareExclamationPoint strokeWidth={BADGE_STROKE} /></span>
+      return <span className="mx-badge is-error" aria-hidden="true">×</span>
     case 'unknown':
-      return <span className="mx-badge is-unknown" />
+      return <span className="mx-badge is-unknown" aria-hidden="true" />
     case 'idle':
-      return (
-        <span className="mx-badge is-idle" aria-hidden="true">
-          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1.6 5.2h4.4l-4.4 5.2h4.4" /><path d="M7.4 1.4h3l-3 3.6h3" /></svg>
-        </span>
-      )
+      return null
   }
 }
