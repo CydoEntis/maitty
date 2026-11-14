@@ -34,7 +34,7 @@ export function UserInputForm({ questions, busy, onSubmit }: Props) {
 
   return (
     <form
-      className="mt-2.5 grid gap-3"
+      className="mx-waiting-form"
       onSubmit={(event) => {
         event.preventDefault()
         if (!ready || busy) return
@@ -45,18 +45,23 @@ export function UserInputForm({ questions, busy, onSubmit }: Props) {
         const choice = choices[question.id]
         const writes = question.options.length === 0 || question.isOther
         return (
-          <fieldset key={question.id} className="m-0 grid gap-1.5 border-0 p-0">
-            <legend className="p-0 text-[12.5px] font-semibold text-fg">{question.header !== '' ? `${question.header}: ` : ''}{question.question}</legend>
+          <fieldset key={question.id} className="mx-waiting-question">
+            <legend>{question.header !== '' ? `${question.header}: ` : ''}{question.question}</legend>
             {question.options.map((option) => (
-              <label key={option.label} className="mx-choice">
+              <label key={option.label} className={`mx-option${choice === option.label ? ' is-picked' : ''}`}>
                 <input
                   type="radio"
+                  className="sr-only"
                   name={`${name}-${question.id}`}
                   checked={choice === option.label}
                   disabled={busy}
                   onChange={() => { setChoices((current) => ({ ...current, [question.id]: option.label })) }}
                 />
-                <span>{option.label}{option.description !== '' && <span className="text-dim"> &mdash; {option.description}</span>}</span>
+                <span className="mx-option-mark" aria-hidden="true" />
+                <span className="mx-option-text">
+                  <span>{option.label}</span>
+                  {option.description !== '' && <span className="mx-option-about"> &mdash; {option.description}</span>}
+                </span>
               </label>
             ))}
             {writes && (
@@ -68,7 +73,7 @@ export function UserInputForm({ questions, busy, onSubmit }: Props) {
                 placeholder={question.options.length === 0 ? 'Your answer' : 'Or write your own'}
                 value={notes[question.id] ?? ''}
                 disabled={busy}
-                className="w-full rounded-lg border border-line2 bg-[var(--well)] px-2.5 py-1.5 text-[12.5px] text-fg outline-none focus-visible:border-[var(--accent)]"
+                className="mx-waiting-input"
                 onChange={(event) => {
                   setNotes((current) => ({ ...current, [question.id]: event.target.value }))
                   // Writing an answer replaces an option that was picked.
@@ -79,8 +84,9 @@ export function UserInputForm({ questions, busy, onSubmit }: Props) {
           </fieldset>
         )
       })}
-      <div>
-        <Button type="submit" size="sm" disabled={!ready || busy}>Send answer</Button>
+      <div className="mx-waiting-foot is-form">
+        <span className="mx-spacer" />
+        <Button type="submit" variant="needs" keyHint="⏎" disabled={!ready || busy}>Send answer</Button>
       </div>
     </form>
   )

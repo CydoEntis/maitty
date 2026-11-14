@@ -3,10 +3,11 @@ import type { DiffLine } from '@/features/chat/chatEvents'
 import { AgentsCard } from '@/features/chat/components/AgentsCard'
 import { Markdown } from '@/features/chat/components/Markdown'
 import { PlanCard } from '@/features/chat/components/PlanCard'
+import { ApprovalTray, PromptTray } from '@/features/chat/components/QuestionTray'
 import { CommandStep, EditStep } from '@/features/chat/components/StepCards'
 import { ThoughtRow } from '@/features/chat/components/ThoughtRow'
 import { WorkCard } from '@/features/chat/components/WorkCard'
-import { commandEvent, editEvent, subagentEvent, todoEvent, toolEvent } from '@/features/chat/eventFixtures'
+import { approvalEvent, commandEvent, editEvent, subagentEvent, todoEvent, toolEvent } from '@/features/chat/eventFixtures'
 
 /*
  * The chat's cards on made-up steps, so the feed can be checked against the design without an agent running. The
@@ -46,6 +47,26 @@ const TOOK_MS = 4_200
 /** When the gallery opened, so a running helper's clock starts near zero. */
 const OPENED_MS = Date.now()
 const started = (ms: number) => ({ startedAtMs: ms, completedAtMs: ms + TOOK_MS })
+
+const IDLE = () => Promise.resolve()
+const ACTIONS = { answer: () => undefined, answerInput: () => undefined, remember: () => undefined, busy: false }
+const PLAN = { text: '#### Partial refunds\n1. Subtract earlier refunds in `refundable()`.\n2. Add `POST /orders/:id/refunds`.\n3. Test the limits.', cut: false }
+
+/** The waiting cards over a stand-in for the message box, one of each kind. */
+export function WaitingCards() {
+  const box = <div className="border border-(--line2) bg-(--card) px-3.5 pt-3 pb-8 text-sm text-(--dim)">Message claude</div>
+  return (
+    <div className="mx-chat" style={{ zoom: 1 }}>
+      <div className="mx-chat-column">
+        <div><ApprovalTray event={approvalEvent('r1', { command: 'pnpm db:migrate --env staging', canRemember: true })} actions={ACTIONS} agent="Claude" />{box}</div>
+        <div><ApprovalTray event={approvalEvent('r2', { approvalKind: 'FileChange', command: null, changes: ['src/refunds/partial.ts', 'src/api/refunds.ts', 'docs/refunds.md'].map((path) => ({ path, kind: 'update', diff: { status: 'unavailable' as const } })) })} actions={ACTIONS} agent="Codex" />{box}</div>
+        <div><PromptTray agent="claude" online ask={{ tool: 'ExitPlanMode', detail: '', answerable: true }} answer={IDLE} plan={PLAN} />{box}</div>
+        <div><PromptTray agent="claude" online ask={{ tool: 'AskUserQuestion', detail: 'Which database should refunds use?', answerable: false, choices: ['Postgres', 'SQLite', 'Keep the current one'] }} answer={IDLE} pick={IDLE} />{box}</div>
+        <div><PromptTray agent="claude" online ask={{ tool: 'AskUserQuestion', detail: '', answerable: false, choices: [], questions: [{ question: 'Which database?', choices: ['Postgres', 'SQLite'] }, { question: 'Which language?', choices: ['Rust', 'Go'] }] }} answer={IDLE} pickAll={IDLE} />{box}</div>
+      </div>
+    </div>
+  )
+}
 
 export function ChatFeed() {
   const run = [

@@ -39,8 +39,12 @@ const buttonVariants = cva(
 )
 
 /** The key that presses a button while its card is shown, drawn after the label. */
+/** The names `aria-keyshortcuts` takes for the keys a keycap draws as a symbol. */
+const KEY_NAME: Readonly<Record<string, string>> = { "⏎": "Enter", "↑": "ArrowUp", "↓": "ArrowDown", "Esc": "Escape" }
+
 function KeyHint({ children }: { children: React.ReactNode }) {
-  return <kbd className="rounded-(--r-badge) border border-current px-[5px] py-px font-(family-name:--mono) text-[10.5px] font-medium opacity-70">{children}</kbd>
+  // The keycap is for the eye; the button's name stays its words, and `aria-keyshortcuts` names the key.
+  return <kbd aria-hidden="true" className="rounded-(--r-badge) border border-current px-[5px] py-px font-(family-name:--mono) text-[10.5px] font-medium opacity-70">{children}</kbd>
 }
 
 function Button({
@@ -65,6 +69,7 @@ function Button({
       data-variant={variant}
       data-size={size}
       className={cn(buttonVariants({ variant, size, className }))}
+      aria-keyshortcuts={keyHint === undefined ? undefined : KEY_NAME[keyHint] ?? keyHint}
       {...props}
     >
       {asChild || keyHint === undefined ? children : <>{children}<KeyHint>{keyHint}</KeyHint></>}

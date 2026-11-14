@@ -165,7 +165,7 @@ describe('a chat session in the desktop window', () => {
     const chat = await screen.findByRole('region', { name: 'Chat' })
 
     const card = await within(chat).findByRole('region', { name: /Approval/ })
-    await user.click(within(card).getByRole('button', { name: /^Yes, once/ }))
+    await user.click(within(card).getByRole('button', { name: /^Yes once/ }))
     expect(daemon.approveRequest).toHaveBeenCalledWith({ id: '44', generation: 1 }, 'r-1', 'Accept')
     expect(daemon.sendTerminalInput).not.toHaveBeenCalled()
   })

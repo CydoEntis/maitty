@@ -964,10 +964,12 @@ On another machine Ctrl+Enter is a plain start. Esc closes the page.
 When an agent stops to ask you something, its session needs you and the chat shows a card over the
 message box. The message box is off, and says why, until you have answered.
 
-- **Wants to run a command** (or "Wants to use <tool>"). For Claude the card has **Yes, once** and
+- **Wants to run a command** (or "Wants to use <tool>"). For Claude the card has **Yes once** and
   **No**, and the keys `y` and `n` do the same from anywhere in the chat except a text field. They
   type Claude's own answer into its terminal.
-- **A question Claude asks.** Each choice is a button. A prompt with several questions (up to 4, each
+- **A plan Claude wants to start on** (in plan mode). The card shows the plan, formatted, with
+  **Approve** (`y`), which picks the first choice of Claude's plan menu, and **Keep planning** (`n`).
+- **A question Claude asks.** Each choice is a button, and its number key picks it. A prompt with several questions (up to 4, each
   with 2 to 4 choices) shows each one with its choices and one **Send answers** button, which stays
   off until every question has an answer. Nothing is typed to the agent before then, so you can still
   change an answer. A question beyond those limits, or "Type something", is answered in the terminal.
@@ -977,7 +979,7 @@ message box. The message box is off, and says why, until you have answered.
   the way you would. For a session on another machine the screen cannot be read: the card says the
   question is in the terminal and keeps the keys.
 
-A chat that Maitty's background service runs (see [Worktrees](#worktrees)) shows **Yes, once**,
+A chat that Maitty's background service runs (see [Worktrees](#worktrees)) shows **Yes once**,
 **This session** and **No** instead, with **Always in this project** for a command.
 
 ### Queue and Send now
@@ -1084,7 +1086,7 @@ The same dialog has a **Session** choice: **Terminal** (the default, as above) o
 session is Claude or Codex run by Maitty's background service instead of in a terminal, so the chat
 has a message box that works: Enter sends, Stop interrupts, a message sent while the agent is busy
 waits in a queue (with Remove), and each permission the agent asks for appears in the chat with
-**Yes, once (y)**, **This session (a)** and **No (n)**; a command also has **Always in this project**,
+**Yes once (y)**, **This session (a)** and **No (n)**; a command also has **Always in this project**,
 which approves that exact command (written the same) in that project from then on. Those are kept
 in `chat-allowed-commands.json` in Maitty's data folder, never in the repo. Settings → Agents lists
 them with a **Forget** for each, which takes effect at once (a second service running on the same

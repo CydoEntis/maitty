@@ -598,12 +598,21 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   when it edited files, the changed-files card (a head-only card: icon, "N changed files", +A −R, **Review**). card. The working line is the spinner and "claude is working · m:ss". Problems with the history (offline, incomplete, a provider error) and Full access show in one
   slim strip above the list. **A subagent's chat** replaces the list with a bar ("Subagent · name · time", **Back to
   main session**), then what it was asked, what it is doing while it works and its report once done.
-- **Message box** (`features/chat/components/Composer.tsx`), in three layers. **1. The question tray**, only while the
-  agent asks: a slightly narrower tray rising from behind the box (`mxRise`, 0.28s). A request is tinted amber: "Needs
-  you" and "Wants to run a command", the command in a sunken mono box, and **Yes, once** `y` (filled with the accent),
-  **This session** `a`, **No** `n`, and for a command request **Always in this project** (the daemon then approves that exact command in that project without asking; see ADR 0005). Settings → Agents lists these under "Commands approved for a project" (`ApprovedCommands.tsx`), each with **Forget**. A question the agent asks is tinted with the accent instead, its choices as rows
-  that light up when picked. y, a and n answer from anywhere in the chat but a field. Answering removes it, the box
-  unlocks and the agent is working again (its row and the badge follow the daemon). **2. The box**: glass
+- **Message box** (`features/chat/components/Composer.tsx`), in three layers. **1. The waiting card** (`WaitingCard`), only while the
+  agent waits on you, one at a time and the oldest first: a card 24px narrower than the box, open at its bottom so it
+  rises out of the box's top (10px over 0.2s; it simply appears with motion reduced), with the needs edge. Its head is the needs
+  mark and what is asked ("Wants to run a command", "Approve this plan?", "claude has a question for you") with the
+  agent or "Plan mode" quiet at the right; its body the command on `--well`, the files as badges, the plan formatted
+  as a reply, the question's choices as boxes with their number keys (the picked one on a 9% needs tint and the needs
+  edge) or the agent's own menu in mono with its selected line tinted; its foot the answers: **Yes once** `y` in the
+  needs colour, **This session** `a` and **No** `n` soft, and for a command request **Always in this project** as a
+  ghost at the right (the daemon then approves that exact command in that project without asking; see ADR 0005).
+  Settings → Agents lists these under "Commands approved for a project" (`ApprovedCommands.tsx`), each with **Forget**.
+  A plan has **Approve** `y` and **Keep planning** `n`; a form **Send answer(s)** `⏎`; a menu its keys. y, a and n
+  answer from anywhere in the chat but a field, a choice's number picks it, and Enter on the card gives its main
+  answer. Answering removes it, the box unlocks and the agent is working again (its row and the badge follow the
+  daemon); the request then folds into one line in the feed (a hairline row: its mark, "Allowed for this session",
+  and **Go to step ↑**). **2. The box**: glass
   (`--main` under `rgba(--hl,.075)` to `.035`, a `rgba(--hl,.12)` border, radius 16), a two-line text box on top, **+**
   (attach) at the left, and at the right the model picker ("Claude Sonnet 5.5 · Medium ▾": the agent's mark, the model
   picked or the one its own file says, the effort) and the round 32px send button, teal when it can send and grey while
