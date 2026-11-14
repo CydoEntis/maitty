@@ -9,10 +9,7 @@ import { CodeChip } from '@/components/ui/tag'
 import { HighlightedLine } from '@/components/HighlightedLine'
 import { fileTag } from '@/features/inspect/fileTag'
 import { extensionForLanguage } from '@/lib/highlight'
-import { toast } from '@/lib/toast'
-import { copyText } from '@/lib/clipboard'
-import { errorMessage } from '@/lib/error-message'
-import { isDesktop, openLink } from '@/api/daemon'
+import { followLink } from '../followLink'
 import { parseMarkdown, parseInline, type Block, type Inline, type TableAlign } from '../markdown'
 import { codeExtension, tableCsv, tableHtml, tableMarkdown } from '../exportBlock'
 import { OpenFileContext } from '../openFile'
@@ -25,24 +22,6 @@ import { FileBadge } from './cardParts'
  * opens it in the person's own browser, through the host; outside the desktop app, where there is
  * no host to ask, it copies the address.
  */
-
-function copyLink(href: string): void {
-  copyText(href).then(
-    () => { toast.message('Link copied') },
-    () => { toast.error('Could not copy the link') },
-  )
-}
-
-function followLink(href: string): void {
-  if (!isDesktop()) {
-    copyLink(href)
-    return
-  }
-  openLink(href).then(
-    () => { toast.message('Opened in your browser', { action: { label: 'Copy link', onClick: () => { copyLink(href) } } }) },
-    (error: unknown) => { toast.error(errorMessage(error, 'Could not open the link'), { action: { label: 'Copy link', onClick: () => { copyLink(href) } } }) },
-  )
-}
 
 // A path with a file name whose type is known, and a line number after it or not: `src/tax.js`, `src/tax.js:42`.
 const FILE_NAME = /^((?:[\w@.-]+[\\/])*[\w@.-]+\.[A-Za-z0-9]+)(?::(\d+))?$/

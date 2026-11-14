@@ -26,6 +26,7 @@ import { moveRefusal } from '../model/moveToWorktree'
 import { guardLocal } from '@/lib/localOnly'
 import type { RewindPlace } from '@/features/chat/editFromHere'
 import { fileSearchOf } from '@/features/chat/fileMention'
+import { WorkBoard } from '@/features/work/components/WorkBoard'
 
 /** Whether a session can show a chat at all: an agent the app reads. A shell or another program has none, so it gets no switch. */
 function hasChat(availability: ReturnType<typeof chatAvailability>): boolean {
@@ -56,9 +57,15 @@ export function WorkspacePane({ shown, pane, kept }: {
   // Every subagent the session reported, not only those the sidebar lists, so a workflow step can open a finished one.
   const helpers = (session.conversation.details?.subagents ?? []).map(toSubagentView)
   const opened = openSubagent?.sessionId === session.id ? openSubagent : null
-  const subagent = opened?.subagentId === undefined ? undefined : helpers.find((child) => child.id === opened.subagentId)
-  const runView = opened?.runKey === undefined ? undefined : session.workflows.find((one) => one.key === opened.runKey)
-  const run = runView === undefined ? null : { view: runView, helpers, onOpenHelper: (id: string) => { setOpenSubagent({ sessionId: session.id, subagentId: id }) } }
+  const subagent = opened === null ? undefined : helpers.find((child) => child.id === opened.subagentId)
+  const workOpen = session.workflows.length > 0 && paneViews.work.has(session.id)
+  const work = session.workflows.length === 0 ? undefined : {
+    going: session.workflows.filter((run) => run.active).length,
+    needsYou: session.workflows.some((run) => run.active && run.needsYou),
+    open: workOpen,
+    onOpen: () => { paneViews.showWork(session.id) },
+    board: <WorkBoard runs={session.workflows} helpers={helpers} onOpenHelper={(id) => { showSubagent(session.id, id) }} />,
+  }
   const typeInto = chatOnly ? undefined : (text: string) => sendTerminalInput({ id: session.id, generation: session.conversation.generation ?? 0 }, text)
   // A pane's daemon holds what is sent while its agent works; a chat session's own daemon queue is its conversation's.
   const paneQueue = chatOnly ? undefined : {
@@ -107,7 +114,8 @@ export function WorkspacePane({ shown, pane, kept }: {
       dropWord={dragId === null ? 'Drop to show it here' : 'Drop to swap'}
       view={chat.view}
       {...(chatOnly || !hasChat(chat.availability) ? {} : { onViewChange: (view: PaneView) => { if (view === 'terminal') showTerminal(); else paneViews.choose(session.id, view) } })}
-      chat={chat.view === 'chat' && !kept ? (
+      {...(work === undefined ? {} : { work })}
+      chat={chat.view === 'chat' && !kept && !workOpen ? (
         <ChatPane
           availability={chat.availability}
           hasTerminal={!chatOnly}
@@ -132,7 +140,6 @@ export function WorkspacePane({ shown, pane, kept }: {
           folder={folderNameOf(session)}
           branch={session.branch}
           subagent={subagent ?? null}
-          run={run}
           onBackToMain={() => { setOpenSubagent(null) }}
           onOpenFiles={() => { togglePanel(pane.id, session.id, 'files') }}
           onBackToTerminal={showTerminal}
@@ -145,7 +152,7 @@ export function WorkspacePane({ shown, pane, kept }: {
           onStartChat={(agent, fullAccess) => { startChatHere(session, agent, fullAccess) }}
         />
       ) : undefined}
-      overlay={kept ? undefined : <RunningSubagents subagents={session.subagents} onOpen={(id) => { showSubagent(session.id, id) }} />}
+      overlay={kept || workOpen ? undefined : <RunningSubagents subagents={session.subagents} onOpen={(id) => { showSubagent(session.id, id) }} />}
       panelOpen={inspectOpen && focused}
       {...(hasPanel ? { onPanel: () => { togglePanel(pane.id, session.id) } } : {})}
       changed={{ added: session.diffAdded, removed: session.diffRemoved }}
@@ -165,8 +172,8 @@ export function WorkspacePane({ shown, pane, kept }: {
           label={`Shell in ${session.cwdLabel}`}
           inputDisabled={!online}
           ended={session.ended}
-          focused={focused && !modalOpen && chat.view === 'terminal'}
-          paused={kept || chat.view === 'chat'}
+          focused={focused && !modalOpen && chat.view === 'terminal' && !workOpen}
+          paused={kept || chat.view === 'chat' || workOpen}
           onInput={(data) => { mirrorInput(session.id, data) }}
           onOpenPath={(path, line) => { openPath(session, path, line) }}
           onPasteImage={(image) => { pasteImage(session.id, image) }}

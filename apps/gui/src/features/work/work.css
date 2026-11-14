@@ -1,0 +1,72 @@
+/* The Work tab (`WorkBoard`, `RunDrawer`): a session's workflow runs as a board, over the terminal like the chat. */
+.mx-board { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; min-width: 0; background: var(--bg); color: var(--fg); }
+.mx-board-bar { display: flex; min-height: 40px; flex: none; align-items: center; gap: 8px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.mx-board-needs { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--needs); }
+.mx-board-needs::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: var(--needs); }
+.mx-board-fold { display: inline-flex; align-items: center; gap: 4px; }
+.mx-board-empty { margin: 24px 16px; font-size: 13px; color: var(--dim); }
+
+/* One equal column per step, at least 230px, as tall as the pane; a board wider than the pane scrolls sideways. */
+.mx-board-columns { display: grid; flex: 1; min-height: 0; grid-template-columns: repeat(var(--work-columns, 1), minmax(230px, 1fr)); gap: 10px; padding: 12px 16px 16px; overflow-x: auto; overflow-y: hidden; }
+.mx-board-column { display: flex; min-width: 0; min-height: 0; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--m-well); }
+.mx-board-column-head { display: flex; min-height: 34px; flex: none; align-items: center; gap: 8px; padding: 0 10px 0 12px; border-bottom: 1px solid var(--line); }
+.mx-board-column-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; color: var(--fg2); }
+.mx-board-tickets { list-style: none; margin: 0; padding: 8px; display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 8px; overflow-y: auto; }
+
+.mx-board-card { display: flex; width: 100%; flex-direction: column; gap: 7px; padding: 9px 10px 10px; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--card); text-align: left; outline: none; transition: border-color var(--t-fast) var(--ease); }
+.mx-board-card:hover, .mx-board-card.is-open { border-color: var(--line2); }
+.mx-board-card:focus-visible { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus); }
+.mx-board-card.is-needs_you { border-color: var(--needs); }
+.mx-board-card.is-over { opacity: .72; }
+.mx-board-card-head { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.mx-board-card-key { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: var(--fg2); }
+.mx-board-card-title { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 13px; font-weight: 500; line-height: 1.4; color: var(--fg); overflow-wrap: anywhere; }
+.mx-board-card-foot { display: flex; min-width: 0; flex-direction: column; gap: 2px; font-size: 11.5px; }
+.mx-board-card-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.mx-board-card-helper { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11px; color: var(--dim); }
+
+/* A run's progress: one segment per step, in its state's colour; waiting and skipped stay on the well. */
+.mx-board-segments { display: flex; gap: 3px; }
+.mx-board-segment { height: 4px; flex: 1; border-radius: 1px; background: var(--line2); }
+.mx-board-segment.is-passed { background: var(--done); }
+.mx-board-segment.is-working, .mx-board-segment.is-sent_back { background: var(--working); }
+.mx-board-segment.is-needs_you { background: var(--needs); }
+.mx-board-segment.is-failed { background: var(--err); }
+
+/* The marks StatusMark lacks: sent back, skipped and a state added later. */
+.mx-board-glyph { display: inline-flex; width: 14px; height: 14px; flex: none; align-items: center; justify-content: center; font-family: var(--mono); font-size: 12px; font-weight: 700; line-height: 1; color: var(--muted); }
+.mx-board-glyph.is-sent_back { color: var(--working); }
+
+/* The run's drawer at the right, over the dimmed board. */
+.mx-board-dim { position: absolute; inset: 0; z-index: 3; background: color-mix(in oklab, var(--bg) 55%, transparent); }
+.mx-board-drawer { position: absolute; top: 0; right: 0; bottom: 0; z-index: 4; display: flex; width: min(480px, 60%); flex-direction: column; border-left: 1px solid var(--line2); background: var(--card); box-shadow: var(--sh-pop); animation: mx-board-in var(--t-base) var(--ease); }
+@keyframes mx-board-in { from { transform: translateX(16px); opacity: 0; } }
+.mx-board-drawer-head { display: flex; min-height: 40px; flex: none; align-items: center; gap: 4px; padding: 0 6px 0 16px; border-bottom: 1px solid var(--line); }
+.mx-board-crumbs { display: flex; min-width: 0; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.mx-board-crumbs strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; color: var(--fg); }
+.mx-board-drawer-title { margin: 14px 16px 4px; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--fg); overflow-wrap: anywhere; }
+.mx-board-steps { list-style: none; margin: 0; padding: 8px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+.mx-board-step { display: flex; min-width: 0; align-items: flex-start; gap: 10px; padding: 8px; border-radius: var(--r-control); }
+.mx-board-step[aria-current='step'] { background: var(--m-sel); }
+.mx-board-step.is-needs_you { background: color-mix(in oklab, var(--needs) 9%, transparent); box-shadow: inset 2px 0 0 var(--needs); }
+.mx-board-step-text { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+.mx-board-step-line { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+.mx-board-step-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--fg); }
+.mx-board-step-word { flex: none; font-size: 12px; color: var(--muted); }
+.mx-board-step.is-needs_you .mx-board-step-word { color: var(--needs); font-weight: 600; }
+.mx-board-step.is-failed .mx-board-step-word { color: var(--err); }
+.mx-board-step-note { font-size: 12px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.mx-board-helper { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 6px; border-radius: var(--r-badge); font-family: var(--mono); font-size: 11px; color: var(--link); outline: none; }
+.mx-board-helper:hover { background: var(--m-hover); }
+.mx-board-helper:focus-visible { box-shadow: 0 0 0 2px var(--focus); }
+
+/* A helper label's read-only card. */
+.mx-board-helper-card { display: flex; width: 300px; flex-direction: column; gap: 6px; padding: 12px; }
+.mx-board-helper-card p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--fg2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.mx-board-helper-label { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+.mx-board-helper-name { font-size: 13px; font-weight: 600; color: var(--fg); }
+.mx-board-helper-kind, .mx-board-helper-word { margin-left: 7px; font-size: 11.5px; font-weight: 400; color: var(--dim); }
+.mx-board-helper-head { font-size: 11px; font-weight: 600; color: var(--dim); }
+.mx-board-helper-quiet { color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) { .mx-board-drawer { animation: none; } .mx-board-card { transition: none; } }

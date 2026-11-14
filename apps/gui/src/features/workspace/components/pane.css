@@ -59,22 +59,17 @@
 .mx-pane-control:disabled { opacity: .3; }
 .mx-pane-control.is-armed { background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-line); color: var(--danger); }
 
-/* The terminal | chat switch sits in a dark, sunken tray. */
+/* The Chat · Terminal · Work switch: words in a sunken tray, the chosen one raised. */
 .mx-view-switch {
-  position: relative; height: 30px; padding: 2px; border-radius: 9px; flex: none;
-  background: rgba(var(--sd), calc(.3 * var(--sk))); border: 1px solid rgba(var(--hl), calc(.1 * var(--hk)));
+  display: flex; height: 28px; flex: none; align-items: center; gap: 2px; margin-right: 4px; padding: 2px;
+  border: 1px solid var(--line); border-radius: var(--r-control); background: var(--m-well);
 }
-.mx-view-switch { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 2px; }
-.mx-view-thumb {
-  pointer-events: none; position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 3px); border-radius: 7px;
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.12 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.06 * var(--hk) * var(--gk))));
-  box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.14 * var(--hk) * var(--gk))), 0 1px 3px rgba(var(--sd), calc(.4 * var(--sk) * var(--gk)));
-  transition: transform .32s cubic-bezier(.2, .8, .2, 1);
-}
-.mx-view-switch.is-chat .mx-view-thumb { transform: translateX(calc(100% + 2px)); }
-.mx-view-option { position: relative; z-index: 1; display: flex; height: 24px; width: 30px; align-items: center; justify-content: center; border-radius: 7px; color: var(--muted); }
-.mx-view-option[aria-checked="true"] { color: var(--fg); }
-.mx-view-switch { margin-right: 4px; }
+.mx-view-option { display: inline-flex; height: 22px; align-items: center; gap: 5px; padding: 0 8px; border-radius: calc(var(--r-control) - 2px); font-size: 12px; font-weight: 500; color: var(--muted); transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.mx-view-option:hover { color: var(--fg); }
+.mx-view-option[aria-checked="true"] { background: var(--m-raise); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line2); }
+.mx-view-option:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--focus); }
+.mx-view-count { font-family: var(--mono); font-size: 10.5px; font-weight: 600; color: var(--dim); font-variant-numeric: tabular-nums; }
+.mx-view-needs { width: 7px; height: 7px; border-radius: 2px; background: var(--needs); }
 .mx-pane-control.is-on { color: var(--fg); background: rgba(var(--hl), calc(.09 * var(--hk))); }
 .mx-pane-panel { position: relative; }
 .mx-pane-dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--done); box-shadow: 0 0 0 1.5px var(--m-pane); }

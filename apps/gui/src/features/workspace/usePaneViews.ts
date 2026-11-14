@@ -8,8 +8,19 @@ import type { PaneView } from './model/chatView'
  */
 export function usePaneViews() {
   const [choices, setChoices] = useState<ReadonlyMap<string, PaneView>>(new Map())
+  // The sessions showing their Work board over the view they were on; choosing a view leaves it.
+  const [work, setWork] = useState<ReadonlySet<string>>(new Set())
   const choose = useCallback((sessionId: string, view: PaneView) => {
     setChoices((current) => new Map(current).set(sessionId, view))
+    setWork((current) => {
+      if (!current.has(sessionId)) return current
+      const next = new Set(current)
+      next.delete(sessionId)
+      return next
+    })
   }, [])
-  return { choices, choose }
+  const showWork = useCallback((sessionId: string) => {
+    setWork((current) => new Set(current).add(sessionId))
+  }, [])
+  return { choices, choose, work, showWork }
 }

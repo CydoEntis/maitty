@@ -54,14 +54,8 @@ why.
 2. A detail view of one run, opened from that line: the ticket key and title, then each step on its
    own row with its mark, name, note and helper. Works in 80×24.
 
-**Desktop app** (see DESIGN › *Desktop app*):
-
-1. Under an agent session in the sidebar, the same active runs as compact rows, beside the subagent
-   tiles, with the same fold for finished ones.
-2. A run view in the session's chat area, like a subagent's chat: a bar ("Run · MAITTY-42 · Add
-   export", Back to main session), then the steps as a vertical track: mark, name, note, helper. A
-   step with a matching helper is a link that opens that subagent's chat.
-3. Grouping by project already comes from the sidebar's folder view; no separate board for now.
+**Desktop app**: the pane's **Work** view, a board of the session's runs with a drawer for one run, and no rows
+in the sidebar (MAITTY-379; DESIGN › *Work tab* is the current design).
 
 ## Cases the design must cover
 
