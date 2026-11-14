@@ -16,4 +16,12 @@ describe('a document the agent wrote', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByText(/Then the rest/)).not.toBeInTheDocument()
   })
+
+  it('shows its opening formatted, not as raw Markdown marks run together', () => {
+    const notes = { title: 'Notes', excerpt: '- **Clone** a repository\n- **Settings** shows who is signed in', lineCount: 3, text: '# Notes\n- **Clone** a repository\n- **Settings** shows who is signed in' }
+    render(<DocumentCard path="notes.md" document={notes} />)
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.getByText('Clone').tagName).toBe('STRONG')
+    expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument()
+  })
 })

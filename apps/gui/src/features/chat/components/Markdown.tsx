@@ -151,7 +151,15 @@ const BlockView = memo(function BlockView({ block }: { block: Block }) {
     case 'table':
       // A table wider than the message scrolls inside its own region, which the keyboard can reach; the message never scrolls sideways.
       return (
-        <div className="mx-md-tablewrap">
+        <div className="mx-step-card mx-md-tablecard">
+        <div className="mx-step-head mx-md-tableacts" role="group" aria-label="Copy or save this table">
+          <span className="mx-code-lang">table</span>
+          <span className="mx-spacer" />
+          <button type="button" className="mx-ghost-btn" onClick={() => { copyBlock(tableMarkdown(block), 'Could not copy the table') }}><Copy className="size-3" aria-hidden="true" />Copy</button>
+          <button type="button" className="mx-ghost-btn" title="Save as a Markdown file in your export folder" onClick={() => { saveBlock('table', 'md', tableMarkdown(block)) }}><Download className="size-3" aria-hidden="true" />Markdown</button>
+          <button type="button" className="mx-ghost-btn" title="Save as a CSV file in your export folder" onClick={() => { saveBlock('table', 'csv', tableCsv(block)) }}><Download className="size-3" aria-hidden="true" />CSV</button>
+          <button type="button" className="mx-ghost-btn" title="Save as an HTML page in your export folder" onClick={() => { saveBlock('table', 'html', tableHtml(block)) }}><Download className="size-3" aria-hidden="true" />HTML</button>
+        </div>
         <div role="region" aria-label="Table" tabIndex={0} className="mx-md-table max-w-full overflow-x-auto">
           <table className="w-full border-collapse text-[13px] leading-[1.5]">
             <thead>
@@ -171,12 +179,6 @@ const BlockView = memo(function BlockView({ block }: { block: Block }) {
               ))}
             </tbody>
           </table>
-        </div>
-        <div className="mx-md-tableacts" role="group" aria-label="Copy or save this table">
-          <button type="button" className="mx-ghost-btn" onClick={() => { copyBlock(tableMarkdown(block), 'Could not copy the table') }}><Copy className="size-3" aria-hidden="true" />Copy</button>
-          <button type="button" className="mx-ghost-btn" title="Save as a Markdown file in your export folder" onClick={() => { saveBlock('table', 'md', tableMarkdown(block)) }}><Download className="size-3" aria-hidden="true" />Markdown</button>
-          <button type="button" className="mx-ghost-btn" title="Save as a CSV file in your export folder" onClick={() => { saveBlock('table', 'csv', tableCsv(block)) }}><Download className="size-3" aria-hidden="true" />CSV</button>
-          <button type="button" className="mx-ghost-btn" title="Save as an HTML page in your export folder" onClick={() => { saveBlock('table', 'html', tableHtml(block)) }}><Download className="size-3" aria-hidden="true" />HTML</button>
         </div>
         </div>
       )
