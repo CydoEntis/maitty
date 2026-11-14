@@ -238,7 +238,10 @@ Rules for `apps/gui/` (the look is in [DESIGN](DESIGN.md#desktop-app)).
    be grouped by project and folded. There are no fleets, ships, tabs or tab bar: choosing a session shows the layout it
    is in (`model/layout.ts`), else one of its own. A session's **subagents** are the daemon's `TermInfo.subagent_activity`
    (`model/subagents.ts`), shown while they run in a bar floating over their session's pane (`RunningSubagents`), not in
-   the sidebar; **Open its chat** on a row shows its own chat in the pane until you pick a session or **‹ Main session**. Rename is
+   the sidebar; **Open its chat** on a row shows its own chat in the pane until you pick a session or **‹ Main session**.
+   A session's **workflow runs** (the daemon's `workflows`, `model/workflows.ts`) are not in the sidebar either: they are
+   the pane's **Work** view (`features/work/`, `usePaneViews().work`), a board placed by `model/board.ts`, opened from the
+   pane's switch and left by choosing Chat or Terminal; the drawer is the shared Dialog mounted in the board. Rename is
    in place (double-click, F2 or the menu). Right-click menus share `MenuPopup` (focus, arrow keys, Esc, kept inside the
    window). Split layouts are this window's own state, up to four panes, mixed right and down with draggable dividers; a
    session closes with a 6 second Undo. **Put away** (the row menu of a finished or idle session in a daemon terminal,

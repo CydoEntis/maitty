@@ -12,6 +12,7 @@ import './components/pane.css'
 import './components/menu.css'
 import './components/dialogs.css'
 import '@/features/chat/chat.css'
+import '@/features/work/work.css'
 
 export function DesktopApp() {
   const workspace = useWorkspaceState()

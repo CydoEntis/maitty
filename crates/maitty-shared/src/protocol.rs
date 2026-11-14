@@ -4,6 +4,7 @@
 //! the workspace / tab / pane tree; clients render `Snapshot`s and send `Command`s.
 
 use crate::layout::{Dir, Node};
+use crate::workflow::WorkflowRun;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -11,7 +12,7 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 94;
+pub const PROTOCOL_VERSION: u32 = 95;
 
 /// The first version whose daemon sends a queued chat message now (`Command::ConversationSendNow`).
 pub const SEND_NOW_SINCE: u32 = 94;
@@ -78,6 +79,27 @@ pub const CLOSED_SESSIONS_MAX: usize = 50;
 
 /// The first version whose daemon reopens a closed session (`Command::ReopenClosedSession`).
 pub const REOPEN_CLOSED_SINCE: u32 = 87;
+
+/// The first version whose daemon takes a workflow's progress (`ClientMsg::WorkflowReport`).
+pub const WORKFLOW_REPORT_SINCE: u32 = 95;
+
+/// The first version whose daemon reads a helper's own record (`Query::HelperRead`).
+pub const HELPER_READ_SINCE: u32 = 95;
+
+/// The first version whose daemon lists a pane's specialist agent files (`Query::Specialists`).
+pub const SPECIALISTS_SINCE: u32 = 95;
+
+/// What a helper did, read from the provider's own file for it (ADR 0010). Display only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HelperRecord {
+    pub term: TermId,
+    /// The helper's id, as `SubagentActivity::id` names it.
+    pub helper: String,
+    /// Oldest first.
+    pub entries: Vec<crate::conversation::history::Entry>,
+    /// The file held more than this: its start is left out.
+    pub start_missing: bool,
+}
 
 /// An agent session that closed for good or whose agent exited with an error: where it worked, so
 /// it can be found again. It holds no message or terminal content.
@@ -231,6 +253,10 @@ pub struct ConversationSummary {
     /// The branch checked out there.
     #[serde(default)]
     pub branch: Option<String>,
+    /// The helpers the provider reported this conversation starting, at its current generation
+    /// (ADR 0010). Display only. Empty from an older daemon.
+    #[serde(default)]
+    pub helpers: Vec<SubagentActivity>,
 }
 
 /// Which app a client is. A terminal session belongs to the app that started it, and only
@@ -333,6 +359,13 @@ pub enum ClientMsg {
         token: String,
         usage: Usage,
         limits: Vec<Limit>,
+    },
+    /// A workflow's progress, from a process in the pane, with the pane's secret (ADR 0010).
+    /// Display only: it never changes the pane's status.
+    WorkflowReport {
+        term: TermId,
+        token: String,
+        run: WorkflowRun,
     },
     Query(Query),
 }
@@ -951,6 +984,17 @@ pub enum Query {
         tag: u64,
     },
     List,
+    /// What one of a pane's helpers did, from its own record (human clients only; ADR 0010). The
+    /// helper must be one the pane's verified reports named.
+    HelperRead {
+        term: TermId,
+        helper: String,
+    },
+    /// The Claude Code and Codex agent files of a pane's project and of its user's home, read-only
+    /// (human clients only; ADR 0010).
+    Specialists {
+        term: TermId,
+    },
     /// Plain-text screen contents of a terminal (the visible screen).
     Read {
         term: TermId,
@@ -1177,6 +1221,8 @@ pub enum Reply {
         found: SavedConversations,
     },
     ClosedSessions(Vec<ClosedSession>),
+    HelperRead(HelperRecord),
+    Specialists(crate::specialists::SpecialistList),
 }
 
 /// The most folders one listing carries; a folder with more says so in `truncated`.
@@ -1614,6 +1660,9 @@ pub struct TermInfo {
     /// Persistent lifecycle records reported by the runtime.
     #[serde(default)]
     pub subagent_activity: Vec<SubagentActivity>,
+    /// The workflow runs reported from this pane, newest first (ADR 0010). Display only.
+    #[serde(default)]
+    pub workflows: Vec<WorkflowRun>,
     /// Provider conversation ID that owns these child records.
     #[serde(default)]
     pub session: Option<String>,
@@ -1994,6 +2043,8 @@ impl ServerMsg {
         match self {
             ServerMsg::Reply(Reply::SavedConversations { .. }) => SAVED_CONVERSATIONS_SINCE,
             ServerMsg::Reply(Reply::ClosedSessions(_)) => CLOSED_SESSIONS_SINCE,
+            ServerMsg::Reply(Reply::HelperRead(_)) => HELPER_READ_SINCE,
+            ServerMsg::Reply(Reply::Specialists(_)) => SPECIALISTS_SINCE,
             ServerMsg::Reply(Reply::WorktreeStanding(_)) => WORKTREE_STANDING_SINCE,
             _ => COMPATIBLE_SINCE,
         }
@@ -2016,6 +2067,9 @@ impl ClientMsg {
             ClientMsg::Query(Query::ClosedSessions) => CLOSED_SESSIONS_SINCE,
             ClientMsg::Query(Query::WorktreeStanding { .. }) => WORKTREE_STANDING_SINCE,
             ClientMsg::Command(Command::ReopenClosedSession { .. }) => REOPEN_CLOSED_SINCE,
+            ClientMsg::WorkflowReport { .. } => WORKFLOW_REPORT_SINCE,
+            ClientMsg::Query(Query::HelperRead { .. }) => HELPER_READ_SINCE,
+            ClientMsg::Query(Query::Specialists { .. }) => SPECIALISTS_SINCE,
             ClientMsg::Command(Command::SnoozePane { .. }) => SNOOZE_SINCE,
             ClientMsg::Command(Command::ConversationSendNow { .. }) => SEND_NOW_SINCE,
             ClientMsg::Command(
@@ -2414,6 +2468,7 @@ mod tests {
         );
         // `root` and `branch` (a chat session's project, ADR 0003) are defaulted too.
         assert_eq!((summary.root, summary.branch), (None, None));
+        assert!(summary.helpers.is_empty(), "an older daemon reports no helpers");
     }
 
     /// A message held for a starting agent is a new command, and the news that a conversation
@@ -2451,7 +2506,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 94);
+        assert_eq!(PROTOCOL_VERSION, 95);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2919,7 +2974,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 94);
+        assert_eq!(PROTOCOL_VERSION, 95);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3328,6 +3383,78 @@ mod tests {
             terms: [(3, term)].into(),
             ..Default::default()
         }));
+    }
+
+    #[test]
+    fn a_pane_from_before_workflow_reports_reads_with_none_and_one_with_a_run_round_trips() {
+        use crate::workflow::{StepState, WorkflowRun, WorkflowStep, WorkflowTicket};
+        let mut term = pane_from(serde_json::json!({}));
+        assert!(term.workflows.is_empty(), "an older peer sends none");
+        term.workflows.push(WorkflowRun {
+            workflow: "kitchen".into(),
+            run: "001".into(),
+            ticket: Some(WorkflowTicket {
+                key: "MAITTY-42".into(),
+                title: None,
+                link: None,
+            }),
+            steps: vec![WorkflowStep {
+                name: "review".into(),
+                state: StepState::SentBack,
+                note: Some("two findings".into()),
+                helper: None,
+            }],
+            reported_at: 5,
+        });
+        round_trips(&ServerMsg::State(Snapshot {
+            terms: [(3, term)].into(),
+            ..Default::default()
+        }));
+    }
+
+    #[test]
+    fn a_workflow_report_is_sent_only_to_a_daemon_that_reads_it() {
+        let report = ClientMsg::WorkflowReport {
+            term: 1,
+            token: String::new(),
+            run: crate::workflow::WorkflowRun {
+                workflow: "kitchen".into(),
+                run: "1".into(),
+                ticket: None,
+                steps: Vec::new(),
+                reported_at: 0,
+            },
+        };
+        assert_eq!(report.introduced_in(), WORKFLOW_REPORT_SINCE);
+        let ask = ClientMsg::Query(Query::HelperRead { term: 1, helper: "a1".into() });
+        assert_eq!(ask.introduced_in(), HELPER_READ_SINCE);
+        let answer = ServerMsg::Reply(Reply::HelperRead(HelperRecord {
+            term: 1,
+            helper: "a1".into(),
+            entries: Vec::new(),
+            start_missing: true,
+        }));
+        assert_eq!(answer.introduced_in(), HELPER_READ_SINCE);
+        round_trips(&answer);
+        let ask = ClientMsg::Query(Query::Specialists { term: 1 });
+        assert_eq!(ask.introduced_in(), SPECIALISTS_SINCE);
+        let listed = ServerMsg::Reply(Reply::Specialists(crate::specialists::SpecialistList {
+            term: 1,
+            project: "/p".into(),
+            files: vec![crate::specialists::SpecialistFile {
+                tool: crate::specialists::SpecialistTool::Codex,
+                scope: crate::specialists::SpecialistScope::Home,
+                name: "code-reviewer".into(),
+                description: Some("Reviews a change".into()),
+                path: "/h/.codex/agents/code-reviewer.toml".into(),
+                text: "name = \"code-reviewer\"".into(),
+                text_cut: false,
+            }],
+            truncated: false,
+        }));
+        assert_eq!(listed.introduced_in(), SPECIALISTS_SINCE);
+        round_trips(&listed);
+        const { assert!(WORKFLOW_REPORT_SINCE <= PROTOCOL_VERSION) };
     }
 
     #[test]

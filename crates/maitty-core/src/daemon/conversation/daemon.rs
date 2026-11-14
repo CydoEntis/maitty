@@ -525,6 +525,9 @@ impl Daemon {
                     .find(|c| c.id == id)
                     .map(|c| c.binding.session_id.clone());
                 let Some(thread) = thread else { return Ok(()) };
+                if self.conversation_helper_event(id, generation, &thread, &method, &params) {
+                    return Ok(());
+                }
                 if method == "item/fileChange/patchUpdated"
                     && params.get("threadId").and_then(serde_json::Value::as_str)
                         == Some(thread.as_str())
@@ -706,6 +709,39 @@ impl Daemon {
                 }
                 Ok(())
             }
+        }
+    }
+
+    /// Keeps the conversation's helpers (ADR 0010) from what its provider reports, and takes a
+    /// helper's own events off the conversation: they are the helper's turns, not the
+    /// conversation's, so they never reach its history or status. Returns whether the event was a
+    /// helper's own. Helpers from an earlier generation are dropped.
+    fn conversation_helper_event(
+        &mut self,
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        thread: &str,
+        method: &str,
+        params: &serde_json::Value,
+    ) -> bool {
+        let now = crate::daemon::term::unix_now();
+        let state = self.conversation_states.entry(id).or_default();
+        if state.helpers_generation != generation {
+            state.helpers.clear();
+            state.helpers_generation = generation;
+        }
+        match params.get("threadId").and_then(serde_json::Value::as_str) {
+            Some(other) if other != thread && super::codex_helpers::is_helper(&state.helpers, other) => {
+                super::codex_helpers::helper_event(&mut state.helpers, other, method, params, now);
+                true
+            }
+            Some(own) if own == thread && matches!(method, "item/started" | "item/completed") => {
+                if let Some(item) = params.get("item") {
+                    super::codex_helpers::activity(&mut state.helpers, item, None, now);
+                }
+                false
+            }
+            _ => false,
         }
     }
 

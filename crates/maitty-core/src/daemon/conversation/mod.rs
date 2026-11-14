@@ -1,12 +1,14 @@
 pub(super) mod allowed;
 mod branch_start;
 pub(super) mod checks;
+mod codex_helpers;
 mod claude;
 pub(super) mod commands;
 pub(super) mod continue_turn;
 mod daemon;
 pub(super) mod follow;
 mod follow_transcript;
+pub(super) mod helper_record;
 pub(super) mod history;
 mod history_provider;
 pub(super) mod news;
@@ -57,6 +59,10 @@ pub(super) struct State {
     /// Approvals a person already answered, oldest first and capped, so a viewer that restarts
     /// can still show what was decided. Held in memory only: they follow the daemon's life.
     pub(super) answered_approvals: std::collections::VecDeque<crate::conversation::AnsweredApproval>,
+    /// The helpers the provider reported starting, at `helpers_generation` (ADR 0010). Display
+    /// only: they never set `status`.
+    pub(super) helpers: Vec<crate::protocol::SubagentActivity>,
+    pub(super) helpers_generation: u64,
 }
 
 /// How many answered approvals a conversation keeps; the oldest are dropped first.

@@ -1,30 +1,42 @@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import type { PaneView } from '../model/chatView'
+import type { PaneShow } from '../model/chatView'
 import { useTipWithKeys } from '@/features/shortcuts/platform'
-import { Icon } from './glyphs'
+
+/** What the Work option says beside its word: how many runs are going, and whether one needs the person. */
+export type WorkCount = { going: number; needsYou: boolean }
 
 type Props = {
-  view: PaneView
-  onChange: (view: PaneView) => void
+  /** The views this pane can show; the switch keeps its own order. */
+  views: readonly PaneShow[]
+  view: PaneShow
+  /** Present when the session reported workflow runs. */
+  work: WorkCount | null
+  onChange: (view: PaneShow) => void
 }
 
+const ORDER: readonly PaneShow[] = ['chat', 'terminal', 'work']
+const WORD: Record<PaneShow, string> = { chat: 'Chat', terminal: 'Terminal', work: 'Work' }
+
+const isShow = (value: string): value is PaneShow => (ORDER as readonly string[]).includes(value)
+
 /**
- * The terminal | chat switch of an agent's pane. Choosing a view changes what the pane shows and
- * sends nothing to the daemon: both views read the same session. The thumb moves with a transform
- * only, and Reduce motion turns the move off at the window root.
+ * The Chat · Terminal · Work switch of an agent's pane. Choosing a view changes what the pane shows and sends nothing
+ * to the daemon: every view reads the same session. Work shows only for a session that reported workflow runs, with
+ * the count of those going and the needs square while one needs the person.
  */
-export function PaneViewSwitch({ view, onChange }: Props) {
+export function PaneViewSwitch({ views, view, work, onChange }: Props) {
   const tip = useTipWithKeys()
-  const choices: ReadonlyArray<{ value: PaneView; label: string }> = [
-    { value: 'terminal', label: tip('Terminal view', 'chat-toggle') },
-    { value: 'chat', label: tip('Chat view', 'chat-toggle') },
-  ]
+  const label = (value: PaneShow) => {
+    if (value === 'work') return `Work view${work === null ? '' : `, ${String(work.going)} going${work.needsYou ? ', one needs you' : ''}`}`
+    return tip(`${WORD[value]} view`, 'chat-toggle')
+  }
   return (
-    <RadioGroup aria-label="Pane view" orientation="horizontal" value={view} onValueChange={(next) => { if (next === 'terminal' || next === 'chat') onChange(next) }} className={`mx-view-switch${view === 'chat' ? ' is-chat' : ''}`} onMouseDown={(event) => { event.stopPropagation() }}>
-      <span aria-hidden="true" className="mx-view-thumb" />
-      {choices.map(({ value, label }) => (
-        <RadioGroupItem key={value} value={value} aria-label={label} title={label} className="mx-view-option">
-          <Icon name={value === 'terminal' ? 'prompt' : 'chat'} size={14} strokeWidth={2} />
+    <RadioGroup aria-label="Pane view" orientation="horizontal" value={view} onValueChange={(next) => { if (isShow(next)) onChange(next) }} className="mx-view-switch" onMouseDown={(event) => { event.stopPropagation() }}>
+      {ORDER.filter((value) => views.includes(value)).map((value) => (
+        <RadioGroupItem key={value} value={value} aria-label={label(value)} title={label(value)} className="mx-view-option">
+          {WORD[value]}
+          {value === 'work' && work !== null && work.going > 0 && <span className="mx-view-count" aria-hidden="true">{work.going}</span>}
+          {value === 'work' && work?.needsYou === true && <span className="mx-view-needs" aria-hidden="true" />}
         </RadioGroupItem>
       ))}
     </RadioGroup>

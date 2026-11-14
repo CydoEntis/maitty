@@ -94,8 +94,16 @@ the status mark and the name (bold and bright for an agent with something going 
 the project's colour, the project and the branch in violet. No status words anywhere, except
 `limited 16:30` (`limited Sun 16:30` on another day) in amber on a session that hit its plan limit. Agents come
 first, then shells, each in the order they started, so a row never moves when its status changes.
-The open session has the row ground and an accent `▎`. An agent's subagents in its current turn
-follow it: `└` and a mark each, or under the open session one row each with `├`/`└` and the name.
+The open session has the row ground and an accent `▎`. An agent's subagents follow it: one still
+running for as long as it runs (after its parent's turn too), one finished in the current turn for a
+few seconds; `└` and a mark each, or under the open session one row each with `├`/`└` and the name,
+and a quiet `└ 3 done · show` line that lists the finished ones (`· hide` folds them again). A subagent's row
+opens its own steps in a modal ("subagent name": what it was asked, `▸` what it ran, what it said, the newest that
+fit, asked again every 1.5 s while it works); Enter goes to its parent's pane. Another machine's opens the pane. Under the
+open session, after its subagents, the workflow runs it reported that are still going (ADR 0010), one line
+each: the step's mark (`·` waiting, the spinner working, `✓` passed, `✕` failed, `↺` sent back, `●` needs you
+in amber, `–` skipped), the ticket and the step (`├ ● MAITTY-43 spec`), then `└ 2 runs done`. A run's line
+opens its steps in a modal ("run MAITTY-42"): each step's mark, name, note and helper.
 On the bottom border the release chip (` ↑ v0.15.0 ` when a release is out, else the version) and
 ` menu `, each opening a menu upward. See UI › *the sidebar*; the Machines dialog and its states
 are in UI › *Machines dialog*.
@@ -447,11 +455,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   cannot be told apart and times out, and the message stays queued either way.
 - **Pane** (`components/PaneCard.tsx`, `pane.css`). Agents and shells share one 42px header: the 26px app icon with its
   status badge, the name (15px, 600) over the folder (11px `--dim`) and the branch (mono 10.5px `--branch`), then at
-  the right, icons only (layout 2e): the terminal | chat switch (agents with a chat), split right, the terminals
+  the right (layout 2e): the Chat · Terminal · Work switch (agents with a chat, or with workflow runs), split right, the terminals
   drawer (only while terminals are pinned under the chat), the **side panel** button (a green dot while the
   repository has changes, the counts in its tip), ⋯ and close. Split down and Maximize are in ⋯ and on their keys.
-  The switch is a sunken tray (`rgba(--sd,.3)`, a 1px `rgba(--hl,.1)` border, radius 9) whose thumb slides by
-  `transform`. As the pane narrows the header gives up, in order (`model/paneHeader.ts`): split right under 440px,
+  The switch is words in a sunken tray (`--m-well`, a `--line` hairline, `--r-control`), the chosen one raised
+  (`--m-raise` with a `--line2` edge). As the pane narrows the header gives up, in order (`model/paneHeader.ts`): split right under 440px,
   the switch under 360px; what is gone stays in ⋯ and the title keeps its room. A lone pane is no
   card; with two or more each pane is a faint card (`rgba(--hl,.018)`, `rgba(--hl,.08)` border, radius 14) and the
   focused one gets a teal ring drawn above its content (`--accent-line` plus a 3px accent halo). A pane's status is the
@@ -544,7 +552,24 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   too. A binding with `available: false` (Undo close) is registered but
   its key does nothing and the overlay hides it until the feature lands.
   Jump to the next session that needs you is ⌘J on macOS and Ctrl+Shift+J elsewhere: a bare Ctrl+J is a terminal key.
-- **Terminal | Chat switch.** An agent's pane header carries a two-button switch (terminal glyph, chat bubble). The
+- **Work tab** (`features/work/`, the daemon's `workflows`, ADR 0010, `model/workflows.ts`). A session that reported
+  workflow runs gets **Work** in its switch, after Chat and Terminal, with the count of runs going (mono, `--dim`) and
+  a 7px `--needs` square while one needs you. Work covers the pane like the chat (the terminal stays mounted, paused)
+  until Chat or Terminal is chosen. Its bar says "N runs going", "needs you" with the square, and at the right "N runs
+  done" with **Show** / **Hide**. The board (`WorkBoard`) is one column per step name the runs reported, in their order
+  (a name one run lacks goes in after the step before it, `model/board.ts`), equal width, 230px at least, as tall as
+  the pane, scrolling sideways when they do not fit; each column a `--m-well` card with its name and count. A run sits
+  in its first step that has not passed (skipped counts as passed), a finished one in its last step, dimmed, and only
+  while shown. A run's card (`--card`, a `--line` edge, `--needs` when its step needs you) holds that step's mark, the
+  ticket key in mono (else "kitchen 007"), the title in two lines at most, one 4px segment per step in its state's
+  colour, and the step's note and helper label as sent. A click opens the run in a drawer (`RunDrawer`,
+  `min(480px, 60%)`, `--card`, `--sh-pop`) over the board dimmed to 55%: **Work › MAITTY-42**, **Open ticket** (a web
+  address only, opened in the browser), close; the title; each step with its mark, name, word and note, the step it is
+  on on `--m-sel` and one that needs you tinted with the needs edge. A helper label opens a small read-only card: the
+  label, and where it names one of the session's subagents its name, kind, state, what it was asked and what it is
+  doing or reported, with **Open its chat**. Escape, close or a click outside closes the drawer. The sidebar shows no
+  runs. Marks are StatusMark's, with ↺ for sent back, – for skipped and ? for a state added later.
+- **Terminal | Chat switch.** An agent's pane header carries the switch (Chat, Terminal, and Work when it applies). The
   chat covers the pane body while the terminal stays mounted underneath, hidden by `visibility`, so it keeps streaming
   and keeps its size: switching sends nothing to the daemon, except that going to the terminal moves the text waiting
   in the chat box into the agent's prompt (one paste, no Enter; `model/draftCarry.ts`), under the message box's rule: only while
@@ -599,7 +624,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   between hairlines, "Finished in 3m 40s · 10:46"; failed in `--err` and stopped in `--dim`, each with its mark) and,
   when it edited files, the changed-files card (a head-only card: icon, "N changed files", +A −R, **Review**). card. The working line is the spinner and "claude is working · m:ss". Problems with the history (offline, incomplete, a provider error) and Full access show in one
   slim strip above the list. **A subagent's chat** replaces the list with a 36px bar on `--well` (**‹ Main session**,
-  "· Subagent", its name, its time in mono and a **read-only** tag), then what it was asked, what it is doing while it works and its report once done.
+  "· Subagent", its name, its time in mono and a **read-only** tag), then the helper's own steps drawn as the chat's rows (read from the record its agent keeps, every 1.5 s while it
+  works, "Its earlier steps are not shown." above them when the start was cut). Where there is no record (another
+  machine, an older service, another agent) it shows what it was asked, what it is doing while it works and its report
+  once done.
 - **Message box** (`features/chat/components/Composer.tsx`), in three layers. **1. The waiting card** (`WaitingCard`), only while the
   agent waits on you, one at a time and the oldest first: a card 24px narrower than the box, open at its bottom so it
   rises out of the box's top (10px over 0.2s; it simply appears with motion reduced), with the needs edge. Its head is the needs

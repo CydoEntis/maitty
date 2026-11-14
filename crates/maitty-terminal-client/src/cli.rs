@@ -20,6 +20,7 @@ pub(crate) mod secret_run;
 pub(crate) mod target;
 pub(crate) mod uninstall;
 pub(crate) mod update;
+pub(crate) mod workflow;
 use crate::layout::Dir;
 use crate::protocol::*;
 use anyhow::{Context, Result, anyhow, bail};

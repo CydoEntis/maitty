@@ -32,6 +32,14 @@ describe('chat sessions', () => {
     ])
   })
 
+  it("lists the helpers a chat session's provider started as its subagents, and none from an older daemon", () => {
+    const helper = { id: 'helper-thread', name: 'probe_helper', parent: null, state: 'Completed', task: 'probe_helper', model: 'gpt-a', effort: 'low', started_at: 1, updated_at: 2, latest_activity: null, result: 'pong' }
+    const [chat] = conversationsFromSnapshot(snapshot([summary({ helpers: [helper] })]))
+    expect(chat?.details?.subagents).toEqual([{ id: 'helper-thread', name: 'probe_helper', state: 'Completed', task: 'probe_helper', startedAt: 1, updatedAt: 2, latest: null, result: 'pong' }])
+    const [older] = conversationsFromSnapshot(snapshot([summary()]))
+    expect(older?.details?.subagents).toEqual([])
+  })
+
   it('lists a structured conversation as a chat session in its project, with a chat that can be written to', () => {
     const [chat] = conversationsFromSnapshot(snapshot([summary()]))
     expect(chat).toMatchObject({

@@ -11,6 +11,7 @@ import { findTheme, themeStyle, THEMES } from '@/features/workspace/theme/themes
 import { Copy, X } from 'lucide-react'
 import { ChatFeed, SubagentsBars, WaitingCards } from './ChatFeed'
 import { galleryParams, galleryHash } from './galleryParams'
+import { WorkBoards } from './WorkBoards'
 
 /*
  * Every shared primitive in every state, on any theme and either corner style, so the set can be checked against the
@@ -147,7 +148,7 @@ function useHashParams() {
 
 /** The gallery page: a theme and corner switcher over the primitives and the chat's cards. */
 export function Gallery() {
-  const { theme: themeName, corners } = useHashParams()
+  const { theme: themeName, corners, open } = useHashParams()
   const theme = withLook(findTheme(themeName))
   const style = themeStyle(theme)
   useEffect(() => {
@@ -159,6 +160,7 @@ export function Gallery() {
   }, [corners, style, theme.light])
   return (
     <div className="mx-app" data-theme-kind={theme.light ? 'light' : 'dark'} style={{ ...style, position: 'static', minHeight: '100vh', overflow: 'auto', background: 'var(--bg)', color: 'var(--fg)', fontFamily: 'var(--ui)' }}>
+      {open === 'run' || open === 'work' ? <div className="mx-auto w-full max-w-[1180px] px-8 py-10"><WorkBoards open={open === 'run'} /></div> : (
       <div className="mx-auto flex max-w-[1180px] flex-col gap-6 px-8 py-10">
         <header className="flex flex-col gap-3">
           <h1 className="m-0 text-[26px] font-[650] tracking-[-.015em]">Primitives</h1>
@@ -190,7 +192,10 @@ export function Gallery() {
           <div className="w-[800px] max-w-full"><WaitingCards /></div>
           <div className="w-[400px] max-w-full"><WaitingCards /></div>
         </div>
+        <h2 className="m-0 mt-4 text-[18px] font-[650]">Work</h2>
+        <div className="w-[1100px] max-w-full"><WorkBoards open={false} /></div>
       </div>
+      )}
     </div>
   )
 }

@@ -5,10 +5,10 @@ import { headerFit } from '../model/paneHeader'
 import { keepsRunningUnseen, rowTitle } from '../model/sidebar'
 import { AppIcon, Icon, StatusBadge } from './glyphs'
 import { beginPointerDrag } from './dragSession'
-import { PaneViewSwitch } from './PaneViewSwitch'
+import { PaneViewSwitch, type WorkCount } from './PaneViewSwitch'
 import { MenuPopup, type MenuEntry } from './MenuPopup'
 import { menuPoint } from './menuPoint'
-import { CHAT_AGENTS, type ChatAgent, type PaneView } from '../model/chatView'
+import { CHAT_AGENTS, type ChatAgent, type PaneShow, type PaneView } from '../model/chatView'
 import { agentName } from '../model/agentMessage'
 import { SecretAskBar } from './SecretAskBar'
 import { pullRequestHeadline, pullRequestTone } from '../model/pullRequest'
@@ -36,6 +36,8 @@ export type PaneCardProps = {
   onViewChange?: (view: PaneView) => void
   /** The chat that covers the terminal while `view` is `chat`. */
   chat?: ReactNode
+  /** Present when the session reported workflow runs: the switch's Work option, and the board it shows while open. */
+  work?: WorkCount & { open: boolean; board: ReactNode; onOpen: () => void }
   /** What floats over the top of the body in either view: the agent's running subagents. */
   overlay?: ReactNode
   /** The side panel is open for this pane. */
@@ -100,6 +102,9 @@ export function PaneCard(props: PaneCardProps) {
   const full = paneCount >= MAX_PANES
   const ended = session.ended
   const view = props.view ?? 'terminal'
+  const work = props.work
+  // The Work board covers whichever view the pane was on; choosing that view again leaves it.
+  const shown: PaneShow = work?.open === true ? 'work' : view
   const fit = headerFit(width)
   const title = rowTitle(session)
   // One pane of several closes alone when its session has work in it (`useClosing`); otherwise closing ends the session.
@@ -140,7 +145,7 @@ export function PaneCard(props: PaneCardProps) {
     <>
     <section
       ref={box}
-      className={`mx-pane${view === 'chat' ? ' is-chat' : ' is-terminal'}${multi ? ' is-card' : ''}${focused && multi ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}${props.dragging ? ' is-dragging' : ''}`}
+      className={`mx-pane${shown === 'terminal' ? ' is-terminal' : ' is-chat'}${multi ? ' is-card' : ''}${focused && multi ? ' is-focused' : ''}${props.broadcast ? ' is-broadcast' : ''}${props.dropTarget ? ' is-drop-target' : ''}${props.dragging ? ' is-dragging' : ''}`}
       aria-label={`Terminal ${String(props.index + 1)}: ${session.cwdLabel}${focused ? ', focused' : ''}`}
       data-session-id={session.id}
       data-pane={pane.id}
@@ -179,7 +184,14 @@ export function PaneCard(props: PaneCardProps) {
         </span>
         {props.broadcast && <span className="mx-broadcast-pill">◉ Broadcast</span>}
         <span className="mx-pane-controls">
-          {props.onViewChange && fit.switcher && <PaneViewSwitch view={view} onChange={props.onViewChange} />}
+          {(props.onViewChange !== undefined || work !== undefined) && fit.switcher && (
+            <PaneViewSwitch
+              views={[...(props.onViewChange === undefined ? ['chat' as const] : ['chat' as const, 'terminal' as const]), ...(work === undefined ? [] : ['work' as const])]}
+              view={shown}
+              work={work ?? null}
+              onChange={(next) => { if (next === 'work') work?.onOpen(); else props.onViewChange?.(next) }}
+            />
+          )}
           {fit.split && <button type="button" className="mx-pane-control" aria-label={tip('Split right', 'split-right')} title={tip('Split right', 'split-right')} disabled={full} onMouseDown={stop} onClick={() => { props.onSplit(pane.id, 'right') }}><Icon name="splitRight" /></button>}
           {props.drawer !== undefined && props.onDrawerFold && (
             <button type="button" className={`mx-pane-control${props.drawerFolded === true ? '' : ' is-on'}`} aria-pressed={props.drawerFolded !== true} aria-label={drawerTip} title={drawerTip} onMouseDown={stop} onClick={() => { props.onDrawerFold?.(props.drawerFolded !== true) }}><Icon name="drawer" /></button>
@@ -195,7 +207,7 @@ export function PaneCard(props: PaneCardProps) {
         </span>
       </div>
       <div
-        className={`mx-pane-body${view === 'chat' ? ' is-chat' : ''}`}
+        className={`mx-pane-body${shown === 'terminal' ? '' : ' is-chat'}`}
         onMouseDown={(event) => {
           // A click on the pane's padding still puts the cursor in its terminal.
           if (event.target !== event.currentTarget) return
@@ -204,7 +216,8 @@ export function PaneCard(props: PaneCardProps) {
         }}
       >
         {props.terminal}
-        {view === 'chat' && props.chat}
+        {shown === 'chat' && props.chat}
+        {shown === 'work' && work?.board}
         {props.overlay}
       </div>
       {session.helperAsk.length > 0 && props.onAnswerHelpers && (

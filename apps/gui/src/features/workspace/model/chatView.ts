@@ -9,6 +9,8 @@
  */
 
 export type PaneView = 'terminal' | 'chat'
+/** What a pane's switch can show: its view, or the Work board of a session that reported workflow runs. */
+export type PaneShow = PaneView | 'work'
 export type ChatAgent = 'claude' | 'codex' | 'gemini'
 
 export const CHAT_AGENTS: readonly ChatAgent[] = ['claude', 'codex', 'gemini']

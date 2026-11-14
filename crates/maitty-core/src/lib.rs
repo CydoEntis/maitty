@@ -28,7 +28,8 @@ pub use daemon::{first_failing_line, forget_session};
 pub use maitty_machines::link_failure;
 pub use maitty_settings::{keys, theme};
 pub use maitty_shared::{
-    clock, conversation, hidden, layout, output_line, protocol, repo, settings_view, usage_report,
+    clock, conversation, hidden, layout, output_line, protocol, repo, settings_view, specialists,
+    usage_report,
 };
 
 #[cfg(test)]

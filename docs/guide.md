@@ -918,6 +918,12 @@ Maitty's background service runs, see [Worktrees](#worktrees), has no terminal.)
 checking what the agent did. What the status marks mean is in [What a session's status
 means](#what-a-sessions-status-means).
 
+A session running a workflow that reports to Maitty (`maitty workflow report`) also gets **Work** in that switch, with
+the number of runs going and an amber square when one needs you. Work shows its runs as a board: one column per step,
+each ticket in the step it is on. Finished runs are hidden until you choose **Show**. Click a ticket to see its steps in
+a drawer, with **Open ticket**; click a step's helper to see what that helper was asked and is doing. Maitty only shows
+the runs; the workflow itself decides every step.
+
 ### Starting a chat
 
 **New chat** (the top of the sidebar, or **New agent chat…** in the command palette, Ctrl+Shift+T, ⌘T

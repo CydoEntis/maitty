@@ -9,7 +9,7 @@ pub use maitty_core::{
     project, prompt, references, remote_install, remote_paste, restart, reveal, secret_files, shim, snapshot,
     shared_settings, sync, tidy, version,
 };
-pub use maitty_shared::{clock, conversation, hidden, layout, output_line, protocol};
+pub use maitty_shared::{clock, conversation, hidden, layout, output_line, protocol, workflow};
 mod keys;
 pub use maitty_settings::theme;
 
