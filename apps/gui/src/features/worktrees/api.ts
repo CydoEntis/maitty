@@ -50,9 +50,9 @@ export async function mergeWorktree(folder: string, machine: number): Promise<st
 }
 
 /**
- * Removes worktrees with the daemon, which closes what runs in each first. `force` goes on when the worktree
- * holds uncommitted changes (they are lost). The daemon removes them in the background and leaves one something
- * still runs in, so the caller looks again afterwards.
+ * Removes worktrees with the daemon, which leaves one something still runs in. `force` goes on when the worktree
+ * holds uncommitted changes (they are lost). The daemon removes them in the background and keeps a worktree
+ * that still has a session in it, so the caller looks again afterwards.
  */
 export async function removeWorktrees(items: readonly { path: string; force: boolean }[], machine: number): Promise<void> {
   if (!isTauri()) throw new Error('Worktrees are only available in the desktop app')
