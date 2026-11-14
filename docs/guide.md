@@ -196,6 +196,9 @@ still has them loads, and they are ignored.
   another machine the image is sent to that machine over ssh (up to 25 MB), kept there in
   `~/.cache/maitty/pastes` (private, cleared after a week), and its path there is pasted. It needs
   ssh to that machine (not a custom transport) and a login that works without a prompt.
+  An agent's own image key, `Ctrl+V` or `Alt+V` (Claude Code on Windows), typed into an agent on
+  another machine does the same when this computer's clipboard holds an image; with no image the
+  key reaches the agent as typed.
 - **Files to another machine:** in a pane on another machine, `Ctrl+Space`, then `d`, asks for a
   file's path (type it, or drop the file on the terminal: the path is pasted into the box). The
   file (up to 100 MB; a folder is sent too, up to 1 GB, see *Sending a file or a folder to a machine*) goes to that machine over ssh the same way as an image,

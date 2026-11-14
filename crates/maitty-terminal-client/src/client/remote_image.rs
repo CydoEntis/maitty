@@ -7,7 +7,7 @@
 use super::{ClientTerm, clipboard_image_to_file};
 use crate::ipc::Machine;
 use maitty_machines::remote_send;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub(super) use maitty_machines::remote_send::{send_file, shown};
 
@@ -21,7 +21,11 @@ pub(super) struct Sent {
 
 /// Send the clipboard image to `machine`, called `name` in words for the person.
 pub(super) fn send(machine: &Machine, name: &str) -> Result<Sent, String> {
-    let (png, width, height) = clipboard_image_to_file()?;
+    send_saved(machine, name, clipboard_image_to_file()?)
+}
+
+/// Send a clipboard image already saved here (`clipboard_image_to_file`) to `machine`.
+pub(super) fn send_saved(machine: &Machine, name: &str, (png, width, height): (PathBuf, usize, usize)) -> Result<Sent, String> {
     let result = upload(machine, name, &png);
     // The copy made here was only for sending: the picture is now where the pane can read it.
     let _ = std::fs::remove_file(&png);

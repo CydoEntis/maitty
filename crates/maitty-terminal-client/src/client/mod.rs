@@ -2097,20 +2097,52 @@ impl App {
         self.notify(format!("sending the clipboard image to {name}…"), false);
         self.spawn_bg(move || {
             let sent = remote_image::send(&machine, &name);
-            Bg::Then(Box::new(move |app: &mut App| match sent {
-                Ok(sent) => {
-                    app.type_path_into(term, &sent.path);
-                    app.notify(
-                        format!(
-                            "pasted the clipboard image ({}×{}) to {name}",
-                            sent.width, sent.height
-                        ),
-                        false,
-                    );
-                }
-                Err(e) => app.notify(e, true),
+            Bg::Then(Box::new(move |app: &mut App| app.image_sent(term, &name, sent)))
+        });
+    }
+
+    /// An agent's own image-paste key (Ctrl+V; Alt+V for Claude Code on Windows) typed into an
+    /// agent on another machine. The agent would read its own machine's clipboard, which never
+    /// holds this computer's image, so an image here is sent over as a paste-image sends it.
+    /// `key` is the key as encoded for the pane; it is typed as usual when there is no image.
+    pub(super) fn image_key_to_machine(&mut self, term: ClientTerm, key: Vec<u8>) {
+        self.spawn_bg(move || {
+            let saved = clipboard_image_to_file();
+            Bg::Then(Box::new(move |app: &mut App| match saved {
+                Ok(saved) => app.send_saved_image(term, saved),
+                // No image here, or no clipboard to read: the key was meant for the agent.
+                Err(_) => app.send_input(term, key),
             }))
         });
+    }
+
+    fn send_saved_image(&mut self, term: ClientTerm, saved: (PathBuf, usize, usize)) {
+        let Some((machine, name)) = self.machine_for(term) else {
+            // The copy was only for sending; machine_for has said why it can't go.
+            let _ = std::fs::remove_file(&saved.0);
+            return;
+        };
+        self.notify(format!("sending the clipboard image to {name}…"), false);
+        self.spawn_bg(move || {
+            let sent = remote_image::send_saved(&machine, &name, saved);
+            Bg::Then(Box::new(move |app: &mut App| app.image_sent(term, &name, sent)))
+        });
+    }
+
+    fn image_sent(&mut self, term: ClientTerm, name: &str, sent: Result<remote_image::Sent, String>) {
+        match sent {
+            Ok(sent) => {
+                self.type_path_into(term, &sent.path);
+                self.notify(
+                    format!(
+                        "pasted the clipboard image ({}×{}) to {name}",
+                        sent.width, sent.height
+                    ),
+                    false,
+                );
+            }
+            Err(e) => self.notify(e, true),
+        }
     }
 
     /// When to draw a pane that's mid synchronized update: its start + 100 ms, if that's

@@ -736,6 +736,12 @@ pub const ALT_LETTER_KEYS: &[(&str, &str)] = &[
 /// session instead (`DEFAULT_GLOBAL_KEYS`).
 pub const ALT_ARROW_KEYS: &[(&str, &str)] = &[("alt+left", "focus-left"), ("alt+right", "focus-right")];
 
+/// The keys agents paste an image with: Ctrl+V, and Alt+V for Claude Code on Windows.
+pub fn is_image_paste_key(ev: &KeyEvent) -> bool {
+    matches!(ev.code, KeyCode::Char('v'))
+        && (ev.modifiers == KeyModifiers::CONTROL || ev.modifiers == KeyModifiers::ALT)
+}
+
 /// Keys plain VT can't express exactly (Ctrl+Shift+letter, Ctrl+Enter, Ctrl+Tab, Ctrl with
 /// symbols) — sent as Windows key records when ConPTY asked for them. Everything else keeps
 /// its usual encoding (so Claude's Shift+Enter, Ctrl+C and friends behave as before).
