@@ -620,6 +620,13 @@ impl App {
         }
         // Typing goes to the prompt at the bottom; the agent scrolls there itself.
         self.paged_up.remove(&term);
+        if keys::is_image_paste_key(k)
+            && remote_image::is_remote(term)
+            && self.term_info(term).is_some_and(|t| t.agent.is_some())
+        {
+            self.image_key_to_machine(term, data);
+            return;
+        }
         self.send_input(term, data);
     }
 
