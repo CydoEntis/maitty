@@ -316,7 +316,7 @@ pub(super) async fn run(
                             }
                         }
                     }
-                    super::runtime::Rpc::Answer { .. } | super::runtime::Rpc::Interrupt { .. } => {
+                    super::runtime::Rpc::Answer { .. } | super::runtime::Rpc::Interrupt { .. } | super::runtime::Rpc::Steer { .. } => {
                         let _ = super::runtime::emit(&events, owner, super::runtime::Payload::Response {
                             token: command.token,
                             result: Err(super::transport::RpcError::adapter_failure(-32001)),

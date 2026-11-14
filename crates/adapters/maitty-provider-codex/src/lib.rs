@@ -317,7 +317,6 @@ fn declares(variants: &[Value], method: &str, params: &str) -> bool {
 ///
 /// Reads the same schema inventory as [`check_compatibility`], not the version string, so a
 /// Codex that gains or lacks the method is reported as it is. Any unreadable schema is "no".
-/// Not used by the daemon yet; it is `pub` so the next change can call it.
 pub fn supports_turn_steer(schema: &str) -> bool {
     let (method, params) = TURN_STEER;
     serde_json::from_str::<Value>(schema)

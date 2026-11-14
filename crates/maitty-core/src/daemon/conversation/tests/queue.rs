@@ -4,7 +4,7 @@ use super::*;
 use crate::conversation::{Delivery, QueuedMessage};
 use crate::protocol::{ClientMsg, Command, Query, Reply};
 
-async fn send(
+pub(super) async fn send(
     session: &mut TestSession,
     client: u64,
     id: crate::conversation::ConversationId,
@@ -27,7 +27,7 @@ async fn send(
     .await
 }
 
-async fn read(
+pub(super) async fn read(
     session: &mut TestSession,
     client: u64,
     id: crate::conversation::ConversationId,
@@ -49,7 +49,7 @@ async fn read(
     }
 }
 
-fn queued(read: &crate::conversation::ReadResult) -> Vec<(u64, String)> {
+pub(super) fn queued(read: &crate::conversation::ReadResult) -> Vec<(u64, String)> {
     read.queued
         .iter()
         .map(|QueuedMessage { operation, text }| (*operation, text.clone()))
@@ -84,7 +84,7 @@ async fn deliver_until_settled(session: &mut TestSession, id: crate::conversatio
     .expect("the queue drains");
 }
 
-async fn turns_started(session: &TestSession) -> usize {
+pub(super) async fn turns_started(session: &TestSession) -> usize {
     let path = session.fixture.directory.path().join("requests");
     tokio::fs::read_to_string(path)
         .await

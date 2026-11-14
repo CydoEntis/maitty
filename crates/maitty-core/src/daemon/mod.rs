@@ -486,6 +486,11 @@ struct Daemon {
     /// Messages sent while a turn ran, per conversation, delivered in order as turns end.
     conversation_queues:
         BTreeMap<crate::conversation::ConversationId, Vec<conversation::commands::QueuedSend>>,
+    /// The messages each conversation most recently acknowledged, newest last and bounded, so a
+    /// retry of a send or a send-now for one of them is answered and never sent twice. The
+    /// conversation's single receipt cannot do this once a message is sent out of turn.
+    conversation_recent:
+        BTreeMap<crate::conversation::ConversationId, std::collections::VecDeque<crate::conversation::Operation>>,
     /// The highest id given to a followed pane, so an id is not reused while the daemon lives.
     followed_high_water: u64,
     /// Tests read transcripts from a scratch "home" instead of the real one.
@@ -996,6 +1001,16 @@ impl Daemon {
                 anyhow::bail!("Only a human client can remove a queued message")
             }
             Command::ConversationDequeue { .. } => self.may(client, Grant::Write, None),
+            Command::ConversationSendNow { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can send a queued message now")
+            }
+            Command::ConversationSendNow { .. } => self.may(client, Grant::Write, None),
             Command::SetSetting { .. }
                 if structured
                     || self
@@ -1305,6 +1320,7 @@ impl Daemon {
             followed: Vec::new(),
             terminal_sends: terminal_sends::TerminalSends::default(),
             conversation_queues: BTreeMap::new(),
+            conversation_recent: BTreeMap::new(),
             followed_high_water: 0,
             #[cfg(test)]
             followed_home: None,

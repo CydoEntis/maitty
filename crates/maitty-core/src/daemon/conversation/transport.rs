@@ -224,7 +224,7 @@ impl Launch {
         &self,
         identity: &crate::protocol::StructuredIdentity,
     ) -> Result<Connection, StartupFailure> {
-        self.preflight().await?;
+        let turn_steer = self.preflight().await?;
         let mut command = self.command(self.paths().0);
         command
             .env(
@@ -261,10 +261,12 @@ impl Launch {
             input: FramedWrite::new(stdin, LinesCodec::new_with_max_length(MAX_FRAME_BYTES)),
             output: FramedRead::new(stdout, LinesCodec::new_with_max_length(MAX_FRAME_BYTES)),
             stderr_task: Some(stderr_task),
+            turn_steer,
         })
     }
 
-    async fn preflight(&self) -> Result<(), StartupFailure> {
+    /// Checks the selected Codex and says whether its own schema declares `turn/steer`.
+    async fn preflight(&self) -> Result<bool, StartupFailure> {
         let directory = PreflightDirectory::create().await?;
         let home = directory.0.join("home");
         let schema = directory.0.join("schema");
@@ -289,9 +291,9 @@ impl Launch {
         // generation is not repeated for every conversation. A changed version
         // is a different key and is checked in full.
         let key = (self.paths().1.to_path_buf(), version.to_owned());
-        if preflight_already_passed(&key) {
+        if let Some(turn_steer) = preflight_already_passed(&key) {
             directory.remove().await?;
-            return Ok(());
+            return Ok(turn_steer);
         }
         let mut generate = self.command(&home);
         generate
@@ -311,30 +313,35 @@ impl Launch {
         }).await.context("Read Codex schema in background")??;
         maitty_provider_codex::check_compatibility(version, &inventory)
             .map_err(anyhow::Error::new)?;
+        let turn_steer = maitty_provider_codex::supports_turn_steer(&inventory);
         directory.remove().await?;
-        remember_preflight_passed(key);
-        Ok(())
+        remember_preflight_passed(key, turn_steer);
+        Ok(turn_steer)
     }
 }
 
 type PreflightKey = (PathBuf, String);
 
-fn passed_preflights() -> &'static std::sync::Mutex<std::collections::HashSet<PreflightKey>> {
-    static PASSED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<PreflightKey>>> =
-        std::sync::OnceLock::new();
+/// The executables whose preflight passed, each with whether its schema declares `turn/steer`.
+fn passed_preflights()
+-> &'static std::sync::Mutex<std::collections::HashMap<PreflightKey, bool>> {
+    static PASSED: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<PreflightKey, bool>>,
+    > = std::sync::OnceLock::new();
     PASSED.get_or_init(Default::default)
 }
 
-fn preflight_already_passed(key: &PreflightKey) -> bool {
+fn preflight_already_passed(key: &PreflightKey) -> Option<bool> {
     passed_preflights()
         .lock()
-        .is_ok_and(|passed| passed.contains(key))
+        .ok()
+        .and_then(|passed| passed.get(key).copied())
 }
 
-fn remember_preflight_passed(key: PreflightKey) {
+fn remember_preflight_passed(key: PreflightKey, turn_steer: bool) {
     // A poisoned lock only means the next start repeats the full check.
     if let Ok(mut passed) = passed_preflights().lock() {
-        passed.insert(key);
+        passed.insert(key, turn_steer);
     }
 }
 
@@ -345,10 +352,10 @@ mod preflight_cache_tests {
     #[test]
     fn a_passed_binary_and_version_is_remembered_but_a_new_version_is_not() {
         let path = PathBuf::from("codex-for-cache-test");
-        assert!(!preflight_already_passed(&(path.clone(), "9.9.9".into())));
-        remember_preflight_passed((path.clone(), "9.9.9".into()));
-        assert!(preflight_already_passed(&(path.clone(), "9.9.9".into())));
-        assert!(!preflight_already_passed(&(path, "9.9.10".into())));
+        assert_eq!(preflight_already_passed(&(path.clone(), "9.9.9".into())), None);
+        remember_preflight_passed((path.clone(), "9.9.9".into()), true);
+        assert_eq!(preflight_already_passed(&(path.clone(), "9.9.9".into())), Some(true));
+        assert_eq!(preflight_already_passed(&(path, "9.9.10".into())), None);
     }
 }
 
@@ -664,6 +671,8 @@ pub(super) struct Connection {
     input: FramedWrite<tokio::process::ChildStdin, LinesCodec>,
     output: FramedRead<tokio::process::ChildStdout, LinesCodec>,
     stderr_task: Option<tokio::task::JoinHandle<std::io::Result<()>>>,
+    /// Whether this Codex's schema declares `turn/steer`.
+    pub(super) turn_steer: bool,
 }
 
 impl Connection {

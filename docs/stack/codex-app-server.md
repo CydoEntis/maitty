@@ -69,6 +69,11 @@ admission: `turn/steer` (`TurnSteerParams`, response `TurnSteerResponse`). Its p
 do not infer it from the version string. Codex 0.164 and 0.165 were not re-generated for it.
 The adapter does not send the optional `clientUserMessageId` yet. It builds the request and
 parses the response, but the caller must match the response `id` to the request it sent.
+The daemon reads `supports_turn_steer` on the inventory its preflight already builds (kept with the passed
+preflight, so a cached start knows too) and keeps the answer with the live runtime. A queued message
+sent now (`Command::ConversationSendNow`) is steered with `expectedTurnId` set to the acknowledged active turn; the
+message stays queued until Codex answers without an error, and a refused steer leaves it queued for the ordinary
+next-turn delivery. A Codex that does not declare the method has its turn interrupted instead.
 
 Required server request methods from generated `ServerRequest.oneOf`:
 

@@ -61,6 +61,14 @@ impl Daemon {
                 self.conversation_dequeue(client, id, generation, operation)?;
                 return Ok(false);
             }
+            Command::ConversationSendNow {
+                id,
+                generation,
+                operation,
+            } => {
+                self.conversation_send_now(client, id, generation, operation)?;
+                return Ok(false);
+            }
             Command::ForgetAllowedCommand { project, command_sha256 } => {
                 self.chat_allowed.forget(&project, &command_sha256);
                 let file = self.chat_allowed_file.clone();
