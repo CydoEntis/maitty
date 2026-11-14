@@ -247,9 +247,9 @@ order of trust; how to connect an agent so it reports for itself is in [agent-st
 | Status | What it means | Desktop app | Terminal app |
 | --- | --- | --- | --- |
 | Working | The agent is busy on a turn. | Spinner; listed under **Working**. | Spinner in the accent colour. |
-| Needs you | It asks a question, wants permission, asks for a secret or wants to start helpers. | Amber mark; under **Needs you**. | Amber `●`, `● you` on the row, and it is in the Inbox. |
+| Needs you | It asks a question, wants permission, asks for a secret or wants to start helpers. | Amber mark; under **Needs you**. | Amber `●`, and it is in the Inbox. |
 | Done | A turn finished and you have not looked yet. | Green check; under **Finished**. | Green mark. |
-| Idle | Nothing to do: you looked at a finished turn, or the agent has not been given work. | Under **Idle**. | Dimmed name. |
+| Idle | Nothing to do: you looked at a finished turn, or the agent has not been given work. | Under **Idle**. | A muted `●` (`○` with Unicode status glyphs on). |
 | Limited | It hit its plan limit and is waiting for it to reset (see below). | Under **Needs you**. | Amber `limited 16:30`. |
 | Failed | The last command in the session failed (in the terminal app, a failed check too). | A shell reads `exited`, an agent `stopped`; listed under **Needs you**. | Red mark. |
 
@@ -278,17 +278,20 @@ for one waiting for you to allow helpers.
 
 ### Limited
 
-When an agent stops because it used up its plan (Claude's "usage limit reached", for one), Maitty reads the reset time
-from the usage it tracks, or tries again in half an hour when it does not know the time. Shortly after the reset it types
-`continue` into the agent and says so in a notice. Until then the session is **limited**: its row says when, in your
-computer's time (`limited until 14:05` in the desktop app, `limited 16:30` in the terminal app; with the weekday when
-that is not today). It goes back to its normal status when the time comes. If you continue the agent yourself, the limit is
-forgotten.
+When an agent stops at a plan limit (the screen says things like "usage limit reached", "you've hit your weekly limit" or
+"out of extra usage"), Maitty works out when it can go on. That time is the reset of a limit its usage tracking shows as
+95% used or more; with none, it tries again in half an hour. Exactly one minute after that time Maitty types `continue`
+into the agent and says so in a notice. This needs auto-continue, which is on by default; with it off, nothing is typed
+and the session is not marked limited.
+
+Until then the session is **limited**: its row says when, in your computer's time (`limited until 14:05` in the desktop app,
+`limited 16:30` in the terminal app; with the weekday when that is not today). It goes back to its normal status when the
+time comes. If you continue the agent yourself, the limit is forgotten.
 
 Only a session that was done or idle becomes limited; one that is working, asking or failed keeps that status. In the
-desktop app a limited session is listed under **Needs you**, but it is left out of the needs-you count, the jump to the next
-session, the tray and the notices, since it waits on the limit and not on you. A limited session cannot be put away; you can
-[snooze](#snooze) it.
+desktop app a limited session is listed under **Needs you**, but it waits on the limit and not on you, so it is left out of
+the count of sessions elsewhere that need you, the jump to the next session that needs you, the tray and the notices. (A
+failed session is counted in the jump and the tray.) A limited session cannot be put away; you can [snooze](#snooze) it.
 
 ## Session visibility
 
@@ -311,7 +314,7 @@ session away in both.
 
 A session that needs you is not hidden. In the terminal app it stays in the sidebar while it needs you, and in the desktop
 app it moves to **Needs you**; either way it keeps its put-away mark and goes back out of the way once it no longer needs you.
-An agent whose last command failed, or a limited one, cannot be put away.
+A session whose last command failed, or a limited one, cannot be put away; an agent that fails or becomes limited after being put away is listed again until that passes.
 
 ### Snooze
 
