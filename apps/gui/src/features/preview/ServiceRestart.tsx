@@ -52,7 +52,7 @@ export function ServiceRestartDialog({ daemonRestartDialogOpen, daemonRestartPen
         </DialogHeader>
         <DialogFooter>
           <Button
-            variant="outline"
+            variant="soft"
             disabled={daemonRestartPending}
             onClick={() => {
               setDaemonRestartDialogOpen(false)
@@ -108,7 +108,7 @@ export function ServiceRestartButton({ daemonRestartStatusQuery, daemonRestartPe
 }) {
   return (
     <Button
-      variant="outline"
+      variant="soft"
       size="sm"
       disabled={
         daemonRestartStatusQuery.isPending ||

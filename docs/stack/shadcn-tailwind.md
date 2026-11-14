@@ -26,6 +26,9 @@
   with no exempt files outside `components/ui/`. Never add an exemption to pass a change.
 - Use `cva` (class-variance-authority) for variants, as the primitives already
   do. Don't use conditional class soup.
+- `button.tsx` diverges from upstream: its variants are the design's kinds (`primary`, `needs`, `soft`, `ghost`,
+  `danger`, `link`) and sizes (`sm`, `md`, `icon`), drawn from the role tokens ([DESIGN](../DESIGN.md#desktop-app),
+  Primitives).
 
 ### Styling
 

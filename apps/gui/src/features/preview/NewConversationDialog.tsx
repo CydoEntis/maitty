@@ -74,7 +74,7 @@ export function NewConversationDialog({
             />
             <Button
               type="button"
-              variant="outline"
+              variant="soft"
               onClick={onChooseFolder}
               disabled={!desktop || disabled || isChoosingFolder}
               aria-label="Browse for project folder"

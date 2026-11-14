@@ -140,12 +140,12 @@ function NoChat({ availability, process, online, onBackToTerminal, onStartAgent,
         <p className="m-0 font-mono text-[12px] text-dim">Running here: {process}</p>
         <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
           {availability.kind === 'shell' && CHAT_AGENTS.map((agent) => (
-            <Button key={agent} type="button" variant="outline" size="sm" disabled={!online} onClick={() => { onStartAgent(agent) }}>
+            <Button key={agent} type="button" variant="soft" size="sm" disabled={!online} onClick={() => { onStartAgent(agent) }}>
               Start {agent} here
             </Button>
           ))}
           {availability.kind === 'shell' && onStartChat !== undefined && CHAT_AGENTS.map((agent) => (
-            <Button key={`chat-${agent}`} type="button" variant="outline" size="sm" disabled={!online} onClick={() => { onStartChat(agent, fullAccess) }}>
+            <Button key={`chat-${agent}`} type="button" variant="soft" size="sm" disabled={!online} onClick={() => { onStartChat(agent, fullAccess) }}>
               Start a {AGENT_LABEL[agent]} chat
             </Button>
           ))}

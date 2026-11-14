@@ -792,8 +792,8 @@ function ConnectedTerminalView({ conversation, fontSize, look, label, inputDisab
     )}
     {loadError && <div className="terminal-input-error" role="status"><p>Could not load the terminal. Check the daemon connection and reopen this session.</p></div>}
     <div className="terminal-screen" ref={terminalHost} role="region" aria-label={label} />
-    {inputFailed && <div className="terminal-input-error" role="status"><p>Input stopped because the daemon could not be reached.</p><Button variant="outline" size="sm" onClick={() => { inputFailedRef.current = false; setInputFailed(false) }}>Try typing again</Button></div>}
-    {resizeError && <div className="terminal-input-error" role="status"><p>{resizeError}</p><Button variant="outline" size="sm" onClick={() => { refitTerminal.current?.() }}>Retry resize</Button></div>}
+    {inputFailed && <div className="terminal-input-error" role="status"><p>Input stopped because the daemon could not be reached.</p><Button variant="soft" size="sm" onClick={() => { inputFailedRef.current = false; setInputFailed(false) }}>Try typing again</Button></div>}
+    {resizeError && <div className="terminal-input-error" role="status"><p>{resizeError}</p><Button variant="soft" size="sm" onClick={() => { refitTerminal.current?.() }}>Retry resize</Button></div>}
   </div>
 }
 

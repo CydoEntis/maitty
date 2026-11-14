@@ -96,7 +96,7 @@ export function Composer({
           {deliveryNotice === 'not-delivered' ? (
             <>
               <Button
-                variant="outline"
+                variant="soft"
                 size="sm"
                 onClick={onRetry}
                 disabled={!connected || busy}
@@ -109,7 +109,7 @@ export function Composer({
             </>
           ) : (
             <Button
-              variant="outline"
+              variant="soft"
               size="sm"
               onClick={onCheckDelivery}
               disabled={!connected}
@@ -169,8 +169,8 @@ export function Composer({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    variant="outline"
-                    size="icon-sm"
+                    variant="soft"
+                    size="icon"
                     aria-label="Stop"
                     onClick={onCancel}
                     disabled={cancelling}
@@ -187,7 +187,7 @@ export function Composer({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  size="icon-sm"
+                  size="icon"
                   aria-label={denying ? 'Deny and send' : 'Send message'}
                   className={denying ? 'send-deny' : undefined}
                   onClick={denying ? onDenyAndSend : onSend}

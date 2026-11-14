@@ -1,3 +1,4 @@
+import { ToastCard } from '@/components/ui/toast-card'
 import { useEffect, useState } from 'react'
 import { useShortcutText } from '@/features/shortcuts/platform'
 import { Icon } from './glyphs'
@@ -95,6 +96,7 @@ export function OfflineBanner({ retryAt, detail, restart, appBehind = false, onR
   )
 }
 
+/** A short notice over the workspace (`Toast`), centred under the title bar. */
 export function Toast({ message }: { message: string }) {
-  return <div className="mx-toast" role="status">{message}</div>
+  return <div className="mx-toast"><ToastCard>{message}</ToastCard></div>
 }

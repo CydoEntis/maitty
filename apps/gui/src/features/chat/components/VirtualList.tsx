@@ -244,7 +244,7 @@ export function VirtualList<T>({ items, getKey, estimate, renderItem, label, ove
         </div>
       </div>
       {!following && layout.total > viewport && (
-        <Button type="button" variant="outline" size="icon" className="mx-chat-jump size-8 rounded-full bg-raise" aria-label="Jump to the latest message" onClick={jumpToLatest}>
+        <Button type="button" variant="soft" size="icon" className="mx-chat-jump size-8 rounded-full bg-raise" aria-label="Jump to the latest message" onClick={jumpToLatest}>
           <ArrowDown className="size-4" aria-hidden="true" />
         </Button>
       )}

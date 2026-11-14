@@ -92,7 +92,7 @@ export function ConversationSidebar({
         <Button
           className="sidebar-rail-toggle"
           variant="ghost"
-          size="icon-sm"
+          size="icon"
           aria-label={
             drawerOpen
               ? 'Close conversation sidebar'
@@ -105,7 +105,7 @@ export function ConversationSidebar({
         <Button
           className="sidebar-collapse-toggle"
           variant="ghost"
-          size="icon-sm"
+          size="icon"
           aria-label={
             desktopCollapsed
               ? 'Expand conversation sidebar'
@@ -120,7 +120,7 @@ export function ConversationSidebar({
             <Button
               className="sidebar-open-project"
               variant="ghost"
-              size="icon-sm"
+              size="icon"
               aria-label="New session"
               onClick={onOpenProject}
               disabled={disconnected}
@@ -135,7 +135,7 @@ export function ConversationSidebar({
             <Button
               className="sidebar-new"
               variant="ghost"
-              size="icon-sm"
+              size="icon"
               aria-label="New conversation"
               onClick={onNew}
               disabled={disconnected}
@@ -275,7 +275,7 @@ function ProjectSection({
                 <Button
                   className="project-new"
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon"
                   aria-label={`New session in ${project}`}
                   disabled={disconnected}
                   onClick={() => {
@@ -409,7 +409,7 @@ function SessionRow({
               />
               <Button
                 variant="ghost"
-                size="icon-xs"
+                size="icon"
                 aria-label="Save conversation name"
                 onClick={saveRename}
               >
@@ -417,7 +417,7 @@ function SessionRow({
               </Button>
               <Button
                 variant="ghost"
-                size="icon-xs"
+                size="icon"
                 aria-label="Cancel rename"
                 onClick={() => {
                   setIsRenaming(false)

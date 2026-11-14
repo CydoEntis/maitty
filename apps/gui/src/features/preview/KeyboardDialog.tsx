@@ -67,7 +67,7 @@ export function KeyboardDialog({
           ))}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="soft" onClick={onClose}>
             Close
           </Button>
         </DialogFooter>

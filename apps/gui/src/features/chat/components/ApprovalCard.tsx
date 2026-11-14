@@ -118,7 +118,7 @@ export function ApprovalCard({ event, actions, step, onGoToStep }: Props) {
               key={choice}
               type="button"
               size="sm"
-              variant={index === 0 ? 'default' : choice === 'AcceptForSession' ? 'secondary' : 'ghost'}
+              variant={index === 0 ? 'primary' : choice === 'AcceptForSession' ? 'soft' : 'ghost'}
               className={index === 0 ? 'bg-[var(--warn)] text-[var(--on-warn)] hover:bg-[var(--warn)]/85' : ''}
               disabled={actions.busy || !pending}
               onClick={() => { actions.answer(event.requestId, choice) }}

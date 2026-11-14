@@ -73,21 +73,6 @@
 .mx-chat .tok-variable, .mx-chat .tok-flag { color: var(--ansi-blue); font-weight: 400; }
 
 /* A file's name as a badge, its type tag, and the small pills beside it. */
-.mx-fbadge { display: inline-flex; max-width: 100%; min-width: 0; height: 22px; align-items: center; gap: 5px; padding: 0 7px 0 3px; border-radius: 6px; vertical-align: middle; background: rgba(var(--hl), calc(.05 * var(--hk))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.09 * var(--hk))); font-family: var(--mono); font-size: 12px; white-space: nowrap; }
-.mx-fbadge.is-link:hover { background: rgba(var(--hl), calc(.09 * var(--hk))); box-shadow: inset 0 0 0 1px var(--accent-line); }
-.mx-fbadge-folder { flex: none; display: inline-flex; width: 22px; justify-content: center; color: var(--muted); }
-.mx-fbadge-dir { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--dim); margin-right: -5px; }
-.mx-fbadge-name { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
-.mx-fbadge-line { flex: none; margin-left: -5px; color: var(--accent-text); }
-.mx-ftag { flex: none; display: inline-flex; min-width: 22px; height: 16px; padding: 0 3px; align-items: center; justify-content: center; border-radius: 4px; font-family: var(--mono); font-size: 8.5px; font-weight: 700; letter-spacing: .02em; color: var(--fg2); background: rgba(var(--hl), calc(.1 * var(--hk))); }
-.mx-ftag.is-blue { color: var(--ansi-blue); background: color-mix(in srgb, var(--ansi-blue) 14%, transparent); }
-.mx-ftag.is-green { color: var(--ansi-green); background: color-mix(in srgb, var(--ansi-green) 14%, transparent); }
-.mx-ftag.is-mag { color: var(--ansi-mag); background: color-mix(in srgb, var(--ansi-mag) 14%, transparent); }
-.mx-ftag.is-large { min-width: 24px; height: 18px; font-size: 9.5px; }
-.mx-pill { flex: none; display: inline-flex; height: 20px; align-items: center; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-.mx-pill.is-ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
-.mx-pill.is-danger { color: var(--danger); background: color-mix(in srgb, var(--danger) 13%, transparent); }
-.mx-pill.is-blue { color: var(--ansi-blue); background: color-mix(in srgb, var(--ansi-blue) 13%, transparent); }
 
 /* One step the agent took: a 30px row that opens to its detail. */
 .mx-step { display: flex; flex-direction: column; min-width: 0; }
@@ -95,16 +80,11 @@
 button.mx-step-row:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); }
 /* Amber is the one colour that means "needs you", so only a step a request is waiting on wears it. */
 .mx-step-row.is-waiting, button.mx-step-row.is-waiting:hover { background: var(--warn-soft); box-shadow: inset 0 0 0 1px var(--warn-line); }
-.mx-step-glyph { flex: none; display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; color: var(--ok); }
-.mx-step-glyph .mx-spin { color: var(--working); }
-.mx-step-x, .mx-step-bang { display: flex; width: 14px; height: 14px; align-items: center; justify-content: center; border-radius: 4px; font-size: 12px; font-weight: 700; line-height: 1; }
-.mx-step-x { color: var(--danger); background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-line); }
-.mx-step-bang { font-size: 10.5px; color: var(--on-warn); background: var(--warn); }
-.mx-step-stop { width: 9px; height: 9px; border-radius: 2px; background: var(--dim); }
+.mx-step-glyph { flex: none; display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; }
 .mx-step-verb { flex: none; font-size: 13px; font-weight: 600; color: var(--fg); white-space: nowrap; }
 .mx-step-target { display: inline-flex; min-width: 0; align-items: center; gap: 7px; font-size: 12.5px; color: var(--fg2); white-space: nowrap; }
 .mx-step-target > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.mx-step-target > .mx-pill { overflow: visible; }
+.mx-step-target > [data-slot="tag"] { overflow: visible; }
 .mx-step-server { margin-right: 6px; font-weight: 500; color: var(--dim); }
 .mx-step-server::after { content: "·"; margin-left: 6px; }
 .mx-step-where { color: var(--dim); }
@@ -141,7 +121,7 @@ button.mx-step-row:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); }
 .mx-step-head { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px 0 12px; border-bottom: 1px solid rgba(var(--hl), calc(.07 * var(--hk))); font-size: 12.5px; color: var(--fg2); }
 .mx-step-head:last-child { border-bottom: 0; }
 .mx-step-head.is-command { align-items: flex-start; padding-right: 10px; }
-.mx-step-head.is-command > .mx-pill { margin-top: 6px; }
+.mx-step-head.is-command > [data-slot="tag"] { margin-top: 6px; }
 .mx-step-prompt { flex: none; font-family: var(--mono); font-size: 12px; line-height: 18px; color: var(--dim); user-select: none; }
 .mx-step-head.is-command > .mx-step-prompt { padding: 7px 0; }
 .mx-step-path { min-width: 0; flex: 1; font-family: var(--mono); font-size: 12px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

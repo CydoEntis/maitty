@@ -127,7 +127,7 @@ export function TerminalPanes({
           Keys go straight to the focused agent. Closing a pane never stops it.
         </span>
         <Button
-          variant="outline"
+          variant="soft"
           size="sm"
           onClick={split}
           disabled={panes.length >= MAX_PANES || unused.length === 0}

@@ -8,7 +8,8 @@ import { commandMeta, relativePath } from '../stepInfo'
 import { toolFacts, type ToolFacts } from '../toolFacts'
 import type { WorkStep } from '../workSummary'
 import { documentOf } from '../writtenDocument'
-import { ChangePill, FileBadge, Pill, StepRow, type MetaTone } from './cardParts'
+import { Tag } from '@/components/ui/tag'
+import { ChangePill, FileBadge, StepRow, type MetaTone } from './cardParts'
 import { diffRows, type DiffRow } from './diffRows'
 import { DocumentCard } from './DocumentCard'
 
@@ -132,7 +133,7 @@ export function CommandStep({ event, waiting = false }: CommandStepProps) {
             <div className="mx-step-head is-command">
               <span className="mx-step-prompt" aria-hidden="true">$</span>
               <span className="mx-step-command">{event.command}</span>
-              {event.status === 'failed' && event.exitCode !== null && <Pill tone="danger">exit {event.exitCode}</Pill>}
+              {event.status === 'failed' && event.exitCode !== null && <Tag tone="err">exit {event.exitCode}</Tag>}
             </div>
             {omitted && <p className="mx-step-note">The output shows a secret file, so the history does not keep it.</p>}
             {shown.length > 0 && <pre className="mx-step-output">{shown.join('\n')}</pre>}
