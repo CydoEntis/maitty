@@ -16,6 +16,8 @@ export type ChatRow =
   | { readonly kind: 'user'; readonly key: string; readonly event: MessageEvent }
   /** One agent message: the text of the agent's messages that follow each other in a turn. */
   | { readonly kind: 'agent'; readonly key: string; readonly turnId: string; readonly paragraphs: readonly string[]; readonly status: ItemStatus }
+  /** The agent's reasoning that follows each other in a turn, as one folded row labelled Thought; its key is the first one's id. */
+  | { readonly kind: 'thought'; readonly key: string; readonly turnId: string; readonly texts: readonly string[] }
   | { readonly kind: 'step'; readonly key: string; readonly event: EditEvent | CommandEvent | TodoEvent | ToolEvent }
   /** Two or more steps that follow each other, folded into one line that opens to them; its key is the first step's id. */
   | { readonly kind: 'work'; readonly key: string; readonly events: readonly WorkStep[] }
@@ -101,6 +103,12 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
         }
         break
       }
+      case 'reasoning': {
+        const previous = rows.at(-1)
+        if (previous?.kind === 'thought' && previous.turnId === event.turnId) rows[rows.length - 1] = { ...previous, texts: [...previous.texts, event.text] }
+        else rows.push({ kind: 'thought', key: event.id, turnId: event.turnId, texts: [event.text] })
+        break
+      }
       case 'approval':
         rows.push({ kind: 'approval', key: event.id, event, step: null })
         break
@@ -145,7 +153,8 @@ function isQuietRow(row: ChatRow): boolean {
 
 /**
  * The rows without the runs of reads and searches that succeeded. The two parts of a turn's message
- * that such a run stood between read as the one message they would have been without it.
+ * that such a run stood between read as the one message they would have been without it, and so do two thoughts.
+ * A thought between two messages stays a row of its own, so they stay two messages.
  */
 function withoutQuietRuns(rows: readonly ChatRow[]): ChatRow[] {
   const kept: ChatRow[] = []
@@ -154,6 +163,8 @@ function withoutQuietRuns(rows: readonly ChatRow[]): ChatRow[] {
     const previous = kept.at(-1)
     if (row.kind === 'agent' && previous?.kind === 'agent' && previous.turnId === row.turnId) {
       kept[kept.length - 1] = { ...previous, paragraphs: [...previous.paragraphs, ...row.paragraphs], status: mergedStatus(previous.status, row.status) }
+    } else if (row.kind === 'thought' && previous?.kind === 'thought' && previous.turnId === row.turnId) {
+      kept[kept.length - 1] = { ...previous, texts: [...previous.texts, ...row.texts] }
     } else kept.push(row)
   }
   return kept

@@ -18,6 +18,7 @@ import { ApprovalCard, type ApprovalActions } from './ApprovalCard'
 import { InlineMarkdown, Markdown } from './Markdown'
 import { PlanCard } from './PlanCard'
 import { StepView } from './StepCards'
+import { ThoughtRow } from './ThoughtRow'
 import { WorkCard } from './WorkCard'
 import { MessageMenu } from './MessageMenu'
 import { stripRestoreNote, type EditFromHere } from '../editFromHere'
@@ -73,6 +74,8 @@ function sameRow(a: ChatRow, b: ChatRow): boolean {
       return b.kind === 'agents' && a.events.length === b.events.length && a.events.every((event, index) => event === b.events[index])
     case 'changes':
       return b.kind === 'changes' && sameStrings(a.files, b.files) && a.lines?.added === b.lines?.added && a.lines?.removed === b.lines?.removed && a.turn?.startedAtMs === b.turn?.startedAtMs && a.turn?.endedAtMs === b.turn?.endedAtMs
+    case 'thought':
+      return b.kind === 'thought' && sameStrings(a.texts, b.texts)
     case 'work':
       return b.kind === 'work' && a.events.length === b.events.length && a.events.every((event, index) => event === b.events[index])
     case 'approval':
@@ -161,6 +164,8 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
       return <Frame><AgentMessage rowKey={row.key} paragraphs={row.paragraphs} status={row.status} /></Frame>
     case 'step':
       return <Frame>{row.event.kind === 'todo' ? <PlanCard event={row.event} /> : <StepView event={row.event} root={root} openDiff={openDiff} alone waiting={isWaitingStep(waitingStep, row.event.id)} />}</Frame>
+    case 'thought':
+      return <Frame><ThoughtRow texts={row.texts} /></Frame>
     case 'work':
       return <Frame><WorkCard steps={row.events} root={root} openDiff={openDiff} waitingStep={waitingStep} /></Frame>
     case 'agents':

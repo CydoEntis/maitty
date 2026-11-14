@@ -113,7 +113,10 @@ export function projectItem(provider: ChatProvider, content: ItemContent, base: 
   if ('Tool' in content) {
     return provider === 'claude' ? claudeTool(content.Tool, base) : codexTool(content.Tool, base)
   }
-  // A reasoning summary has no row yet: it is read, so the history stays whole, and shown as nothing.
-  if ('Reasoning' in content) return []
+  if ('Reasoning' in content) {
+    const { text } = content.Reasoning
+    // A summary with nothing in it has nothing to open, so it gets no row.
+    return text.trim() === '' ? [] : [{ ...base, kind: 'reasoning', text }]
+  }
   return unsupportedItem(provider, content.Unsupported.kind, base)
 }
