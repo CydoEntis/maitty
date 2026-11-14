@@ -835,6 +835,20 @@ conversation has an unanswered approval or question, whichever way it would have
   message moves to the front of the queue, and the ordinary delivery sends it as the next turn when the turn ends. If
   the turn already ended, or an interrupt is already pending, the message just moves to the front and is delivered.
 
+A refused steer leaves the message at its original place in the queue; an interrupt that only served to send a message
+now is not a cancel by a person, so if the turn had just ended and the provider refuses it, the asker hears why, the
+conversation's status is untouched, and the message (already moved to the front) goes out on the next tick.
+
+Each conversation also remembers its last 64 acknowledged messages (`RECENT_OPERATIONS`; steered ones and delivered
+ones; in memory, per generation), because the single receipt is overwritten by whichever message was acknowledged last.
+`ConversationSend` for a remembered number answers `ConversationSent` with the same text and `stale or reused` with
+other text, so a steered message is never sent a second time as a turn; `ConversationSendNow` for a remembered number
+answers `Ok` (a retry after a lost reply) and does nothing; a number never queued is still refused.
+
+The queue is in memory. A runtime that dies while a steer is in flight leaves the message queued, and Codex may have
+taken it, so after recovery it can be delivered twice (at-least-once). A person can take it back with
+`ConversationDequeue` first.
+
 A retry with the same `operation` while the steer or interrupt is under way is answered `Ok` and does nothing more.
 `ConversationDequeue` of a message being steered is refused (`being sent now`), since Codex is about to have it. A
 message sent now out of turn can leave the conversation's receipt with a higher number than a message still waiting,

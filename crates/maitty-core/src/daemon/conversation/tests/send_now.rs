@@ -106,7 +106,10 @@ async fn codex_with_steering_takes_the_message_into_the_running_turn() {
 
         // Asking again is refused with a reason, and nothing is sent a second time.
         let again = send_now(&mut session, 608, id, generation, 2).await;
-        assert!(matches!(again, ServerMsg::Error(ref e) if e.contains("no longer waiting")), "{again:?}");
+        assert!(matches!(again, ServerMsg::Reply(Reply::Ok)), "{again:?}");
+        // A number nobody ever queued is still refused.
+        let unknown = send_now(&mut session, 609, id, generation, 9).await;
+        assert!(matches!(unknown, ServerMsg::Error(ref e) if e.contains("no longer waiting")), "{unknown:?}");
         assert_eq!(lines(&session, "steers").await.len(), 1);
         assert_eq!(turns_started(&session).await, 1);
     })
@@ -324,9 +327,9 @@ async fn a_stale_generation_an_unknown_message_or_a_pane_is_refused_with_a_reaso
         assert!(matches!(stale, ServerMsg::Error(ref e) if e.contains("Stale")), "{stale:?}");
         let unknown = send_now(&mut session, 673, id, generation, 9).await;
         assert!(matches!(unknown, ServerMsg::Error(ref e) if e.contains("no longer waiting")), "{unknown:?}");
-        // The running turn's own message is not a queued one.
+        // The running turn's own message was acknowledged: the same ask is answered, nothing sent.
         let running = send_now(&mut session, 674, id, generation, 1).await;
-        assert!(matches!(running, ServerMsg::Error(ref e) if e.contains("no longer waiting")), "{running:?}");
+        assert!(matches!(running, ServerMsg::Reply(Reply::Ok)), "{running:?}");
         let from = authenticated_pane(&mut session);
         let pane = exchange(
             &mut session,
@@ -398,6 +401,79 @@ async fn a_claude_chat_has_its_turn_interrupted_and_the_message_sent_as_the_next
         let log = std::fs::read_to_string(&messages).unwrap();
         assert_eq!(log.lines().collect::<Vec<_>>(), ["one", "three"], "the chosen message went next");
         assert_eq!(queued(&read(&mut session, 685, id).await), [(2, "two".to_string())]);
+    })
+    .catch_unwind()
+    .await;
+    finish(session, outcome).await;
+}
+
+#[tokio::test]
+async fn an_interrupt_the_provider_refuses_because_the_turn_just_ended_blocks_nothing() {
+    let mut session = conversation_fixture("conversation-cancel").await;
+    let outcome = AssertUnwindSafe(async {
+        let (id, generation) = create(&mut session).await;
+        send(&mut session, 690, id, generation, 1, "first").await;
+        send(&mut session, 691, id, generation, 2, "second").await;
+        tokio::fs::write(session.fixture.directory.path().join("interrupt-refuse"), "x").await.unwrap();
+
+        let now = send_now(&mut session, 692, id, generation, 2).await;
+        assert!(matches!(now, ServerMsg::Reply(Reply::Ok)), "{now:?}");
+        pump_until(&mut session, |s| {
+            s.daemon.deliver_queued();
+            waiting(s, id) == 0
+                && s.daemon.conversation_requests.values().all(|p| p.conversation() != id)
+        })
+        .await;
+
+        // The message went out as the next turn, and the chat never looked like it needed you.
+        assert_eq!(turns_started(&session).await, 2);
+        let state = &session.daemon.conversation_states[&id];
+        assert_eq!(state.error, None);
+        assert!(!state.blocked && state.history_ready && state.cancelling.is_none());
+        assert_ne!(state.status, crate::protocol::Status::Blocked);
+    })
+    .catch_unwind()
+    .await;
+    finish(session, outcome).await;
+}
+
+#[tokio::test]
+async fn a_message_sent_out_of_turn_is_still_answered_as_sent_after_others_are_delivered() {
+    let mut session = conversation_fixture("conversation-cancel").await;
+    let outcome = AssertUnwindSafe(async {
+        let (id, generation) = started_with_steering(&mut session).await;
+        send(&mut session, 700, id, generation, 1, "first").await;
+        send(&mut session, 701, id, generation, 2, "second").await;
+        send(&mut session, 702, id, generation, 3, "third").await;
+        let steered = send_now(&mut session, 703, id, generation, 3).await;
+        assert!(matches!(steered, ServerMsg::Reply(Reply::Ok)), "{steered:?}");
+
+        // The running turn's own number is no longer the receipt, and still answers as sent.
+        let first = send(&mut session, 704, id, generation, 1, "first").await;
+        assert!(matches!(first, ServerMsg::Reply(Reply::ConversationSent(ref r)) if r.operation == 1), "{first:?}");
+
+        // The turn ends and the older message is delivered, which replaces the receipt.
+        let stopped = exchange(&mut session, 705, ClientMsg::Command(Command::ConversationCancel { id, generation }), None).await;
+        assert!(matches!(stopped, ServerMsg::Reply(Reply::Ok)));
+        pump_until(&mut session, |s| s.daemon.conversation_states[&id].cancelling.is_none()).await;
+        pump_until(&mut session, |s| {
+            s.daemon.deliver_queued();
+            waiting(s, id) == 0
+                && s.daemon.conversation_requests.values().all(|p| p.conversation() != id)
+        })
+        .await;
+        assert_eq!(turns_started(&session).await, 2);
+        assert_eq!(read(&mut session, 706, id).await.receipt.unwrap().operation, 2);
+
+        // A retry of the steered message must not be sent again as a new turn.
+        let retry = send(&mut session, 707, id, generation, 3, "third").await;
+        assert!(matches!(retry, ServerMsg::Reply(Reply::ConversationSent(ref r)) if r.operation == 3), "{retry:?}");
+        let changed = send(&mut session, 708, id, generation, 3, "other text").await;
+        assert!(matches!(changed, ServerMsg::Error(ref e) if e.contains("reused")), "{changed:?}");
+        assert_eq!(turns_started(&session).await, 2);
+        assert_eq!(waiting(&session, id), 0);
+        let again = send_now(&mut session, 709, id, generation, 3).await;
+        assert!(matches!(again, ServerMsg::Reply(Reply::Ok)), "{again:?}");
     })
     .catch_unwind()
     .await;

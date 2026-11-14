@@ -325,10 +325,20 @@ fn main() {
                 "{line}"
             )
             .unwrap();
-            println!("{{\"id\":{request_id},\"result\":{{}}}}");
-            println!(
-                "{{\"method\":\"turn/completed\",\"params\":{{\"threadId\":\"exact-thread\",\"turn\":{{\"id\":\"turn-1\",\"status\":\"interrupted\"}}}}}}"
-            );
+            if fixture.join("interrupt-refuse").is_file() {
+                // The turn finished a moment before the interrupt arrived.
+                println!(
+                    "{{\"id\":{request_id},\"error\":{{\"code\":-32600,\"message\":\"no active turn to interrupt\"}}}}"
+                );
+                println!(
+                    "{{\"method\":\"turn/completed\",\"params\":{{\"threadId\":\"exact-thread\",\"turn\":{{\"id\":\"turn-1\",\"status\":\"completed\"}}}}}}"
+                );
+            } else {
+                println!("{{\"id\":{request_id},\"result\":{{}}}}");
+                println!(
+                    "{{\"method\":\"turn/completed\",\"params\":{{\"threadId\":\"exact-thread\",\"turn\":{{\"id\":\"turn-1\",\"status\":\"interrupted\"}}}}}}"
+                );
+            }
         } else {
             panic!("unexpected synthetic conversation request");
         }
