@@ -249,7 +249,7 @@ describe('the Terminal | Chat view of a pane', () => {
     await waitFor(() => { expect(box).toBeDisabled() })
     expect(box).toHaveAttribute('placeholder', 'Answer the request above first')
 
-    await user.click(within(pane).getByRole('button', { name: /^Yes, once/ }))
+    await user.click(within(pane).getByRole('button', { name: /^Yes once/ }))
     expect(daemon.approveRequest).toHaveBeenCalledWith({ id: '42', generation: 1 }, 'req-1', 'Accept')
     await waitFor(() => { expect(box).not.toBeDisabled() })
     history.approvals = []

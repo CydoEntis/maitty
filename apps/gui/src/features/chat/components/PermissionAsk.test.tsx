@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PermissionAsk } from '@/data/preview'
@@ -54,7 +54,7 @@ describe('the chat of an agent stopped on a permission prompt', () => {
 
     expect(screen.getByText('Wants to use Write')).toBeInTheDocument()
     expect(screen.getByText('src/notes.txt')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /^Yes, once/ }))
+    await user.click(screen.getByRole('button', { name: /^Yes once/ }))
 
     expect(typeInto).toHaveBeenCalledExactlyOnceWith(ANSWER_KEYS.approve)
     expect(ANSWER_KEYS.approve).toBe('1')
@@ -78,7 +78,7 @@ describe('the chat of an agent stopped on a permission prompt', () => {
     const { typeInto } = await open('Blocked', { ...WRITE_ASK, answerable: false })
 
     expect(screen.getByText('Wants to use Write')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Yes once/ })).not.toBeInTheDocument()
     expect(screen.getByRole('group', { name: "Keys for the agent's terminal" })).toBeInTheDocument()
     expect(typeInto).not.toHaveBeenCalled()
   })
@@ -88,7 +88,7 @@ describe('the chat of an agent stopped on a permission prompt', () => {
 
     expect(screen.getByText('claude has a question for you')).toBeInTheDocument()
     expect(screen.getByText('Which database? 1 SQLite · 2 Postgres')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Yes once/ })).not.toBeInTheDocument()
     expect(screen.getByRole('group', { name: "Keys for the agent's terminal" })).toBeInTheDocument()
     expect(typeInto).not.toHaveBeenCalled()
   })
@@ -97,7 +97,7 @@ describe('the chat of an agent stopped on a permission prompt', () => {
     const { typeInto, user } = await open('Blocked', { tool: 'AskUserQuestion', detail: 'Which database?', answerable: false, choices: ['SQLite', 'Postgres'] })
 
     expect(screen.getByText('Which database?')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Yes once/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Postgres/ }))
 
     expect(typeInto).toHaveBeenCalledExactlyOnceWith('2')
@@ -124,7 +124,7 @@ describe('the chat of an agent stopped on a permission prompt', () => {
     await user.click(screen.getByRole('radio', { name: 'SQLite' }))
     await user.click(screen.getByRole('radio', { name: 'Postgres' }))
     expect(send).toBeDisabled()
-    expect(screen.getByText('1 more to answer.')).toBeInTheDocument()
+    expect(screen.getByText('1 more to answer')).toBeInTheDocument()
     await user.click(screen.getByRole('radio', { name: 'Go' }))
     expect(typeInto).not.toHaveBeenCalled()
 
@@ -134,11 +134,39 @@ describe('the chat of an agent stopped on a permission prompt', () => {
     expect(typeInto.mock.calls.map(([key]) => key)).toEqual(['2', '2', '1'])
   })
 
+  it("picks a choice of a question with its number key, as the agent's own menu does", async () => {
+    const { typeInto } = await open('Blocked', { tool: 'AskUserQuestion', detail: 'Which database?', answerable: false, choices: ['SQLite', 'Postgres'] })
+
+    fireEvent.keyDown(screen.getByRole('region', { name: 'claude needs your permission' }), { key: '2' })
+    fireEvent.keyDown(screen.getByRole('region', { name: 'claude needs your permission' }), { key: '7' })
+
+    expect(typeInto).toHaveBeenCalledExactlyOnceWith('2')
+  })
+
+  it('shows the plan Claude asks to leave plan mode with, formatted, and approves or keeps planning with y and n', async () => {
+    const daemon = new FakeDaemonHistory()
+    daemon.upsert(daemon.message('t1', 'u', 'User', 'plan the refunds'))
+    daemon.upsert({ source: { conversation: FAKE_CONVERSATION, turn: 't1', item: 'p' }, content: { Tool: { kind: 'commandExecution', label: 'ExitPlanMode ', output: '', input: { plan: '## Refunds\n1. Add the endpoint' } } }, state: 'Completed' })
+    daemon.status = 'Blocked'
+    fake.current = daemon
+    const typeInto = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+    render(<ChatSession link={LINK} agent="claude" online typeInto={typeInto} ask={{ tool: 'ExitPlanMode', detail: '', answerable: true }} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+
+    const card = screen.getByRole('region', { name: 'claude needs your permission' })
+    expect(within(card).getByText('Approve this plan?')).toBeInTheDocument()
+    expect(within(card).getByRole('heading', { name: 'Refunds' })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Keep planning' })).toHaveAttribute('aria-keyshortcuts', 'n')
+    fireEvent.keyDown(card, { key: 'n' })
+
+    expect(typeInto).toHaveBeenCalledExactlyOnceWith(ANSWER_KEYS.deny)
+  })
+
   it('still says the agent is waiting when its hook reported no question', async () => {
     await open('Blocked', null)
 
     expect(screen.getByText('claude is waiting for you')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Yes once/ })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Message claude' })).toHaveAttribute('placeholder', TYPING_ASKING_NOTE)
   })
 
@@ -146,6 +174,6 @@ describe('the chat of an agent stopped on a permission prompt', () => {
     await open('Idle', WRITE_ASK)
 
     expect(screen.queryByText('Wants to use Write')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Yes once/ })).not.toBeInTheDocument()
   })
 })

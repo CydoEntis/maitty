@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { toast } from '@/lib/toast'
 import { errorMessage } from '@/lib/error-message'
 import { KEY_DOWN, KEY_ENTER, KEY_ESCAPE, KEY_LEFT, KEY_RIGHT, KEY_UP, isSelected, partsOfPrompt, promptOfScreen } from '../terminalKeys'
@@ -93,10 +94,10 @@ export function TerminalPrompt({ readScreen, sendKeys }: Props) {
     <>
       {prompt !== null && prompt.trim() !== ''
         ? <ShownPrompt prompt={prompt} />
-        : <p className="mx-question-note">The question is in the terminal.</p>}
-      <div className="mx-question-answers is-keys" role="group" aria-label="Keys for the agent's terminal">
+        : <p className="mx-waiting-note is-padded">The question is in the terminal.</p>}
+      <div className="mx-waiting-foot is-keys" role="group" aria-label="Keys for the agent's terminal">
         {KEYS.map((key) => (
-          <button key={key.name} type="button" className="mx-answer is-key" aria-label={key.name} disabled={busy} onClick={() => { press(key.keys) }}>{key.label}</button>
+          <Button key={key.name} variant="soft" size="sm" className="mx-terminal-key" aria-label={key.name} disabled={busy} onClick={() => { press(key.keys) }}>{key.label}</Button>
         ))}
       </div>
     </>

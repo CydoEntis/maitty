@@ -16,6 +16,8 @@ describe('Button', () => {
     expect(button).toHaveAttribute('data-variant', 'needs')
     expect(button).toHaveAttribute('data-size', 'sm')
     expect(button.querySelector('kbd')).toHaveTextContent('y')
+    expect(button).toHaveAccessibleName('Yes once')
+    expect(button).toHaveAttribute('aria-keyshortcuts', 'y')
   })
 
   it('is the primary kind at the medium size unless told otherwise', () => {

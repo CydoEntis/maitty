@@ -865,9 +865,11 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   Enter, only while the pane's trusted status says the agent is idle or done; while it works the composer is off and
   **Stop** sends Esc, and while it asks something in the terminal the chat shows a card, built from the agent's own
   `PermissionRequest` hook and never the screen: "<agent> wants to use <tool>" and one line of what it acts on. For
-  Claude the card has **Yes, once** (sends `1`) and **No** (sends Esc); for an agent whose answer keys are not
+  Claude the card has **Yes once** (sends `1`) and **No** (sends Esc); for an agent whose answer keys are not
   verified (Codex), or a menu the chat has no buttons for (the Claude autocompact size, a setting to confirm), it shows the question as the agent's terminal draws it (`TerminalPrompt`, read again every second and after each key) and a row of **↑ ↓ ← → Enter Esc**, which type those keys into the agent's terminal, so the person answers from the chat as they would there. The keys are the person's own and change no status (ADR 0003); on another machine the screen cannot be read, so the card says the question is in the terminal and keeps the keys. The daemon sends a screen as what a terminal needs to draw it, so the text is read back as plain lines first (`linesOfScreen`): no colour or cursor code is ever shown. What is shown is the menu under the rule that opens it, looked for under the last two rules only (a rule Claude draws inside its question menu, above the last option, does not start it), or the last 14 lines under the last rule, each cut at 140 characters, when no menu is found. A menu is one with a selected option: a `❯` line that is numbered or has another choice right beside it, so a message the person sent, which Claude also marks `❯`, is not one. The options start at the unbroken block that holds the selected one, so a numbered list in the question stays with the question. Of a menu, the last 12 lines above the options and the first 60 lines of options are shown, uncut in length. What is asked stays in view, itself no taller than 220px; the options scroll under it at 220px, with the selected one marked and kept in sight. The card is the message box's question tray
-  ("Yes, once" sends `1`, "No" sends Esc). A question Claude asks (`AskUserQuestion`) with one answer has a button
+  ("Yes once" sends `1`, "No" sends Esc). A plan Claude asks to leave plan mode with (`ExitPlanMode`) is shown formatted,
+  read from the history's ExitPlanMode call (`planApproval.ts`; a plan the history cut says so), with **Approve** (sends `1`,
+  the first choice of Claude's plan menu) and **Keep planning** (Esc). A question Claude asks (`AskUserQuestion`) with one answer has a button
   for each choice, which sends its number. A prompt of several such questions (`PermissionAsk.questions`) shows each
   question with its choices to pick from and one **Send answers** button, off until every question has an answer;
   it then types the number of each pick in the prompt's order, a quarter second apart, and `1`, which is "Submit
@@ -1122,7 +1124,7 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
 - **Read-only chat.** For a link with `readOnly` the composer is off with "Read-only: talk to the agent in the
   terminal" as its placeholder, and offers no Stop or queue wording; the daemon refuses send, approve and cancel
   for such a conversation. The history and status still follow the agent.
-- **Approvals.** A pending request is the message box's question tray (`QuestionTray.tsx`), not a row of the list; it
+- **Approvals.** A pending request is the message box's waiting card (`QuestionTray.tsx` on `WaitingCard`), not a row of the list; only the oldest shows, and it
   answers through `approve_conversation` by request id, and the request then folds into one line in the list ("Allowed", "Allowed for this session", "Denied"),
   with the buttons gone. While it is pending, `y` (once), `a` (this session) and `n` (no) answer it from anywhere in the
   chat but a field, the same letters as typing into the terminal, which stays a working fallback. The daemon's `answered_approvals` are

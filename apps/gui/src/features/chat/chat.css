@@ -196,11 +196,11 @@ button.mx-step-row:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
 .mx-agent-report { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg2); }
 
 /* A request that was answered, folded into one line. */
-.mx-answered { display: flex; min-width: 0; min-height: 30px; align-items: center; gap: 9px; padding: 0 4px; font-size: 12.5px; color: var(--muted); }
+.mx-answered { display: flex; min-width: 0; min-height: 32px; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
 .mx-answered strong { flex: none; font-weight: 600; color: var(--fg2); }
 .mx-answered-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; }
-.mx-answered-step { flex: none; font-size: 12px; color: var(--muted); }
-.mx-answered-step:hover { color: var(--fg); text-decoration: underline; }
+.mx-answered-step { flex: none; font-size: 12px; color: var(--link); text-decoration: underline; text-underline-offset: 2px; text-decoration-color: color-mix(in oklab, var(--link) 45%, transparent); }
+.mx-answered-step:hover { text-decoration-color: currentColor; }
 
 /* The end of a turn: centred words between hairlines, and the files it changed. */
 .mx-divider { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--dim); }
@@ -274,53 +274,61 @@ button.mx-queued-text::after { content: ""; position: absolute; inset: 0; border
 .mx-queue:not(.is-stacked) .mx-queued { animation: mxRise .2s cubic-bezier(.2, .8, .2, 1) both; }
 @media (prefers-reduced-motion: reduce) { .mx-queue .mx-queued { animation: none; } }
 
-/* Layer one: what the agent asks, a tinted tray rising from behind the box. */
+/* Layer one: what the agent waits on, a card rising out of the top of the box (`WaitingCard`). It is 24px narrower than
+   the box and open at its bottom, so it reads as coming from the box; amber is its edge because it needs you. */
 @keyframes mxRise { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
-.mx-question {
-  --tray: var(--warn);
-  width: calc(100% - 36px); margin-bottom: -18px; padding: 12px 14px 28px; border-radius: 14px 14px 0 0;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--tray) 10%, transparent), color-mix(in srgb, var(--tray) 4%, transparent)), var(--main);
-  border: 1px solid color-mix(in srgb, var(--tray) 32%, transparent); border-bottom: 0;
-  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.06 * var(--hk))), 0 -8px 24px -12px rgba(var(--sd), calc(.6 * var(--sk) * var(--gk)));
-  display: flex; flex-direction: column; gap: 10px; animation: mxRise .28s cubic-bezier(.2, .8, .2, 1) both;
+.mx-waiting {
+  position: relative; z-index: 1; width: calc(100% - 24px); margin: 0 12px; border-bottom: 0;
+  border-bottom-left-radius: 0; border-bottom-right-radius: 0; outline: none;
+  animation: mxRise .2s var(--ease, cubic-bezier(.2, .8, .2, 1)) both;
 }
-/* A question is the agent asking, not a permission to give, so it wears the accent and leaves amber to requests. */
-.mx-question.is-asking { --tray: var(--accent); }
-.mx-question-title { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; color: var(--fg); }
-.mx-question.is-asking .mx-question-title { font-size: 13.5px; }
-.mx-question-needs { font-size: 11.5px; font-weight: 700; color: var(--warn); }
-.mx-question-reason { margin: 0; font-size: 13px; line-height: 1.5; color: var(--fg2); }
-.mx-question-note { margin: 0; font-size: 12px; color: var(--dim); }
+.mx-waiting:focus-visible { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus); }
+.mx-waiting-head { display: flex; min-width: 0; min-height: 36px; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+.mx-waiting-head:last-child { border-bottom: 0; }
+.mx-waiting-title { min-width: 0; font-size: 13px; font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
+.mx-waiting-aside { flex: none; font-size: 12px; color: var(--muted); }
+.mx-waiting-body { display: flex; min-width: 0; max-height: min(46vh, 420px); overflow: auto; flex-direction: column; gap: 10px; padding: 10px 12px; }
+.mx-waiting-body.is-flush { gap: 0; padding: 0; }
+.mx-waiting-body.is-flush > :is(.mx-waiting-text, .mx-waiting-note) { padding: 10px 12px 0; }
+.mx-waiting-foot { display: flex; min-height: 40px; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px 6px 12px; border-top: 1px solid var(--line); }
+.mx-waiting-body > .mx-waiting-foot.is-form, .mx-waiting-form > .mx-waiting-foot.is-form { margin: 0 -12px -10px; }
+.mx-waiting-text { margin: 0; font-size: 13px; line-height: 1.5; color: var(--fg2); overflow-wrap: anywhere; }
+.mx-waiting-text.is-pre { white-space: pre-wrap; }
+.mx-waiting-note { margin: 0; font-size: 12px; color: var(--muted); }
+.mx-waiting-note.is-padded { padding: 10px 12px; }
+.mx-waiting-command { margin: 0; padding: 8px 12px; background: var(--m-well); font-family: var(--mono); font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--fg2); }
+.mx-waiting-body:not(.is-flush) > .mx-waiting-command { margin: 0 -12px; }
+.mx-waiting-files { display: flex; flex-direction: column; gap: 6px; }
+.mx-waiting-plan { gap: 6px; font-size: 13.5px; line-height: 1.6; color: var(--fg2); }
+.mx-waiting-question-text { margin: 0; font-size: 14px; font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
 /* The agent's own menu, as its terminal draws it, with the keys under it. */
-.mx-terminal-prompt { display: grid; gap: 6px; padding: 8px 10px; border-radius: 8px; color: var(--fg2); background: var(--m-well); }
-.mx-terminal-prompt > pre { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mx-terminal-prompt { display: grid; gap: 0; padding: 10px 12px; background: var(--m-well); color: var(--fg2); }
+.mx-terminal-prompt > pre { margin: 0; font-family: var(--mono); font-size: 12.5px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mx-terminal-question { max-height: 220px; overflow: auto; color: var(--fg); }
 /* Positioned, so the selected line's offset is measured from the box that scrolls. */
 .mx-terminal-options { position: relative; max-height: 220px; overflow: auto; }
-.mx-terminal-selected { color: var(--fg); font-weight: 600; }
-.mx-question-answers.is-keys { gap: 6px; }
-.mx-answer.is-key { min-width: 38px; justify-content: center; padding: 0 10px; font-family: var(--mono); }
-.mx-question-code {
-  display: block; max-height: 128px; overflow: auto; padding: 8px 10px; border-radius: 9px; font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere;
-  background: rgba(var(--sd), calc(.18 * var(--sk))); color: var(--fg);
-}
-.mx-question-answers { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-.mx-answer { height: 30px; display: inline-flex; align-items: center; gap: 8px; padding: 0 8px 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--fg); background: rgba(var(--hl), calc(.06 * var(--hk))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.1 * var(--hk))); }
-.mx-answer:not(:disabled):hover { background: rgba(var(--hl), calc(.1 * var(--hk))); }
-.mx-answer:disabled { opacity: .55; }
-/* Several questions: each with its choices under it, picked like the options of any form here. */
-.mx-question-form { display: flex; flex-direction: column; gap: 12px; margin: 0; }
-.mx-question-group { margin: 0; padding: 0; border: 0; display: grid; gap: 6px; }
-.mx-question-group > legend { padding: 0; margin-bottom: 2px; font-size: 13px; font-weight: 600; color: var(--fg); }
-.mx-answer kbd { font-family: var(--mono); font-size: 10.5px; font-weight: 600; min-width: 18px; height: 18px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; background: rgba(var(--hl), calc(.08 * var(--hk))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.12 * var(--hk))); color: inherit; }
-.mx-answer.is-y { font-weight: 600; color: var(--on-accent); background: var(--accent); box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.2 * var(--hk))), 0 2px 10px -3px color-mix(in srgb, var(--accent) 60%, transparent); }
-.mx-answer.is-y:not(:disabled):hover { background: var(--accent); filter: brightness(1.08); }
-.mx-answer.is-y kbd { min-width: 0; padding: 0 4px 0 0; border: 0; background: none; box-shadow: none; opacity: .7; }
-/* A choice of a question: a row with its mark, lit in the accent once picked. */
-.mx-choice { display: flex; min-height: 34px; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 9px; font-size: 13px; color: var(--fg); background: rgba(var(--hl), calc(.04 * var(--hk))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.08 * var(--hk))); cursor: pointer; }
-.mx-choice:hover { background: rgba(var(--hl), calc(.08 * var(--hk))); }
-.mx-choice:has(input:checked) { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); }
-.mx-choice input { flex: none; margin: 0; accent-color: var(--accent); }
+.mx-terminal-selected { display: block; margin: 0 -12px; padding: 0 12px; background: color-mix(in oklab, var(--needs) 14%, transparent); color: var(--fg); }
+.mx-terminal-key { min-width: 34px; justify-content: center; font-family: var(--mono); }
+/* Questions: each a group of option boxes, the picked one on the amber edge. */
+.mx-waiting-form { display: flex; flex-direction: column; gap: 10px; margin: 0; }
+.mx-waiting-question { margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 6px; }
+.mx-waiting-question > legend { padding: 0; margin-bottom: 6px; font-size: 14px; font-weight: 600; color: var(--fg); }
+.mx-waiting-options { display: flex; flex-direction: column; gap: 6px; }
+.mx-option { display: flex; width: 100%; align-items: flex-start; gap: 10px; padding: 9px 10px; box-shadow: inset 0 0 0 1px var(--line); text-align: left; font-size: 13px; color: var(--fg); cursor: pointer; outline: none; }
+.mx-option:hover { background: var(--m-hover); }
+.mx-option:focus-visible, .mx-option:has(input:focus-visible) { box-shadow: inset 0 0 0 1px var(--line), 0 0 0 2px var(--focus); }
+.mx-option.is-picked { background: color-mix(in oklab, var(--needs) 8%, transparent); box-shadow: inset 0 0 0 1px var(--needs); }
+.mx-option:disabled { cursor: default; opacity: .55; }
+.mx-option-mark { flex: none; display: inline-flex; width: 14px; height: 14px; margin-top: 2px; align-items: center; justify-content: center; box-shadow: inset 0 0 0 1.5px var(--line2); }
+.mx-option.is-picked .mx-option-mark { box-shadow: inset 0 0 0 1.5px var(--needs); }
+.mx-option.is-picked .mx-option-mark::after { content: ""; width: 6px; height: 6px; background: var(--needs); }
+.mx-option-text { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; font-weight: 600; overflow-wrap: anywhere; }
+.mx-option-about { font-size: 12px; font-weight: 400; line-height: 1.45; color: var(--muted); }
+.mx-option-key { flex: none; padding: 1px 5px; border: 1px solid currentColor; font-family: var(--mono); font-size: 10.5px; font-weight: 500; color: var(--muted); opacity: .7; }
+.mx-waiting-input { width: 100%; height: 34px; padding: 0 10px; border: 1px solid var(--line2); background: var(--m-well); font-size: 13px; color: var(--fg); outline: none; }
+.mx-waiting-input::placeholder { color: var(--dim); }
+.mx-waiting-input:focus-visible { border-color: var(--focus); }
+@media (prefers-reduced-motion: reduce) { .mx-waiting { animation: none; } }
 
 /* Layer two: the glass box. */
 .mx-box {

@@ -9,7 +9,7 @@ import { ToastCard } from '@/components/ui/toast-card'
 import { CORNERS, withLook, type Corners } from '@/features/workspace/theme/corners'
 import { findTheme, themeStyle, THEMES } from '@/features/workspace/theme/themes'
 import { Copy, X } from 'lucide-react'
-import { ChatFeed } from './ChatFeed'
+import { ChatFeed, WaitingCards } from './ChatFeed'
 import { galleryParams, galleryHash } from './galleryParams'
 
 /*
@@ -179,6 +179,11 @@ export function Gallery() {
         <div className="flex flex-wrap items-start gap-6">
           <div className="w-[800px] max-w-full"><ChatFeed /></div>
           <div className="w-[400px] max-w-full"><ChatFeed /></div>
+        </div>
+        <h2 className="m-0 mt-4 text-[18px] font-[650]">Waiting cards</h2>
+        <div className="flex flex-wrap items-start gap-6">
+          <div className="w-[800px] max-w-full"><WaitingCards /></div>
+          <div className="w-[400px] max-w-full"><WaitingCards /></div>
         </div>
       </div>
     </div>
