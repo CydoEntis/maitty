@@ -6,7 +6,11 @@ They contain no real config paths, accounts or transcripts.
 - `codex-0.164.0.json`: required method/params references shared by verified
   Codex 0.164.0 and 0.165.0 schemas, combined in a test-only wrapper.
 - `codex-0.166.0.json`: required method/params references confirmed against
-  the locally installed Codex 0.166.0 generated schemas.
+  the locally installed Codex 0.166.0 generated schemas. It also lists the
+  optional `turn/steer`, which the 0.164.0 and 0.166.0-alpha.5.1 fixtures lack;
+  `supports_turn_steer` reports it per connected Codex.
+- `turn-steer-ack.json`: a synthetic `turn/steer` response (`TurnSteerResponse`
+  has one required field, `turnId`).
 - `missing-interrupt.json`: the same inventory without `turn/interrupt`, to
   prove refusal before session mutation.
 - `initialize-response.json`: a synthetic JSON-RPC response. It cannot

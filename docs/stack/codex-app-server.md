@@ -61,6 +61,15 @@ Required client request methods from generated `ClientRequest.oneOf`:
 | `turn/start` | `TurnStartParams` | Submit structured input |
 | `turn/interrupt` | `TurnInterruptParams` | Cancel exact `threadId`/`turnId` |
 
+Optional client request method, absent from the 0.164.0 and 0.166.0-alpha.5.1 fixtures and never required for
+admission: `turn/steer` (`TurnSteerParams`, response `TurnSteerResponse`). Its params are
+`threadId`, `expectedTurnId` (Codex fails the request unless that turn is the active one) and
+`input` (a list of `UserInput`); the response is `{turnId}`. It was read from the installed
+0.166.0 generated schema. Ask `supports_turn_steer` on the connected Codex's own inventory;
+do not infer it from the version string. Codex 0.164 and 0.165 were not re-generated for it.
+The adapter does not send the optional `clientUserMessageId` yet. It builds the request and
+parses the response, but the caller must match the response `id` to the request it sent.
+
 Required server request methods from generated `ServerRequest.oneOf`:
 
 | Method | Params definition |

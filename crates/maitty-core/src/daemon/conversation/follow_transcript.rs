@@ -194,6 +194,23 @@ impl Transcript {
         notes.push(self.note("item/completed", item_params(&turn, item, at_ms)));
     }
 
+    /// The agent's own account of its thinking, as the reasoning item a structured runtime
+    /// publishes. Nothing is kept when there is no text (Claude's redacted blocks and Codex's
+    /// encrypted-only reasoning); the projection masks secrets, strips escapes and cuts the text.
+    fn reasoning(&mut self, id: &str, parts: &[&str], at_ms: Option<u64>, notes: &mut Vec<Note>) {
+        let parts: Vec<&str> = parts
+            .iter()
+            .map(|part| part.trim())
+            .filter(|part| !part.is_empty())
+            .collect();
+        if parts.is_empty() {
+            return;
+        }
+        let turn = self.turn_id(at_ms, notes);
+        let item = json!({ "id": id, "type": "reasoning", "summary": parts });
+        notes.push(self.note("item/completed", item_params(&turn, item, at_ms)));
+    }
+
     fn remember(&mut self, id: &str, tool: PendingTool) {
         if self.tools.len() >= MAX_PENDING_TOOLS {
             self.tools.clear();
@@ -359,6 +376,11 @@ impl Transcript {
             Some("text") => {
                 if let Some(text) = block.get("text").and_then(Value::as_str) {
                     self.agent_message(id, text, at_ms, notes);
+                }
+            }
+            Some("thinking") => {
+                if let Some(text) = block.get("thinking").and_then(Value::as_str) {
+                    self.reasoning(id, &[text], at_ms, notes);
                 }
             }
             Some("tool_use") => {
@@ -553,6 +575,18 @@ impl Transcript {
                     }
                     _ => {}
                 }
+            }
+            (Some("response_item"), Some("reasoning")) => {
+                // The rollout's summary parts are objects (`summary_text`); only their text is read,
+                // never `content` or `encrypted_content`.
+                let parts: Vec<&str> = payload
+                    .get("summary")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|part| part.get("text").and_then(Value::as_str))
+                    .collect();
+                self.reasoning(&format!("o{offset}"), &parts, at_ms, notes);
             }
             (Some("response_item"), Some("function_call" | "local_shell_call")) => {
                 self.codex_call(payload, at_ms, notes);
