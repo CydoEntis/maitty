@@ -86,23 +86,40 @@ function WindowButtons({ platform, actions }: { platform: TitleBarPlatform; acti
   return (
     <div
       data-testid="window-controls"
-      className={cn('flex h-full items-stretch', mac && 'gap-2 pr-2', platform === 'linux' && 'gap-2 pr-3', !mac && 'ml-auto')}
+      className={cn('flex h-full items-stretch', mac && 'gap-2 pr-2', platform === 'linux' && 'gap-2 pr-3')}
     >
       {buttons}
     </div>
   )
 }
 
-/** The bar itself, free of Tauri so every platform's layout can be rendered in a test. */
-export function TitleBarView({ platform, actions }: { platform: TitleBarPlatform; actions: TitleBarActions }) {
+type Slots = {
+  /** The bar's left end after any traffic lights: the app's menu. Absent, the logo and name. */
+  start?: ReactNode
+  /** Before the window buttons at the right: the window's view toggles. */
+  end?: ReactNode
+}
+
+/**
+ * The bar itself, free of Tauri so every platform's layout can be rendered in a test. Without `actions` (outside the
+ * desktop app) it draws no window buttons.
+ */
+export function TitleBarView({ platform, actions, start, end }: { platform: TitleBarPlatform; actions: TitleBarActions | null } & Slots) {
   const mac = platform === 'macos'
+  const buttons = actions === null ? null : <WindowButtons platform={platform} actions={actions} />
   return (
     <TooltipProvider delayDuration={TOOLTIP_DELAY_MS}>
       <header className="title-bar" data-tauri-drag-region data-platform={platform}>
-        {mac && <WindowButtons platform={platform} actions={actions} />}
-        <img className="title-bar-logo" src="/maitty-logo.png" alt="" />
-        <span className="title-bar-name">Maitty</span>
-        {!mac && <WindowButtons platform={platform} actions={actions} />}
+        {mac && buttons}
+        {start ?? (
+          <>
+            <img className="title-bar-logo" src="/maitty-logo.png" alt="" />
+            <span className="title-bar-name">Maitty</span>
+          </>
+        )}
+        <span className="title-bar-fill" data-tauri-drag-region />
+        {end}
+        {!mac && buttons}
       </header>
     </TooltipProvider>
   )
