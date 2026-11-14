@@ -219,17 +219,22 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   below the top edge and 36px in from the side, clear of the title bar's controls.
 - **One material, three roles (`apps/gui/src/material.css`).** Every surface is a *panel* (sidebar, main card,
   inspector), a *float* (menus, popovers, dialogs, the palette, find, toasts) or a *field* (the message box and its
-  tray), and takes its fill, hairline and shadow from that role's `--m-*` tokens: solid fills, a hairline, no
-  highlight (`--gk` is 0, which turns off every gradient and lift that multiplies by it; hover tints stay). A new
+  tray), and takes its fill, hairline and shadow from that role's rule in `material.css`: a panel is `--main` with a
+  `--line` hairline and no shadow, a float the same with one plain shadow, a field `--raise` with a `--line2` hairline.
+  There is one finish, flat: no gradient, highlight or blur anywhere (no `backdrop-filter`; hover tints stay). A new
   surface is added to a role's list in `material.css`; it does not set a background of its own. A popover opens
   through `PopupContent` (`components/ui/popup.tsx`) or carries `mx-pop`, so it is portalled into the window root and
   takes the float role. **Inside a surface**, nothing reads the theme's solid colours directly: a sunken control is
   `--m-well`, a raised or current row `--m-raise`, a picked row `--m-sel`, a hovered one `--m-hover`, a dialog's own
   ground `--m-pane`, each mapped to the theme's `--well`/`--raise`/`--sel`/`--hover`/`--pane`. Tints are written
   `rgba(var(--hl), calc(.06 * var(--hk)))`, never a fixed white. `src/material.test.ts` fails when a stylesheet other
-  than `material.css`, `index.css` and `tokens.css` reads a solid surface colour or a fixed white. Left on purpose:
-  terminal grounds (`--term`, `--main` under a terminal), scrims, brand and status colours, the switch knob, and the
-  legacy `App.css` shell outside the window root.
+  than `material.css`, `index.css` and `tokens.css` reads a solid surface colour or a fixed white, and when any
+  stylesheet reads a token of the removed glass finish (`--m-sheen`, `--m-edge`, `--m-shadow`, `--m-blur`, `--m-line`,
+  `--m-panel`, `--m-float`, `--m-field`, `--gk`, `--blur-pop`), selects on `data-finish` or blurs with
+  `backdrop-filter`. It reads the stylesheets from disk, because Vitest hands a test every `.css` import
+  as an empty string. Left on purpose: terminal grounds (`--term`, `--main` under a terminal), scrims, brand and status
+  colours, and the browser preview's `App.css` shell (`features/preview/`), which keeps its own fills and `data-theme`
+  tokens in `index.css`.
 - **Design tokens (`apps/gui/src/tokens.css`).** The handoff's role names over the theme's colours, so a component
   never reads a theme colour or a raw value: `--bubble` (a user message), `--needs`/`--on-needs` (the theme's `--warn`,
   meaning needs you and nothing else), `--err`, `--focus`/`--link` (the theme's blue), code colours (`--code-kw`,
@@ -258,11 +263,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   gallery shows every primitive in every state, and the chat's cards at 760 and 360px, on any theme and either corners: open the app or the browser preview
   with `#gallery` (`#gallery?theme=Paper&corners=rounded`; `features/gallery/`).
 - **Corners: Square or Rounded, any theme** (Settings › Appearance › Corners, `corners`; the root carries
-  `data-corners`, and `data-finish` is always `flat`). Square is the default. Corners are shape only, never colour or
+  `data-corners`). Square is the default. Corners are shape only, never colour or
   type: every theme wears either, in Inter and JetBrains Mono (`withLook` in `theme/corners.ts` sets `--ui`, `--mono`
   and the shading). Square is the one rule at the end of `material.css`, which zeroes every radius inside the window;
-  Rounded sets `--r-control` 6px, `--r-panel` 10px and `--r-badge` 3px. Until a component moves onto those tokens
-  (the shared primitives, MAITTY-375) it keeps its own radius under Rounded. The corners are the desktop app's own: the
+  Rounded sets `--r-control` 6px, `--r-panel` 10px and `--r-badge` 3px. A component not yet on those tokens keeps its
+  own radius under Rounded. The corners are the desktop app's own: the
   shared `window_style` setting is not read by the desktop. A window style saved before the switch carries over: Glass,
   Flat and the older names to Rounded, Squared and Retro Pixel to Square (`cornersOfWindowStyle`). **Components are
   built once and read tokens, never the corners.** Besides the base tokens, the shared pieces read the component
@@ -272,18 +277,30 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   tiles) and `--c-head-bg` (sticky headers). A new control gets tokens first and is checked in both corners and both
   kinds of theme. **Icons** (Settings › Appearance › Icons, `iconColor`, `data-icons`): `color` keeps app icons in
   their own colours; `grayscale` makes them neutral `--raise` tiles.
-- **Title bar.** 32px with no background of its own, so it sits on the window ground (`--tbar` is `transparent`): the
-  18px logo, "Maitty" in 12px `--muted`, and the platform's window buttons (46px captions on Windows).
+- **Title bar** (`AppTitleBar`, `frame.css`; the whole-app mock). 38px on the window ground (`--bg`), the rest of it a
+  drag area. At the left the **Maitty menu**: the 16px logo and "m**AI**tty" (13px 600, the AI in `--accent-text`), a
+  button that opens New chat, New shell, Open a folder…, Search, Recent sessions, Add a remote machine… and Settings. At
+  the right three 28px toggles, `--fg` while on: **Sidebar** (docked, or the overlay of a narrow window), **Terminal**
+  (shows or hides the focused session's terminals, adding the first when it has none) and **Changes and files** (the
+  side panel), then the platform's window buttons (38px tall captions on Windows).
   There is no activity bar, no middle column and no tab bar: the window is the sidebar and the workspace.
 - **Small windows.** The window is never narrower than 720px (`minWidth`). Under **1100px** the sidebar is the
   60px rail, and its expand button opens the full sidebar as an overlay from the sidebar's side, over a scrim;
   picking a session, a click on the scrim or Esc closes it. Under **800px** the panes stack in one column. The
   widths are `COMPACT_WIDTH_PX` and `NARROW_WIDTH_PX` in `model/windowSize.ts`.
-- **Settings dialog** (⌘,). A section list at the left and, at the right, a fixed header (the page title,
-  a one-line description and a 30x30 **×** icon button, tooltip "Close (Esc)", no label) above a body that scrolls; the page
-  itself never scrolls. The title and description slide with the page. Under Advanced, **Performance** shows live
-  frame, drawing, output and process figures with a **Copy report** button, and a switch for a corner readout over
-  the window ([PERFORMANCE](PERFORMANCE.md#measuring-in-the-app)).
+- **Settings dialog** (⌘,). A nav on `--m-well` at the left, in three groups under dim caps: **APP** (General,
+  Appearance, Notifications, Hotkeys), **AGENTS** (Chat, Permissions, Terminal) and **MACHINES** (Machines). Each item
+  is 32px with a plain 15px glyph tinted by section and its jump key at the right; the current one is on `--m-raise`
+  with an inset `--line`. At the right, a fixed header (the page title, a one-line description and a 30x30 **×** icon
+  button, tooltip "Close (Esc)", no label) above a body that scrolls; the page itself never scrolls. The title and
+  description slide with the page. A page is groups (`Card`) of up to 640px: an uppercase 11px `--dim` title over
+  rows of 14px padding, each with a `--line` above it, and a dim foot note. A group has no box of its own. The
+  sidebar settings sit in Appearance, the daemon's in Machines ("This computer") and the approved commands in
+  Permissions. **Usage** and **Performance** have no nav item: Ctrl+Shift+U and Ctrl+Shift+P or the palette open them.
+  Performance shows live frame, drawing, output and process figures with a **Copy report** button, and a switch for a
+  corner readout over the window ([PERFORMANCE](PERFORMANCE.md#measuring-in-the-app)). The **switch** is 32×18 with a
+  12px knob (`--c-sw-off` is the well, on is the accent, the knob `--muted` off and `--on-accent` on); a
+  **segmented** control sits on `--c-track-*` with its chosen segment on `--m-raise`.
 - **Keyboard shortcuts** (⌘/ or Ctrl+/, also in the palette). An 860px dialog over a dimmed scrim: "Keyboard
   shortcuts", "Change them in Settings › Hotkeys" and a close ×, then an auto-fit grid (240px minimum) of the groups
   (Sessions, Panes, Find & jump, Window, and In chat: Enter, Shift+Enter, Y, A, N, Esc), each row 32px with its keys as
@@ -309,17 +326,16 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   **text size** (−, the size which resets it to 14px, +; Ctrl+= and Ctrl+− do the same) and the shortcuts
   keycaps, which open the shortcut overlay. Hidden in Focus mode and by Settings › General › Window ›
   Status bar (off by default).
-- **Sidebar** (`components/Sidebar.tsx`, `sidebar.css`; layout 2e, `design-handoff/v19`). Agents only: no fleets, ships
-  or tabs. At the top, two 32px rows: **New chat** (starts an agent chat on this computer; the arrow beside it offers
-  New agent chat, New shell and Add a remote machine…, and Collapse sidebar sits at the end of the row) and **Search**
-  with its keys (opens the command palette; there is no filter field). Under them two quiet 28px buttons, each opening a
-  short list: **All projects ▾** narrows the list to one project (each with its count), and **Group by ▾** picks the
-  headings, **Status** (the default), **Project** or **Machine** (`sidebarGroup`, also Settings › Sidebar ›
-  Group sessions by). **By status** (`statusSections`): **Needs you** (amber, "waiting on you"; an agent that stopped
-  is here too, and so is one held by its plan limit), **Working** ("running now"), **Finished** (green, "ready to review") and **Idle** ("nothing to do"; a
-  session the daemon cannot read is here), each a 28px heading with its count, its few words
-  and a caret that folds it; a section with nothing in it is not listed, and rows keep creation order within one. **Terminals** (`terminalSessions`) is pinned over the sidebar's foot in the status and the project list, outside the agents' scrolling list (a third of the sidebar's height at most, then it scrolls on its own): every session with no agent in it (a shell, or a program running in one), as created, each row saying its project, so agents are never sorted among dev servers. A terminal that needs you is listed under Needs you until it no longer does; the machine list keeps terminals under their machine. A row
-  of another machine says `· machine` after its project (the nickname given to it, else its name; the tooltip has its
+- **Sidebar** (`components/Sidebar.tsx`, `sidebar.css`, `frame.css`; the whole-app mock). Agents only: no fleets, ships
+  or tabs. A 264px card on `--card` with a `--line` hairline, 8px from the window's edges. Its header reads **Chats**
+  (12px 600 `--muted`) with three 26px buttons: **Search** (the command palette; there is no filter field), **Filter
+  and group** (one menu: Group by status, project or machine with a check on the one in use, then All projects and each
+  project with its count) and **New chat** `+` (an agent chat on this computer; a right-click offers New agent chat,
+  New shell and Add a remote machine…). The grouping is `sidebarGroup`, also Settings › Appearance › Group sessions by.
+  **By status** (`statusSections`): **Needs you** (in `--needs`; an agent that stopped is here too, and so is one held
+  by its plan limit), **Working**, **Finished** and **Idle** (a session the daemon cannot read is here), each a heading
+  with its count that folds it on a click; a section with nothing in it is not listed, and rows keep creation order within one. **Terminals** (`terminalSessions`) is pinned over the sidebar's foot in the status and the project list, outside the agents' scrolling list (a third of the sidebar's height at most, then it scrolls on its own): every session with no agent in it (a shell, or a program running in one), as created, each row saying its project, so agents are never sorted among dev servers. A terminal that needs you is listed under Needs you until it no longer does; the machine list keeps terminals under their machine. A row
+  of another machine names the machine after its project (the nickname given to it, else its name; the tooltip has its
   name); a row of this computer names no machine. **By project** (`projectSections`): one heading per project
   by name, with its colour square, count and needs-you count; a project on another machine gets its own heading,
   `name · machine` with the line's dot. In both, a machine that needs the app is listed under the rows with its
@@ -337,25 +353,27 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   its count and "still running": the sessions put away from their menu, terminals included, as created. A row there has
   an arrow (**Bring back**) in place of the hover ×; a put-away session that needs you is listed under Needs you instead.
   The rail leaves put-away sessions out.
-  A **row** (40px, radius 8) is the 20px app tile with its status badge
+  A **row** (padding 7px 10px, radius `--r-control`) is the 16px flat app tile, dimmed while idle or unknown, with a
+  9px status badge at its corner (`!` needs you, pulsing; the spinner; `✓` done; `×` stopped; `‖` limited; a dashed
+  square for unknown; none while idle), the name with how long it has been in its state at the right, and the project
+  (and another machine) under it; the branch is in the hover card.
   A pointer resting on a row for 450ms shows a **hover card** beside it (`RowHoverCard`, 290px, level with the row and
   kept inside the window): the name, project and branch, what it is doing in the daemon's own words, its agent,
   changes, what set its status and how long ago (**Set by**: `hook: Stop, 3 s ago`, the daemon's `TermInfo.status_why`; no row
   when it gave no reason, the status is not known, the session stopped, it is limited or it waits on you to start helpers; a long reason is
   cut like the line above) and last activity. It takes no pointer input and goes on leave, click, scroll or a menu.
-  (spinner, amber `!` square, solid green check, solid red cross, grey pause square for limited, grey square with a sleeping "zz" for idle, dashed square for unknown), the name (13px; 600 and `--fg` for an agent that is
-  doing anything), and under it the project's 6px colour square, the project and `·` and the branch in mono
-  `--ansi-mag`; a stopped agent says `stopped` and an exited shell `exited` at the right, in `--danger`, instead of a
+  The name is 13px, 600 and `--fg` for an agent that is doing anything. A stopped agent says `stopped` and an exited shell `exited` at the right, in `--danger`, instead of a
   badge. An agent the daemon holds until its plan limit resets is **limited**: its row says `limited until 14:05` there in
   `--muted` (the daemon's `TermInfo.resume_at`, in this computer's time; `limited until Thu 14:05` when that is not today), and it goes back to the daemon's status when that
   time comes or the daemon clears it. Only that time makes a session limited, and only one the daemon calls idle or done: one that works, asks or failed keeps its status. A limited session is listed under the sidebar's Needs you and nowhere else that says needs you: the jump, the tray, the counts and the notices leave it out, because it waits on the limit and not on you, and its limit ending is not a new finish. Any other agent row has, at the right in 11px `--muted`, how long it has been in its state (`now`, `4m`, `3h`,
   `2d`; the daemon's `TermInfo.since`); it gives way to the close button on hover. A finished agent's menu has **Mark as
-  done**, which files it under Idle without opening it (`MarkSeen`). A shell's tile is a flat `--raise` square with a teal `>_`. The selected row is a raised glass pill. The row
+  done**, which files it under Idle without opening it (`MarkSeen`). A shell's tile is a flat `--raise` square with a teal `>_`. The selected row is a raised pill. The row
   is named by the name you gave it, else a shell's folder, else its agent. **Rename**: double-click, F2 or the menu
   turns the name into a field; Enter or leaving saves, Esc cancels, empty clears. Project colours are five tokens
   (`--proj-1` to `--proj-5`: teal, blue, pink, violet, green), chosen from the project's name, never amber or red.
   The sidebar lists no subagents: an agent's running subagents float over its pane (`RunningSubagents`, below).
-  The foot holds the update slot (or "Reconnecting to maittyd…"), the Recent sessions clock and the Settings gear; the rail's foot has the same two buttons. The edge drags (208 to 440px;
+  The foot holds the update slot (or "Reconnecting to maittyd…") and the Settings gear; Recent sessions is in the Maitty
+  menu. The rail's foot has a Recent sessions clock and the gear. The edge drags (208 to 440px;
   double-click resets). The **rail** of a narrow window is the starters, then one tile per session.
 - **Replies are typed in.** An agent's reply types toward the text that came in (`useTypedText`), so a chunk eases in instead
   of flashing: a few whole words every 40ms at about 300 characters a second, faster while a lot is waiting, so a
@@ -428,9 +446,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   still shows that menu in the terminal, not in the chat.
 - **The tray under the message box** is one line (`SettingsTray`). At the left: the folder, the branch in mono in
   the theme's magenta with the branch mark (or the tree and the worktree's blue; the tooltip says which), then the
-  permission mode. At the right, what the agent reported using (`UsageMeters`, `usageStrip.ts`): the context as a
-  small ring with its percent, then each plan limit as a short bar with its percent and window (`49% week`,
-  `12% 5h`). From 75% a meter is amber and from 90% red. When a limit starts over is in its tooltip. Only what the
+  permission mode. At the right, what the agent reported using (`UsageMeters`, `usageStrip.ts`): the context, then
+  each plan limit, each a name (`Context`, `5h`, `Week`), a 12px ring and the figure in mono, ring and figure in the
+  theme's meter colour for the quarter it is in (`--m-ok` under 25%, `--m-mid` under 50%, `--m-or` under 75%, `--m-hi`
+  from there). A meter under 50% stays out of sight until the message box is hovered or focused. When a limit starts
+  over is in its tooltip. Only what the
   agent reported is drawn (ADR 0009); a chat session with no pane has none yet. Tokens and cost stay in Settings ›
   Usage & cost.
 - **Codex's commands.** A Codex chat has the same picker. Codex cannot be asked what it takes, so its commands are a
@@ -453,15 +473,15 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   box and the message stays queued; the button is hidden while a question or approval shows. The button is off while its answer is
   awaited. A local service older than the command (protocol 94) is told so in words; another machine's older one
   cannot be told apart and times out, and the message stays queued either way.
-- **Pane** (`components/PaneCard.tsx`, `pane.css`). Agents and shells share one 42px header: the 26px app icon with its
-  status badge, the name (15px, 600) over the folder (11px `--dim`) and the branch (mono 10.5px `--branch`), then at
-  the right (layout 2e): the Chat · Terminal · Work switch (agents with a chat, or with workflow runs), split right, the terminals
-  drawer (only while terminals are pinned under the chat), the **side panel** button (a green dot while the
-  repository has changes, the counts in its tip), ⋯ and close. Split down and Maximize are in ⋯ and on their keys.
-  The switch is words in a sunken tray (`--m-well`, a `--line` hairline, `--r-control`), the chosen one raised
-  (`--m-raise` with a `--line2` edge). As the pane narrows the header gives up, in order (`model/paneHeader.ts`): split right under 440px,
-  the switch under 360px; what is gone stays in ⋯ and the title keeps its room. A lone pane is no
-  card; with two or more each pane is a faint card (`rgba(--hl,.018)`, `rgba(--hl,.08)` border, radius 14) and the
+- **Pane** (`components/PaneCard.tsx`, `pane.css`, `frame.css`). Agents and shells share one 44px header ruled off by
+  a `--line` hairline: the 20px flat app icon with its status badge (named "Agent · Status" for screen readers), the
+  name (14px, 600; the folder and branch in its tooltip) and a pull request's state, then at the right the **Chat ·
+  Terminal · Work** tabs (agents with a chat, or with workflow runs; 12.5px 500 `--dim`, the chosen one `--fg` underlined 2px in `--accent`), ⋯ and
+  close. Split right, Split down, Maximize, Changes and files and Show or Hide the terminals are in ⋯ and on their
+  keys; the title bar's toggles do the side panel and the terminals. Under 360px the tabs go too
+  (`model/paneHeader.ts`); Show chat or Show terminal stays in ⋯ and the title keeps its room. The main area is one
+  flat card on `--card` with a `--line` hairline, 8px from the window and the sidebar, and a lone pane fills it edge to
+  edge; with two or more the shared card goes and each pane is a card of its own (the same `--card` and hairline) and the
   focused one gets a teal ring drawn above its content (`--accent-line` plus a 3px accent halo). A pane's status is the
   badge on its icon; there is no status chip in a corner. While broadcasting, the header says "◉ Broadcast".
 - **First-run welcome.** On the first launch (no saved settings and no earlier welcome) a 560px dialog opens
@@ -553,7 +573,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   its key does nothing and the overlay hides it until the feature lands.
   Jump to the next session that needs you is ⌘J on macOS and Ctrl+Shift+J elsewhere: a bare Ctrl+J is a terminal key.
 - **Work tab** (`features/work/`, the daemon's `workflows`, ADR 0010, `model/workflows.ts`). A session that reported
-  workflow runs gets **Work** in its switch, after Chat and Terminal, with the count of runs going (mono, `--dim`) and
+  workflow runs gets a **Work** tab, after Chat and Terminal, with the count of runs going (mono, `--dim`) and
   a 7px `--needs` square while one needs you. Work covers the pane like the chat (the terminal stays mounted, paused)
   until Chat or Terminal is chosen. Its bar says "N runs going", "needs you" with the square, and at the right "N runs
   done" with **Show** / **Hide**. The board (`WorkBoard`) is one column per step name the runs reported, in their order
@@ -569,12 +589,12 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   label, and where it names one of the session's subagents its name, kind, state, what it was asked and what it is
   doing or reported, with **Open its chat**. Escape, close or a click outside closes the drawer. The sidebar shows no
   runs. Marks are StatusMark's, with ↺ for sent back, – for skipped and ? for a state added later.
-- **Terminal | Chat switch.** An agent's pane header carries the switch (Chat, Terminal, and Work when it applies). The
+- **Chat · Terminal tabs.** An agent's pane header carries text tabs, Chat then Terminal (and Work when it applies). The
   chat covers the pane body while the terminal stays mounted underneath, hidden by `visibility`, so it keeps streaming
   and keeps its size: switching sends nothing to the daemon, except that going to the terminal moves the text waiting
   in the chat box into the agent's prompt (one paste, no Enter; `model/draftCarry.ts`), under the message box's rule: only while
   the agent is idle or done, and not when files are attached. Text typed in the terminal's prompt does not come back to the box. **An agent opens as its chat**; a shell opens as a
-  terminal, and stays one when an agent is typed into it (the view switch still shows its chat): only New chat opens a chat.
+  terminal, and stays one when an agent is typed into it (the view tabs still show its chat): only New chat opens a chat.
   Every session on this computer, agent or shell, has terminals of its own in its folder
   (`components/AgentTerminals.tsx`): a pill tab each with a status dot, **+** for another, × to end one. The first
   opens by itself the first time they are shown; closing the last leaves a note with **New terminal**.
@@ -582,7 +602,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   (`data/agentTerminals.ts`), so the terminal app lists them as sessions, and one whose agent is gone is a row again.
   They show in the side panel's Terminal tab, or pinned under the agent's chat (Settings › Terminal › Panes ›
   Terminals open in, the layout buttons (the drawer icon pins them under, the side-panel icon moves them back), or
-  the pane menu): a glass card of its own 8px under the pane, with a centred handle to size it (120 to 640px, at most
+  the pane menu): a card of its own 8px under the pane, with a centred handle to size it (120 to 640px, at most
   60% of the two together; `model/terminalDrawer.ts`), folding to its 42px header (the **Terminals** button or ×),
   and starting folded in a window under 760px tall. The card's height eases over .28s; the terminal inside stays
   mounted at its open size and is only uncovered, so its text is never fitted again on the way. A shell's terminals
@@ -637,15 +657,15 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   edge) or the agent's own menu in mono with its selected line tinted; its foot the answers: **Yes once** `y` in the
   needs colour, **This session** `a` and **No** `n` soft, and for a command request **Always in this project** as a
   ghost at the right (the daemon then approves that exact command in that project without asking; see ADR 0005).
-  Settings → Agents lists these under "Commands approved for a project" (`ApprovedCommands.tsx`), each with **Forget**.
+  Settings → Permissions lists these under "Commands approved for a project" (`ApprovedCommands.tsx`), each with **Forget**.
   A plan has **Approve** `y` and **Keep planning** `n`; a form **Send answer(s)** `⏎`; a menu its keys. y, a and n
   answer from anywhere in the chat but a field, a choice's number picks it, and Enter on the card gives its main
   answer. Answering removes it, the box unlocks and the agent is working again (its row and the badge follow the
   daemon); the request then folds into one line in the feed (a hairline row: its mark, "Allowed for this session",
-  and **Go to step ↑**). **2. The box**: glass
-  (`--main` under `rgba(--hl,.075)` to `.035`, a `rgba(--hl,.12)` border, radius 16), a two-line text box on top, **+**
+  and **Go to step ↑**). **2. The box**: flat
+  (`--main`, a `--line2` border, radius `--r-panel`; focused, a `--focus` border and 1px ring), a two-line text box on top, **+**
   (attach) at the left, and at the right the model picker ("Claude Sonnet 5.5 · Medium ▾": the agent's mark, the model
-  picked or the one its own file says, the effort) and the round 32px send button, teal when it can send and grey while
+  picked or the one its own file says, the effort) and the 32px send button (radius `--r-control`), in the accent when it can send and grey while
   a question waits. While the agent works and nothing is typed, the send button is the Stop square, still (the line over the
   box says the agent is at work, so the button does not spin); just after a send, before there is a turn to stop, the
   square is there and off.
@@ -654,7 +674,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   follows another agent (Codex, Gemini) draws its model label from the start, with just the agent's name until it says its
   model. The "agent has not reported" hint of a starting chat floats over the conversation and moves nothing. Placeholders: "Message claude", "Queue a
   message for when claude finishes" while it works, "Answer the request above first" (and off) while a question
-  waits. **3. The settings tray**: narrower and darker, under the box: the permission mode from the agent's own file
+  waits. **3. The settings tray**: 14px in from each side and hanging from the box (`--main`, a `--line` border, no top edge): the permission mode from the agent's own file
   ("Ask before edits", "Plan mode", "Bypass permissions" in red, or "Permissions" before it has said; its menu is headed PERMISSIONS with the agent's name and has a row a mode, each with a line saying what it does; a new Codex chat has Read only, Auto and Full access instead). The tray reads project folder (opens Files) first, then the mode, and at the right the word **Worktree** or **Branch** before the branch's name, so a chat in a worktree never reads as one on the main checkout. It does not list subagents: the sidebar does. Queued messages are dashed bubbles above (`QueuedMessages`): each has an **×** in its top right corner (remove) and **Edit**, which takes it out of the queue and puts its words back in the box, ahead of anything typed there, with its files back as attachments. A queued message shows its files as the chips a sent message has, never as the lines that name them to the agent. Two or more sit as a **stack**: the first one sent in front, showing its first two lines and "first of N", with the edges of up to two more under it. A click on a message spreads them all out, oldest first, each with its own × and Edit; a click again stacks them, and a queue down to one message starts stacked the next time it grows.
 - **Esc ladder.** Esc closes the topmost open layer and reaches the terminal only when none is
   open (`model/escLadder.ts`): What's new, palette, Settings, the sidebar drawer,
@@ -808,7 +828,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   are when it ends is where the next slide starts from; the two together made the list bounce.
 - **Sidebar footer and updates.** The footer's left slot shows the version, or what an update needs
   from you: a pill that opens a card upward with the matching actions. An update waiting to be downloaded or
-  installed is a glass button, a sheen sweeping across it, a tile with an arrow falling into a tray, **Update** and the
+  installed is a button, a sheen sweeping across it, a tile with an arrow falling into a tray, **Update** and the
   version in mono (**Restart to update** once downloaded); the download's percent and **Update failed** keep a tinted pill. Every card closes with an X in its corner; the download's card shows the bar, what has arrived of the whole (`34.9 MB of 102 MB`) and, on the right, the percent and the time left from the last ten seconds' speed (`about 12 min left`, `downloadEta.ts`). Settings shows the same bar and line under its update row while a download runs, with the percent on its button (`DownloadProgress`); a light passes along the bar, and with no size yet a short run slides across, so it never reads as stuck. The updater downloads first and installs only on
   **Restart now**, or by itself when the app is idle, so sessions keep running either way. Settings › General › Updates shows the state with
   one fitting button and two switches: download automatically (on) and **Install updates when idle** (on, helper
@@ -816,7 +836,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   for 5 minutes, and the window unfocused or minimized. After the relaunch a pill toast at bottom centre reads
   "Updated to X · What's new" for 9 s (dismissable), and What's new opens a 460 px dialog with the release's
   notes and "No session was interrupted."
-- **Sidebar position.** Settings › Sidebar › Sidebar position, or the palette, puts the sidebar
+- **Sidebar position.** Settings › Appearance › Sidebar position, or the palette, puts the sidebar
   on the left or right. On the right the window mirrors: the resize edge is on its left, the narrow-window
   overlay slides from the right, Inspect opens from the left, and popovers open toward the middle.
 - **Notifications.** Settings › Notifications has one switch each for needs you, done and error. With
@@ -921,4 +941,4 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 
 Every toast is drawn by one component, `NotificationCard` (`apps/gui/src/features/notifications/`): the agent's icon with its status badge on the left, a bold title with a close button, a muted line saying what it wants (a command in mono), the buttons, and "just now" at the bottom right. It is a float, so it takes the material roles from `material.css` and sets only its tone colour (`needs`, `done`, `error`, `info`). `SessionNotice` (terminal sessions) and `NoticeToast` (conversation views) only map their data onto it; plain Sonner toasts (messages, errors) wear the same float material without the icon and buttons. Allow appears only when the session is stopped on a choice the GUI can answer.
 
-- **Working badge.** A `--working` rounded square (3px radius) with the spinner in `--on-accent`; it is the same square at every size (sidebar row, pane header). The chat's scroll area fades to transparent over its top 36px.
+- **Working badge.** The spinner in `--working` on a 9px square at the tile's corner, ringed in `--card`; it is the same badge on the sidebar row and the pane header. The chat's scroll area fades to transparent over its top 36px.

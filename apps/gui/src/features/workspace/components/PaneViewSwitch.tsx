@@ -20,9 +20,9 @@ const WORD: Record<PaneShow, string> = { chat: 'Chat', terminal: 'Terminal', wor
 const isShow = (value: string): value is PaneShow => (ORDER as readonly string[]).includes(value)
 
 /**
- * The Chat · Terminal · Work switch of an agent's pane. Choosing a view changes what the pane shows and sends nothing
- * to the daemon: every view reads the same session. Work shows only for a session that reported workflow runs, with
- * the count of those going and the needs square while one needs the person.
+ * The Chat · Terminal · Work tabs of an agent's pane header, the chosen one underlined in the accent. Choosing a view
+ * changes what the pane shows and sends nothing to the daemon: every view reads the same session. Work shows only for
+ * a session that reported workflow runs, with the count of those going and the needs square while one needs the person.
  */
 export function PaneViewSwitch({ views, view, work, onChange }: Props) {
   const tip = useTipWithKeys()

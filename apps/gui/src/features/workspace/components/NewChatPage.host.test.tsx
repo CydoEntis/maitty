@@ -51,22 +51,40 @@ beforeEach(() => {
 })
 
 /** The page opens on the most recent project, the first of the list. */
+/** Waits until the page has picked this project: the Where pill in the tray names it. */
 async function pickProject(name: string) {
-  expect(await screen.findByRole('button', { name: `Project: ${name}` })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: new RegExp(`^Where this chat runs: ${name}( ·|,|$)`) })).toBeInTheDocument()
 }
 
-/** Own copy is on by default; the branch menu below speaks of the checkout, so these turn it off first. */
+/** New worktree is chosen by default; the branch menu below speaks of the checkout, so these choose This folder first. */
 async function editCheckout() {
-  await userEvent.click(await screen.findByRole('switch', { name: 'Own copy' }))
+  await inWhere()
+  await userEvent.click(await screen.findByRole('radio', { name: 'This folder' }))
 }
+
+/** Opens the Where popover in the message box's tray, unless it is open, so the project, branch and Work in controls can be found. */
+/** The menu opened last: the Where popover stays open under a project or branch menu, and both are dialogs. */
+async function lastPopup() {
+  const open = await screen.findAllByRole('dialog')
+  const last = open.at(-1)
+  if (last === undefined) throw new Error('no menu is open')
+  return last
+}
+
+async function inWhere() {
+  const pill = await screen.findByRole('button', { name: /^Where this chat runs/ })
+  if (pill.getAttribute('aria-expanded') !== 'true') await userEvent.click(pill)
+}
+
 
 describe('the new chat page, against this computer', () => {
   it('shows no branch button for a folder that is not a git repository', async () => {
     page()
     await pickProject('a')
+    await inWhere()
     expect(await screen.findByRole('button', { name: 'Project: a' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Branch/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('switch', { name: 'Own copy' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: 'This folder' })).not.toBeInTheDocument()
   })
 
   it('offers to also start only the other agents installed on this computer', async () => {
@@ -83,7 +101,8 @@ describe('the new chat page, against this computer', () => {
     host.branches = GIT
     page()
     await pickProject('a')
-    await screen.findByRole('switch', { name: 'Own copy' })
+    await inWhere()
+    await screen.findByRole('radio', { name: 'This folder' })
     expect(screen.queryByRole('group', { name: 'Also start with' })).not.toBeInTheDocument()
   })
 
@@ -92,8 +111,9 @@ describe('the new chat page, against this computer', () => {
     page()
     await pickProject('a')
     await editCheckout()
+    await inWhere()
     await userEvent.click(await screen.findByRole('button', { name: 'Branch: main' }))
-    const menu = await screen.findByRole('dialog')
+    const menu = await lastPopup()
     expect(within(menu).getByRole('radio', { name: /^dev/ })).toHaveTextContent('2m')
     expect(within(menu).getByRole('radio', { name: /^main/ })).toBeChecked()
     expect(within(menu).getByRole('group', { name: 'Worktrees' })).toHaveTextContent('agent/grow-028')
@@ -105,12 +125,14 @@ describe('the new chat page, against this computer', () => {
     page((request) => { started.push(request); return Promise.resolve() })
     await pickProject('a')
     await editCheckout()
+    await inWhere()
     await userEvent.click(await screen.findByRole('button', { name: 'Branch: main' }))
-    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('radio', { name: /^dev/ }))
+    await userEvent.click(within(await lastPopup()).getByRole('radio', { name: /^dev/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Start chat' }))
     expect(started[0]?.branch).toEqual({ name: 'dev', create: false, worktree: false })
 
-    await userEvent.click(screen.getByRole('switch', { name: 'Own copy' }))
+    await inWhere()
+    await userEvent.click(screen.getByRole('radio', { name: 'New worktree' }))
     await userEvent.click(await screen.findByRole('button', { name: /^Branch: / }))
     await userEvent.type(screen.getByRole('textbox', { name: 'Search or create a branch' }), 'agent/grow-030')
     await userEvent.click(screen.getByRole('radio', { name: 'Create branch agent/grow-030' }))
@@ -121,8 +143,9 @@ describe('the new chat page, against this computer', () => {
   it('splits the projects in the dropdown into the recent few and the rest', async () => {
     page()
     await pickProject('a')
+    await inWhere()
     await userEvent.click(await screen.findByRole('button', { name: 'Project: a' }))
-    const menu = await screen.findByRole('dialog')
+    const menu = await lastPopup()
     expect(within(within(menu).getByRole('group', { name: 'Recent projects' })).getAllByRole('radio')).toHaveLength(3)
     expect(within(within(menu).getByRole('group', { name: 'All on this computer' })).getAllByRole('radio')).toHaveLength(2)
   })
@@ -150,6 +173,7 @@ describe('the new chat page, against this computer', () => {
   it('offers adding a machine under the projects when the window can', async () => {
     const add = vi.fn()
     page(undefined, add)
+    await inWhere()
     await userEvent.click(await screen.findByRole('button', { name: 'Project: a' }))
     await userEvent.click(await screen.findByRole('button', { name: /Add a machine/ }))
     expect(add).toHaveBeenCalledOnce()

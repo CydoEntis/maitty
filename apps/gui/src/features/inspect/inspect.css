@@ -163,7 +163,7 @@ button.mx-inspect-row:hover, .mx-inspect-pick:hover { background: rgba(var(--hl)
 .mx-files-row.is-current { background: var(--c-sel-bg); box-shadow: var(--c-sel-sh); color: var(--fg); }
 .mx-files-row.is-folder { color: var(--fg); font-weight: 500; }
 .mx-files-wait { display: flex; flex-direction: column; gap: 14px; padding: 10px 10px; }
-.mx-files-wait > span { width: 58%; height: 10px; border-radius: 4px; background: var(--raise); }
+.mx-files-wait > span { width: 58%; height: 10px; border-radius: 4px; background: var(--m-raise); }
 .mx-files-wait > span:nth-of-type(3n + 1) { width: 42%; }
 .mx-files-wait > span:nth-of-type(4n + 2) { width: 72%; }
 .mx-files-wait > span:nth-of-type(5n) { width: 34%; }

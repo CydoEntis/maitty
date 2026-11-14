@@ -913,7 +913,7 @@ Sessions › Keep each pane's recent output) stops saving it and deletes what wa
 ## The desktop chat
 
 In the desktop app an agent has a chat view as well as its terminal. For an agent that runs in a
-terminal it is the same session: the Terminal and Chat switch never restarts the agent. (A chat that
+terminal it is the same session: switching between the Chat and Terminal tabs in its pane's header never restarts the agent. (A chat that
 Maitty's background service runs, see [Worktrees](#worktrees), has no terminal.) This part is about working in the chat and
 checking what the agent did. What the status marks mean is in [What a session's status
 means](#what-a-sessions-status-means).
@@ -926,7 +926,7 @@ the runs; the workflow itself decides every step.
 
 ### Starting a chat
 
-**New chat** (the top of the sidebar, or **New agent chat…** in the command palette, Ctrl+Shift+T, ⌘T
+**New chat** (the `+` at the top of the sidebar, the Maitty menu at the top left of the window, or **New agent chat…** in the command palette, Ctrl+Shift+T, ⌘T
 on a Mac) opens a page that asks "What
 should we work on?". Pick a project (or paste a path, or **Browse…**), write the first message and
 press Enter. The page opens on your most recent project, and shows the project list only when you
@@ -934,33 +934,37 @@ have none. The agent starts in its own terminal and the chat opens. (**New agent
 dots, Ctrl+Shift+A, skips the page: it starts a chat at once with the default agent in the start
 folder.)
 
-Under the project there are a few more choices. **Branch**, **Own copy** and **Also start with**
-are left out when the folder is not a git repository, and for a session on another machine.
+**Where the chat runs** is the first button under the message box: the project and its branch. Click it
+to choose them. Its **Branch** and **Work in** choices, and **Also start with**, are left out when the
+folder is not a git repository, and for a session on another machine. Done, Esc or a click outside
+closes it.
 
+- **Project.** Pick another project, paste a path, or **Browse for a folder…**.
 - **Branch.** Pick a branch, or type a new name to create one.
-- **Own copy** is on by default. The agent works in a worktree of its own, on a new branch named
-  from your message, so your checkout stays as it is. A line under it says what it starts from, and
-  how far behind its upstream it is. Turn it off and the agent edits the checkout. Then, if the
-  checkout is behind, a **↓ Pull** button runs `git pull --ff-only`. It is refused while you have
-  uncommitted changes.
-- **Model, effort and permission mode** sit on the buttons under the message box. The agent is on
+- **Work in: New worktree** is chosen by default. The agent works in a worktree of its own, on a new
+  branch named from your message, so your checkout stays as it is. A line under it says what it
+  starts from, and how far behind its upstream it is. Choose **This folder** and the agent edits the
+  checkout. Then, if the checkout is behind, a **↓ Pull** button runs `git pull --ff-only`. It is
+  refused while you have uncommitted changes.
+- **Model and effort** are on the model button in the message box, and the **permission mode** is
+  in the row under it. The agent is on
   the model button too. If an agent is not installed, the page says so and offers **set it up**.
-- **Suggested tasks** under the choices start a chat on that task with one click, and **Resume**
+- **Suggested tasks** under the heading start a chat on that task with one click, and **Resume**
   lists the conversations Claude or Codex saved for the folder. Resuming starts in that folder
   without a worktree.
 
 **Several agents at once.** Under the message box, **Also start with** lists the other agents
 installed on this computer. Tick one or more and the same message goes to each, every one in its own
-worktree and on its own new branch (`fix-login`, `fix-login-2`, …). That needs Own copy. With it off
-the boxes cannot be ticked, and the page says "Each agent needs a copy of its own. Turn on Own copy
-to start several." The chat you
+worktree and on its own new branch (`fix-login`, `fix-login-2`, …). That needs New worktree. In This
+folder the boxes cannot be ticked, and the page says "Each agent needs a copy of its own. Choose New
+worktree to start several." The chat you
 see open is the agent on the model button. The others start on their own default model, effort and
 permission mode, and they are listed in the sidebar. They start only when you start a new chat, not
 when you resume a saved one,.
 
 **Keep drafting.** Press Ctrl+Enter (⌘Enter on a Mac) instead of Enter. The chat starts and is listed
 in the sidebar, but it is not opened. The page stays, the message box and its files are emptied, and
-every other choice is kept, so you can write the next chat while the first one starts. With Own copy on,
+every other choice is kept, so you can write the next chat while the first one starts. With New worktree,
 the next one gets a new branch name. If a start fails, a line under the box says why, with **Put back**,
 which puts the message and its files back in the box after whatever you typed since, and **Dismiss**.
 On another machine Ctrl+Enter is a plain start. Esc closes the page.
@@ -1094,7 +1098,7 @@ has a message box that works: Enter sends, Stop interrupts, a message sent while
 waits in a queue (with Remove), and each permission the agent asks for appears in the chat with
 **Yes once (y)**, **This session (a)** and **No (n)**; a command also has **Always in this project**,
 which approves that exact command (written the same) in that project from then on. Those are kept
-in `chat-allowed-commands.json` in Maitty's data folder, never in the repo. Settings → Agents lists
+in `chat-allowed-commands.json` in Maitty's data folder, never in the repo. Settings → Permissions lists
 them with a **Forget** for each, which takes effect at once (a second service running on the same
 computer drops it only when it next starts). Nothing else is ever remembered: a file change, an extra permission or a
 question always asks. A chat session has no terminal (to use the agent's own screen, start a terminal

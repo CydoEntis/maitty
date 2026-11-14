@@ -29,20 +29,18 @@ describe('status marks', () => {
     expect(shapes).toEqual(['mx-badge is-working', 'mx-badge is-done', 'mx-badge is-needs', 'mx-badge is-error', 'mx-badge is-unknown'])
   })
 
-  it('draws needs you and stopped as the same exclamation square, and done as a checked one, with no word in the mark itself', () => {
-    const needs = render(<StatusBadge status="needs" />)
-    const exited = render(<StatusBadge status="error" />)
-    const done = render(<StatusBadge status="done" />)
-    expect(needs.container.querySelector('svg.lucide-square-exclamation-point')).not.toBeNull()
-    expect(exited.container.querySelector('svg.lucide-square-exclamation-point')).not.toBeNull()
-    expect(done.container.querySelector('svg.lucide-square-check')).not.toBeNull()
-    expect(`${needs.container.textContent}${exited.container.textContent}${done.container.textContent}`).toBe('')
+  it('marks needs you with !, stopped with × and done with ✓, hidden from screen readers since the row says the status', () => {
+    const marks = (['needs', 'error', 'done'] as const).map((status) => {
+      const { container } = render(<StatusBadge status={status} />)
+      expect(container.firstElementChild?.getAttribute('aria-hidden')).toBe('true')
+      return container.textContent
+    })
+    expect(marks).toEqual(['!', '×', '✓'])
   })
 
-  it('draws an idle session as a sleeping mark of its own', () => {
+  it('draws no mark for an idle session: its tile dims instead', () => {
     const { container } = render(<StatusBadge status="idle" />)
-    expect(container.querySelector('.mx-badge.is-idle')).not.toBeNull()
-    expect(container.textContent).toBe('')
+    expect(container.firstElementChild).toBeNull()
   })
 
   it('still draws unknown in a row, not only in the rail', () => {

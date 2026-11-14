@@ -1,8 +1,8 @@
 import type { MouseEvent } from 'react'
 import { machineLabel } from '@/data/machineNicknames'
 import { MAX_SESSION_NAME_LENGTH, STATUS_WORD, type SessionView } from '../model/session'
-import { isShell, projectColor, projectOf, rowTitle, rowWord } from '../model/sidebar'
-import { AppIcon, Icon, StatusBadge } from './glyphs'
+import { isShell, projectOf, rowTitle, rowWord } from '../model/sidebar'
+import { AppIcon, StatusBadge } from './glyphs'
 import { beginPointerDrag } from './dragSession'
 import { InlineName } from './InlineName'
 import { Ago } from './times'
@@ -22,42 +22,30 @@ type Props = {
   onContextMenu: (event: MouseEvent) => void
 }
 
-/**
- * The line over a row's name, saying where the session is: the project's colour and folder at the left, and at the
- * right the branch in the theme's colour, or the tree and the branch in the worktree's when the session runs in one.
- * Nothing when there is none of those.
- */
+/** The line under a row's name, saying where the session is: its project, and the other machine it runs on. */
 function PlaceLine({ session, showProject, machine }: { session: SessionView; showProject: boolean; machine: string | null }) {
-  const project = projectOf(session)
-  if (!showProject && machine === null && !session.branch) return null
+  if (!showProject && machine === null) return null
   return (
     <span className="mx-row-sub">
-      {showProject && (
-        <span className="mx-row-project">
-          <span className="mx-row-square" style={{ background: projectColor(project) }} aria-hidden="true" />
-          <span className="mx-row-project-name">{project}</span>
-        </span>
-      )}
-      {machine !== null && <span className="mx-row-machine" title={machine}>· {machineLabel(machine)}</span>}
-      {session.branch && (
-        <span className={`mx-row-branch${session.worktree ? ' is-worktree' : ''}`} title={session.worktree ? `Worktree on branch ${session.branch}` : `Branch ${session.branch}`}>
-          <Icon name={session.worktree ? 'worktree' : 'branch'} size={10} />
-          <span className="mx-row-branch-name">{session.branch}</span>
-        </span>
-      )}
+      {showProject && <span className="mx-row-project-name">{projectOf(session)}</span>}
+      {machine !== null && <span className="mx-row-machine" title={machine}>{machineLabel(machine)}</span>}
     </span>
   )
 }
 
-/** One session in the sidebar: its app tile and status badge, where it is over its name (the folder at the left, the branch or worktree at the right), and beside the name a word when it stopped or is held by its plan limit, else how long it has been in its state. */
+/**
+ * One session in the sidebar: its 16px app tile and status badge, its name with how long it has been in its state (or a
+ * word when it stopped or is held by its plan limit) at the right, and its project and other machine under it. The
+ * branch is in the hover card.
+ */
 export function SessionRow({ session, selected, showProject, machine = null, renaming, onShow, onRename, onSetName, onCancelRename, onContextMenu }: Props) {
   const title = rowTitle(session)
   const active = !isShell(session) && session.status !== 'idle'
   const word = rowWord(session)
-  const className = `mx-row${selected ? ' is-selected' : ''}${active ? ' is-active' : ''}${isShell(session) ? ' is-shell' : ''}${session.status === 'unknown' ? ' is-offline' : ''}${session.status === 'limited' ? ' is-limited' : ''}`
+  const className = `mx-row${selected ? ' is-selected' : ''}${active ? ' is-active' : ''}${session.status === 'needs' ? ' is-needs' : ''}${isShell(session) ? ' is-shell' : ''}${session.status === 'unknown' ? ' is-offline' : ''}${session.status === 'limited' ? ' is-limited' : ''}`
   const icon = (
     <span className="mx-row-icon">
-      <AppIcon process={session.process} size={26} dimmed={session.status === 'unknown'} />
+      <AppIcon process={session.process} size={16} flat dimmed={session.status === 'unknown' || session.status === 'idle'} />
       <StatusBadge status={session.status} />
     </span>
   )
@@ -66,8 +54,8 @@ export function SessionRow({ session, selected, showProject, machine = null, ren
       <div className={className} onContextMenu={onContextMenu}>
         {icon}
         <span className="mx-row-text">
-          <PlaceLine session={session} showProject={showProject} machine={machine} />
           <InlineName value={session.name ?? ''} placeholder={title} label="Session name" maxLength={MAX_SESSION_NAME_LENGTH} onCommit={onSetName} onCancel={onCancelRename} />
+          <PlaceLine session={session} showProject={showProject} machine={machine} />
         </span>
       </div>
     )
@@ -86,13 +74,13 @@ export function SessionRow({ session, selected, showProject, machine = null, ren
     >
       {icon}
       <span className="mx-row-text">
-        <PlaceLine session={session} showProject={showProject} machine={machine} />
         <span className="mx-row-title">
           <span className="mx-row-name">{title}</span>
           {word !== '' && <span className="mx-row-word">{word}</span>}
           {/* How long the agent has been in this state; a shell has no state worth timing. */}
           {word === '' && !isShell(session) && session.statusSince !== null && <span className="mx-row-when"><Ago at={session.statusSince} /></span>}
         </span>
+        <PlaceLine session={session} showProject={showProject} machine={machine} />
       </span>
     </button>
   )

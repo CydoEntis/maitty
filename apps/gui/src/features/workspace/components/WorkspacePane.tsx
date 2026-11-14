@@ -1,5 +1,5 @@
 import { movePanes } from './paneTransition'
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { TerminalView } from '@/TerminalView'
 import { useWorkspace } from '../workspaceContext'
 import { chatAvailability, type PaneView } from '../model/chatView'
@@ -11,7 +11,6 @@ import { carryDraftToTerminal } from '../model/draftCarry'
 import { PaneCard } from './PaneCard'
 import { LOCAL_MACHINE } from '@/api/machines'
 import { AgentTerminals } from './AgentTerminals'
-import { startsFolded } from '../model/terminalDrawer'
 import type { TurnSpan } from '@/features/inspect/turnRange'
 import { CODEX_SUBMIT_GAP_MS } from '@/features/chat/useChatComposer'
 import { contextFull, type ChatProblem } from '@/features/chat/problem'
@@ -45,8 +44,7 @@ export function WorkspacePane({ shown, pane, kept }: {
   pane: PaneSlot
   kept: boolean
 }) {
-  const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, sharedFolderRefusalOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, handoffSession, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane, setRenameId , heads, retryNamed, newChatWithSummary , moveToWorktree, showSubagent } = useWorkspace()
-  const [drawerFolded, setDrawerFolded] = useState(startsFolded)
+  const { paneSessions, chatOf, openSubagent, ownsTerminals, repoPaneOf, sharedFolderRefusalOf, outsidePanes, dropId, dragId, paneViews, showChanges, online, setOpenSubagent, togglePanel, preferences, setPreferences, startChatHere, handoffSession, inspectOpen, addAgentTerminal, root, look, modalOpen, mirrorInput, openPath, pasteImage, terminalHandles, setLayout, split, closePaneById, sendTo, copyPathOf, restartPane, setRenameId , heads, retryNamed, newChatWithSummary , moveToWorktree, showSubagent, drawerFoldedOf, setDrawerFolded } = useWorkspace()
   // Bound to this pane, so a row opened from a pane without the focus focuses it and shows its own session's changes.
   const openDiff = useCallback((file: string, turn?: TurnSpan | null) => { showChanges(pane.id, pane.sessionId, file, turn) }, [showChanges, pane.id, pane.sessionId])
   const session = paneSessions.get(pane.sessionId)
@@ -98,6 +96,7 @@ export function WorkspacePane({ shown, pane, kept }: {
   // A shell is a terminal already: its further terminals stay in the side panel, never under it.
   const shell = isShell(session)
   const pinned = terminals && !shell && dock === 'under' && !kept
+  const drawerFolded = drawerFoldedOf(session.id)
   // The panel has something for this pane: its repository, or terminals that live there. A pane of another machine keeps the button, which says why not.
   const hasPanel = session.machine !== LOCAL_MACHINE || repoPaneOf(session) !== null || (terminals && (shell || dock === 'panel'))
   return (
@@ -159,7 +158,7 @@ export function WorkspacePane({ shown, pane, kept }: {
       terminalDock={terminals && !shell ? dock : null}
       onNewTerminal={() => { addAgentTerminal(session.id) }}
       onDock={(terminalDock) => { setPreferences((current) => ({ ...current, terminalDock })) }}
-      {...(pinned ? { drawer: <AgentTerminals agent={session} dock="under" focused={false} folded={drawerFolded} onFold={setDrawerFolded} />, drawerFolded, onDrawerFold: setDrawerFolded } : {})}
+      {...(pinned ? { drawer: <AgentTerminals agent={session} dock="under" focused={false} folded={drawerFolded} onFold={(folded) => { setDrawerFolded(session.id, folded) }} />, drawerFolded, onDrawerFold: (folded: boolean) => { setDrawerFolded(session.id, folded) } } : {})}
       online={online}
       portalContainer={root}
       terminal={chatOnly ? <NoTerminalNote /> :

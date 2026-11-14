@@ -174,12 +174,13 @@ function Expanded(props: SidebarProps) {
   const groupingLabel = SIDEBAR_GROUPINGS.find(([grouping]) => grouping === props.grouping)?.[1] ?? ''
   const localMachine = props.machines[0]?.machine ?? 0
   const picked = (on: boolean, otherwise = '') => (on ? '✓' : otherwise)
-  const projectMenu = (): MenuEntry[] => [
+  // Group by, then which project's sessions to show: one menu for both, as the header has one button.
+  const filterMenu = (): MenuEntry[] => [
+    ...SIDEBAR_GROUPINGS.map(([grouping, label]) => ({ label: `Group by ${label.toLowerCase()}`, hint: picked(props.grouping === grouping), run: () => { props.onGrouping(grouping) } })),
+    'separator' as const,
     { label: 'All projects', hint: picked(project === null, String(props.sessions.length)), run: () => { setPickedProject(null) } },
-    ...(projects.length > 0 ? ['separator' as const] : []),
     ...projects.map((choice) => ({ label: choice.name, hint: picked(project === choice.name, String(choice.count)), run: () => { setPickedProject(choice.name) } })),
   ]
-  const groupingMenu = (): MenuEntry[] => SIDEBAR_GROUPINGS.map(([grouping, label]) => ({ label, hint: picked(props.grouping === grouping), run: () => { props.onGrouping(grouping) } }))
   const startMenu = (): MenuEntry[] => [
     { label: 'New agent chat', hint: shortcutText('new-agent-chat'), disabled: !props.canStart, run: () => { props.onNewAgentChat(localMachine) } },
     { label: 'New shell', hint: shortcutText('new-terminal'), disabled: !props.canStart, run: () => { props.onNewShell(localMachine) } },
@@ -273,31 +274,18 @@ function Expanded(props: SidebarProps) {
   return (
     <div className="mx-sidebar-expanded">
       <div className="mx-sidebar-top">
-        <div className="mx-top-line">
-          <button type="button" className="mx-top-button is-new" title={tip('New chat', 'new-agent-chat')} disabled={!props.canStart} onClick={() => { props.onNewAgentChat(localMachine) }}>
-            <Icon name="plus" size={14} /><span className="mx-top-label">New chat</span>
-          </button>
-          <button type="button" className="mx-head-button" aria-label="More to start" title="New shell, or add a remote machine" aria-haspopup="menu" onClick={(event) => { openUnder(event, 'Start', startMenu()) }}><Icon name="chevronDown" size={13} /></button>
-          <button type="button" className="mx-head-button" aria-label="Collapse sidebar" title={tip('Collapse sidebar', 'toggle-sidebar')} onClick={props.onToggleRail}><Icon name="collapse" /></button>
-        </div>
-        <button type="button" className="mx-top-button" title={tip('Search', 'palette')} onClick={props.onSearch}>
-          <Icon name="search" size={14} /><span className="mx-top-label">Search</span><span className="mx-top-keys mono" aria-hidden="true">{shortcutText('palette')}</span>
-        </button>
-      </div>
-      <div className="mx-sidebar-filters">
-        <button type="button" className="mx-filter-button is-project" aria-label={`Show sessions from: ${project ?? 'All projects'}`} aria-haspopup="menu" onClick={(event) => { openUnder(event, 'Show sessions from', projectMenu()) }}>
-          <Icon name="folder" size={13} /><span className="mx-filter-label">{project ?? 'All projects'}</span><Icon name="chevronDown" size={10} />
-        </button>
-        <button type="button" className="mx-filter-button" aria-label={`Group by: ${groupingLabel}`} title="Group by" aria-haspopup="menu" onClick={(event) => { openUnder(event, 'Group by', groupingMenu()) }}>
-          <Icon name="layout" size={13} />{groupingLabel}<Icon name="chevronDown" size={10} />
-        </button>
+        <span className="mx-sidebar-title">Chats</span>
+        <span className="mx-spacer" />
+        <button type="button" className="mx-head-button" aria-label="Search" title={tip('Search', 'palette')} onClick={props.onSearch}><Icon name="search" size={14} /></button>
+        <button type="button" className="mx-head-button" aria-label={`Filter and group: ${project ?? 'All projects'}, by ${groupingLabel.toLowerCase()}`} title="Filter and group" aria-haspopup="menu" onClick={(event) => { openUnder(event, 'Filter and group', filterMenu()) }}><Icon name="filter" /></button>
+        <button type="button" className="mx-head-button" aria-label="New chat" title={tip('New chat', 'new-agent-chat')} disabled={!props.canStart} onClick={() => { props.onNewAgentChat(localMachine) }} onContextMenu={(event) => { openMenu(event, 'Start', startMenu()) }}><Icon name="plus" size={15} /></button>
       </div>
       <div ref={list} className="mx-sidebar-list" onScroll={endHover}>
         {props.grouping !== 'machine' && (
           <section aria-label="Agents" className="mx-sections">
             {draft !== null && <DraftRow />}
             {props.grouping === 'status' && statusSections(sessions).map((section) => (
-              <ListSection key={section.key} id={`status:${section.key}`} tone={section.key} name={section.name} hint={section.hint} keyHint={section.key === 'needs' ? shortcutText('jump-needs') : undefined} count={section.sessions.length} label={section.name} open={views.isOpen(`status:${section.key}`)} onToggle={() => { views.toggle(`status:${section.key}`) }}>
+              <ListSection key={section.key} id={`status:${section.key}`} tone={section.key} name={section.name} count={section.sessions.length} label={section.name} open={views.isOpen(`status:${section.key}`)} onToggle={() => { views.toggle(`status:${section.key}`) }}>
                 {section.sessions.map((session) => renderRow(session, true, true))}
               </ListSection>
             ))}
@@ -335,7 +323,7 @@ function Expanded(props: SidebarProps) {
         )}
         {putAway.length > 0 && (
           <section aria-label="Put away sessions" className="mx-sections">
-            <ListSection id={PUT_AWAY_SECTION} name="Put away" hint="still running" count={putAway.length} label="Put away" open={putAwayOpen} onToggle={() => { setPutAwayOpen(!putAwayOpen) }}>
+            <ListSection id={PUT_AWAY_SECTION} name="Put away" count={putAway.length} label="Put away" open={putAwayOpen} onToggle={() => { setPutAwayOpen(!putAwayOpen) }}>
               {putAway.map((session) => renderRow(session, true, true))}
             </ListSection>
           </section>
@@ -353,7 +341,6 @@ function Expanded(props: SidebarProps) {
         {props.online
           ? <span className="mx-foot-slot">{props.updateSlot}</span>
           : <><span className="mx-daemon-dot is-offline" aria-hidden="true" /><span className="mx-daemon-text is-offline" role="status">{props.serviceText ?? 'Reconnecting to maittyd…'}</span></>}
-        <button type="button" className="mx-head-button mx-settings-button" aria-label="Recent sessions" title="Recent sessions: reopen one closed on this computer" onClick={props.onRecentSessions}><Icon name="history" size={13} /></button>
         <button type="button" className="mx-head-button mx-settings-button" aria-label="Settings" title={tip('Settings', 'settings')} onClick={props.onOpenSettings}><Icon name="gear" size={15} /></button>
       </div>
       {hovered && hover && <RowHoverCard session={hovered} row={hover.row} portalContainer={props.portalContainer} />}
@@ -371,11 +358,8 @@ type ListSectionProps = {
   open: boolean
   onToggle: () => void
   children: ReactNode
-  /** A status section: its colour, and the few words that say what the status means. */
+  /** A status section: its colour. */
   tone?: string
-  hint?: string
-  /** The key that jumps to the section's first session, shown at the heading's right. */
-  keyHint?: string | undefined
   /** A project section: its colour square, the other machine it is on, and how many of its sessions need you. */
   color?: string
   machine?: MachineHead | null
@@ -383,7 +367,7 @@ type ListSectionProps = {
 }
 
 /** One heading of the status or project list, with the rows under it; the heading folds them away. */
-function ListSection({ id, name, label, count, open, onToggle, children, tone, hint, keyHint, color, machine = null, needs = 0 }: ListSectionProps) {
+function ListSection({ id, name, label, count, open, onToggle, children, tone, color, machine = null, needs = 0 }: ListSectionProps) {
   return (
     <div className="mx-section" data-section={id}>
       <button type="button" className={`mx-section-head${tone === undefined ? '' : ` is-${tone}`}`} data-flip={`head:${id}`} aria-expanded={open} onClick={onToggle}>
@@ -393,10 +377,7 @@ function ListSection({ id, name, label, count, open, onToggle, children, tone, h
         {machine !== null && <span className={`mx-machine-dot${machine.down ? ' is-offline' : ''}`} role="img" aria-label={machine.down ? `${machineTitle(machine)} is ${machine.chip?.word ?? 'not reachable'}` : `${machineTitle(machine)} is connected`} />}
         <span className="mx-section-count mono">{count}</span>
         {needs > 0 && <span className="mx-project-needs" aria-label={`${String(needs)} need you`}>{needs}</span>}
-        {hint !== undefined && <span className="mx-section-hint">{hint}</span>}
         <span className="mx-spacer" />
-        {keyHint !== undefined && <kbd className="mx-section-key">{keyHint}</kbd>}
-        <span className={`mx-caret-wrap${open ? ' is-open' : ''}`}><Icon name="caret" /></span>
       </button>
       <Collapse open={open}>
         <div className="mx-rows" role="list" aria-label={label}>{children}</div>

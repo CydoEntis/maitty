@@ -68,12 +68,14 @@ pnpm dlx shadcn@latest add button dialog form
 Follow the chat handoff (`design_handoff_maitty_chat`, see [DESIGN](../DESIGN.md#desktop-app)) and
 `docs/features/chat-gui/design-brief.md`. Use Inter for interface text and JetBrains Mono for code,
 paths, shortcuts and diff numbers. Use the spacing tokens `--s1`..`--s9` and the radius tokens
-`--r-control` (6px) and `--r-panel` (10px, panels, dialogs and menus), which are 0 under Square corners
-(`apps/gui/src/tokens.css`).
+`--r-control` (6px), `--r-panel` (10px, panels, dialogs and menus) and `--r-badge` (3px), which are 0 under
+Square corners (`apps/gui/src/tokens.css`). A surface takes its fill from its role in `material.css` (panel,
+float or field), and a control inside it from the `--m-*` and `--c-*` tokens there; the look is flat, with no
+gradient or blur ([DESIGN](../DESIGN.md#desktop-app)).
 
 Maitty Night is the default dark theme and Maitty Day the default light one (sea-glass and brass,
-their `palette` in `crates/maitty-settings/themes.json`). Brass is the accent; teal means only working; coral means only
-needs-you; red is reserved for errors and recovery. Use the shared CSS variables for every
+their `palette` in `crates/maitty-settings/themes.json`). A primary button is the theme's accent; teal means only
+working; `--needs` (the theme's warn) means only needs-you; red is reserved for errors and recovery. Use the shared CSS variables for every
 theme and keep shadcn primitives unchanged unless an accessibility or product
 need is documented.
 

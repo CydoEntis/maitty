@@ -422,7 +422,7 @@ describe('desktop terminal multiplexer', () => {
     expect(row).toHaveFocus()
   })
 
-  it('shows no diff counts and no folder badge on a row, and leaves "working" to the badge', async () => {
+  it('shows no diff counts, branch or folder badge on a row, and leaves "working" to the badge', async () => {
     daemon.loadConversations.mockResolvedValue([inRepo(3, `${HOME}/code/maitty`, `${HOME}/code/maitty`, { agent: 'claude', status: 'working', branch: 'agent/grow-028', diffAdded: 104, diffRemoved: 61 })])
     renderDesktopApp()
     const sidebar = await screen.findByRole('navigation', { name: 'Sessions' })
@@ -430,7 +430,7 @@ describe('desktop terminal multiplexer', () => {
     const row = await within(sidebar).findByRole('button', { name: /, claude, working/ })
 
     expect(row).toHaveTextContent('claude')
-    expect(row).toHaveTextContent('agent/grow-028')
+    expect(row).not.toHaveTextContent('agent/grow-028')
     expect(row).not.toHaveTextContent('+104')
     expect(row).not.toHaveTextContent('−61')
     expect(row).not.toHaveTextContent('working')
@@ -1321,7 +1321,7 @@ describe('desktop overlays and pane tools', () => {
     await user.click(await screen.findByRole('menuitemradio', { name: 'Rounded' }))
 
     expect(document.documentElement.dataset.corners).toBe('rounded')
-    expect(document.documentElement.dataset.finish).toBe('flat')
+    expect(document.documentElement.dataset.finish).toBeUndefined()
     expect(within(bar).getByRole('button', { name: 'Corners: Rounded' })).toBeInTheDocument()
   })
 

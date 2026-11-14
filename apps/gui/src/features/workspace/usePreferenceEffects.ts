@@ -37,7 +37,6 @@ export function usePreferenceEffects({ preferences, reducedMotion }: {
   useEffect(() => {
     // One flat look; the corners are the only shape choice (`tokens.css` reads `data-corners`).
     document.documentElement.dataset.corners = preferences.corners
-    document.documentElement.dataset.finish = 'flat'
   }, [preferences.corners])
 
   useEffect(() => {

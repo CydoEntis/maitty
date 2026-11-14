@@ -24,8 +24,6 @@
 .mx-keys-caps kbd {
   min-width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; padding: 0 6px; border-radius: 5px;
   font-family: var(--mono); font-size: 11px; color: var(--fg2);
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.09 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.04 * var(--hk) * var(--gk))));
-  box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.12 * var(--hk) * var(--gk))), 0 1px 0 rgba(var(--sd), calc(.5 * var(--sk) * var(--gk)));
 }
 
 .mx-ns-body { display: flex; flex-direction: column; gap: 18px; padding: 12px 22px 20px; }
@@ -88,11 +86,6 @@
 .mx-nc-project-sub { font-size: 12px; color: var(--muted); }
 .mx-nc-none { margin: 0; padding: 14px 12px; font-size: 13px; color: var(--dim); }
 .mx-nc-elsewhere { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 6px; border-top: 1px solid rgba(var(--hl), calc(.08 * var(--hk))); }
-.mx-nc-picks { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; max-width: 100%; }
-.mx-nc-picks .mx-chip { height: 32px; gap: 7px; padding: 0 10px 0 11px; border-radius: 9px; font-size: 13px; color: var(--fg2); background: rgba(var(--hl), calc(.06 * var(--hk))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.11 * var(--hk))), inset 0 1px 0 rgba(var(--hl), calc(.06 * var(--hk))); }
-.mx-nc-picks .mx-chip:hover, .mx-nc-picks .mx-chip[data-state="open"] { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); }
-.mx-nc-picks .mx-chip:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent-line); }
-.mx-nc-picks .mx-chip strong { color: var(--fg); }
 .mx-nc-branch { display: inline-flex; font-family: var(--mono); font-size: 12.5px; color: var(--branch); }
 .mx-nc-tasks { list-style: none; margin: -10px auto 0; padding: 0; display: flex; flex-direction: column; align-items: stretch; width: max-content; max-width: 100%; }
 .mx-nc-tasks button { width: 100%; height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 8px; font-size: 13.5px; color: var(--muted); text-align: left; }
@@ -104,14 +97,12 @@
 .mx-nc-resume .mx-nc-tasks { margin: 0; width: 100%; max-height: 216px; overflow-y: auto; }
 .mx-nc-tasks button .mx-nc-resume-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; }
 .mx-nc-quiet { margin: 0; font-size: 12.5px; color: var(--dim); text-align: center; }
-.mx-ctxtray .mx-model-button { height: 26px; font-size: 12.5px; }
 
-/* The new chat's stack: the context row, the message box and the tray read as one card. The box inside
-   keeps its own field material, so the stack only frames it. */
-.mx-newchat-stack { width: 100%; display: flex; flex-direction: column; gap: 6px; padding: 6px 6px 4px; border-radius: 20px; }
+/* The new chat's message box and the tray hanging under it, drawn as the chat's own (chat.css). */
+.mx-newchat-stack { width: 100%; display: flex; flex-direction: column; align-items: center; }
 .mx-ctxrow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 8px 0; font-size: 12.5px; color: var(--dim); }
-.mx-ctxtray { display: flex; align-items: center; gap: 2px; padding: 0 8px 2px; }
-.mx-chip { height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 8px; font-size: 12.5px; color: var(--fg); background: var(--m-well); box-shadow: inset 0 0 0 1px var(--m-line); white-space: nowrap; outline: none; }
+.mx-tray-sep { width: 1px; height: 14px; margin: 0 3px; flex: none; background: var(--line2); }
+.mx-chip { height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 8px; font-size: 12.5px; color: var(--fg); background: var(--m-well); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; outline: none; }
 .mx-chip:hover, .mx-chip[data-state="open"] { background: var(--m-hover); }
 .mx-chip:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent-line); }
 .mx-chip strong { font-weight: 600; }
@@ -119,7 +110,7 @@
 .mx-chip-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ok); }
 
 .mx-chip-menu { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
-.mx-chip-search { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: 10px; color: var(--dim); background: var(--m-well); box-shadow: inset 0 0 0 1px var(--m-line); }
+.mx-chip-search { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: 10px; color: var(--dim); background: var(--m-well); box-shadow: inset 0 0 0 1px var(--line); }
 .mx-chip-search:focus-within { box-shadow: inset 0 0 0 1.5px var(--accent-line); }
 .mx-chip-search input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; font-size: 13px; color: var(--fg); }
 .mx-chip-count { font-size: 11.5px; color: var(--dim); }
@@ -133,7 +124,7 @@
 .mx-chip-row-sub { font-size: 11.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-chip-badge { padding: 0 6px; border-radius: 6px; font-size: 10.5px; font-weight: 500; color: var(--dim); background: var(--m-well); }
 .mx-chip-none { margin: 0; padding: 10px 8px; font-size: 12.5px; color: var(--dim); }
-.mx-chip-footer { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--m-line); }
+.mx-chip-footer { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
 .mx-chip-footer p { margin: 0; padding: 0 4px; font-size: 11.5px; color: var(--dim); }
 .mx-chip-action { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 13px; color: var(--fg2); }
 .mx-chip-action:hover { background: var(--m-hover); color: var(--fg); }
@@ -144,8 +135,31 @@
 
 .mx-chip-note { margin: 4px 8px 6px; font-size: 11.5px; line-height: 1.4; color: var(--dim); }
 
-/* The faster new chat (layout 2g): the Own copy switch, the line saying how the checkout stands, and the other projects one click away. */
-.mx-own-copy { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 11px; border-radius: 9px; font-size: 13px; color: var(--fg2); background: rgba(var(--hl), calc(.06 * var(--hk))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.11 * var(--hk))); cursor: pointer; }
+/* Where this chat runs: the pill at the start of the tray, and the popover it opens upward (the whole-app mock). */
+.mx-where-pill { min-width: 0; gap: 6px; padding: 0 7px 0 8px; color: var(--fg); }
+.mx-where-pill[data-state="open"] { background: var(--m-hover); }
+.mx-where-name { min-width: 4ch; overflow: hidden; text-overflow: ellipsis; }
+.mx-where-dot { color: var(--dim); }
+.mx-where-branch { display: inline-flex; align-items: center; gap: 5px; min-width: 4ch; overflow: hidden; font-family: var(--mono); font-size: 12px; color: var(--branch); }
+.mx-where-branch > span { overflow: hidden; text-overflow: ellipsis; }
+.mx-where-branch.is-worktree { color: var(--ansi-blue); }
+.mx-where { display: flex; flex-direction: column; width: min(400px, calc(100vw - 32px)); max-height: min(480px, 70vh); padding: 0; overflow: hidden; }
+.mx-where-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 6px 10px 10px; }
+.mx-where-label { margin: 6px 0 2px; font-size: 11px; font-weight: 600; color: var(--dim); }
+.mx-where-label:first-child { margin-top: 2px; }
+.mx-where-work { align-self: stretch; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; border-radius: var(--r-control); background: var(--m-well); border: 1px solid var(--line); }
+.mx-where-work-option { display: flex; align-items: center; justify-content: center; gap: 6px; height: 28px; border-radius: var(--r-control); font-size: 12.5px; color: var(--muted); }
+.mx-where-work-option:hover { color: var(--fg); }
+.mx-where-work-option[data-state="checked"] { font-weight: 600; color: var(--fg); background: var(--m-sel); box-shadow: inset 0 0 0 1px var(--line2); }
+.mx-where-work-option.is-tree[data-state="checked"] { color: var(--ansi-blue); }
+.mx-where-work-option:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.mx-where-note { margin: 4px 0 0; font-size: 12px; line-height: 1.45; color: var(--dim); text-wrap: pretty; }
+.mx-where .mx-nc-sync { margin: 2px 0 0; justify-content: flex-start; }
+.mx-where-foot { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--line); }
+.mx-where-done { height: 28px; padding: 0 12px; border-radius: var(--r-control); font-size: 12.5px; font-weight: 600; color: var(--on-accent); background: var(--accent); }
+.mx-where-done:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* How the checkout stands, and the other projects one click away. */
 .mx-nc-sync { display: flex; align-items: center; justify-content: center; gap: 8px; margin: -8px 0 0; font-size: 12.5px; color: var(--dim); }
 .mx-nc-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
 .mx-nc-behind { color: var(--warn); font-weight: 600; font-variant-numeric: tabular-nums; }

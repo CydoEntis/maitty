@@ -154,7 +154,6 @@ export function Gallery() {
   useEffect(() => {
     const root = document.documentElement
     root.dataset.corners = corners
-    root.dataset.finish = 'flat'
     for (const [name, value] of Object.entries(style)) if (name.startsWith('--')) root.style.setProperty(name, value)
     root.style.colorScheme = theme.light ? 'light' : 'dark'
   }, [corners, style, theme.light])
