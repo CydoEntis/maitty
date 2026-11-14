@@ -109,6 +109,9 @@ pub struct SavedPane {
     /// Child activity records survive daemon restarts and completed turns.
     #[serde(default)]
     pub subagent_activity: Vec<SubagentActivity>,
+    /// Workflow runs reported from the pane, so a restart keeps showing them.
+    #[serde(default)]
+    pub workflows: Vec<maitty_shared::workflow::WorkflowRun>,
     /// The latest result of each checkpoint; their output tails are kept beside the pane's
     /// output files. A pane saved with a single `check` loads it as one checkpoint.
     #[serde(

@@ -1,7 +1,7 @@
 import type { SubagentActivity, SubagentState } from '@/data/preview'
 
-/** A subagent whose own chat a pane shows. */
-export type OpenSubagent = { sessionId: string; subagentId: string }
+/** What a pane shows instead of its session's chat: a subagent's own chat, or a workflow run's steps. */
+export type OpenSubagent = { sessionId: string; subagentId: string; runKey?: undefined } | { sessionId: string; runKey: string; subagentId?: undefined }
 
 /** A subagent's state as the sidebar marks it: a corner shape for each, never colour alone. */
 export type SubagentStatus = 'working' | 'needs' | 'done' | 'stopped'

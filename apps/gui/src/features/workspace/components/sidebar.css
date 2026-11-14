@@ -190,3 +190,13 @@
 .mx-section-key { flex: none; font-family: var(--mono); font-size: 10.5px; font-weight: 500; color: var(--dim); }
 .mx-row.is-offline { opacity: .5; }
 .mx-row.is-offline .mx-row-word, .mx-row.is-limited .mx-row-word { color: var(--muted); }
+
+/* Workflow runs (ADR 0010): under the selected session, after its subagents. A step's mark has a shape per state. */
+.mx-step-mark { flex: none; width: 14px; display: inline-flex; justify-content: center; font-family: var(--mono); font-size: 12px; line-height: 1; color: var(--muted); }
+.mx-step-mark.is-working { color: var(--working); }
+.mx-step-mark.is-needs_you { color: var(--warn); }
+.mx-step-mark.is-passed { color: var(--ok); }
+.mx-step-mark.is-failed { color: var(--danger); }
+.mx-step-mark .mx-spin { font-size: 10px; }
+.mx-run-step { flex: none; max-width: 40%; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-run-fold .mx-sub-name { color: var(--muted); }

@@ -416,6 +416,32 @@ pub async fn read_conversation(
     }
 }
 
+/// The longest helper id the window may ask about; the daemon checks it again.
+const HELPER_ID_MAX: usize = 128;
+
+/// What one of a pane's helpers did, from its own record (ADR 0010), as JSON for the window.
+pub async fn read_helper(term: u32, helper: String, daemon: impl Into<Daemon>) -> Result<Value> {
+    if helper.is_empty()
+        || helper.len() > HELPER_ID_MAX
+        || !helper.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        bail!("invalid helper id");
+    }
+    match request(ClientMsg::Query(Query::HelperRead { term, helper }), daemon).await? {
+        Reply::HelperRead(record) => Ok(serde_json::to_value(record)?),
+        _ => bail!("daemon returned an unexpected helper reply"),
+    }
+}
+
+/// The Claude Code and Codex agent files of a pane's project and its user's home, read-only (ADR
+/// 0010), as JSON for the window.
+pub async fn read_specialists(term: u32, daemon: impl Into<Daemon>) -> Result<Value> {
+    match request(ClientMsg::Query(Query::Specialists { term }), daemon).await? {
+        Reply::Specialists(list) => Ok(serde_json::to_value(list)?),
+        _ => bail!("daemon returned an unexpected specialists reply"),
+    }
+}
+
 pub async fn conversation_diff(
     id: u64,
     generation: u64,

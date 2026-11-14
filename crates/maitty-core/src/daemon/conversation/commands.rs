@@ -1844,6 +1844,9 @@ impl Daemon {
                     archived: c.archived,
                     root: checkout.as_ref().map(|head| head.main_root.clone()),
                     branch: checkout.map(|head| head.branch),
+                    helpers: state
+                        .filter(|s| s.helpers_generation == c.generation)
+                        .map_or_else(Vec::new, |s| s.helpers.clone()),
                 }
             })
             .collect();
@@ -1865,6 +1868,7 @@ impl Daemon {
                 archived: false,
                 root: None,
                 branch: None,
+                helpers: Vec::new(),
             })
         }));
         summaries.extend(self.pending_starts.iter().map(|p| {
@@ -1886,6 +1890,7 @@ impl Daemon {
                 archived: false,
                 root: None,
                 branch: None,
+                helpers: Vec::new(),
             }
         }));
         summaries

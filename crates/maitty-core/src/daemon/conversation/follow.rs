@@ -153,6 +153,7 @@ pub struct Done {
     result: Result<Chunk, ReadFailure>,
 }
 
+#[derive(Debug)]
 pub(in crate::daemon) enum ReadFailure {
     /// The file is not one this pane's session may be read from (path, name or place).
     Refused(&'static str),
@@ -161,7 +162,7 @@ pub(in crate::daemon) enum ReadFailure {
 }
 
 impl ReadFailure {
-    fn words(&self) -> &'static str {
+    pub(in crate::daemon) fn words(&self) -> &'static str {
         match self {
             Self::Refused(why) => why,
             Self::NotFound => "The agent's transcript file was not found",
@@ -611,7 +612,7 @@ fn read_new(
 const GEMINI_ID_CHARS: usize = 8;
 
 /// The user's home folder, the only place a followed transcript may be read from.
-fn user_home() -> Option<PathBuf> {
+pub(in crate::daemon) fn user_home() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf())
 }
 
@@ -627,7 +628,7 @@ fn find_by_session(provider: Provider, session: &str) -> Option<PathBuf> {
 /// The path came from a hook report, so it is not trusted: it must be a regular `.jsonl` file
 /// whose real path (symbolic links followed) is inside the user's home folder, and whose name
 /// carries the session id the hook reported, so a pane cannot point the daemon at another file.
-fn checked_path(
+pub(super) fn checked_path(
     path: &Path,
     provider: Provider,
     session: &str,

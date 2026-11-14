@@ -1836,8 +1836,22 @@ impl App {
                 self.ask_restart();
             }
             ScreenHit::Subagent(i) => {
-                if let Some(term) = self.screen.sub_rows.get(i).copied() {
-                    self.screen_focus(term);
+                match (self.screen.sub_rows.get(i).copied(), self.screen.sub_ids.get(i).cloned()) {
+                    (Some(term), Some((id, name))) => self.open_helper(term, id, name),
+                    (Some(term), None) => self.screen_focus(term),
+                    _ => {}
+                }
+            }
+            ScreenHit::SubagentsDone(i) => {
+                if let Some(key) = self.screen.done_rows.get(i).copied()
+                    && !self.screen.subs_opened.remove(&key)
+                {
+                    self.screen.subs_opened.insert(key);
+                }
+            }
+            ScreenHit::Run(i) => {
+                if let Some((term, key)) = self.screen.run_rows.get(i).cloned() {
+                    self.mode = Mode::Run { term, key };
                 }
             }
             ScreenHit::ReleaseMenu => self.release_menu(),

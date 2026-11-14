@@ -175,6 +175,16 @@ pub(super) fn notification(
             exit_code: None,
             duration_ms: None,
         },
+        // A helper starting or finishing (Codex 0.166); the helper itself is tracked apart
+        // (`codex_helpers`), and its own events never reach this history.
+        "subAgentActivity" => Content::Tool {
+            kind: kind.into(),
+            label: helper_activity_label(item),
+            output: String::new(),
+            input: None,
+            exit_code: None,
+            duration_ms: None,
+        },
         // Never retain unknown raw provider objects: they can contain unrelated private state.
         _ => Content::Unsupported { kind: kind.into() },
     };
@@ -261,6 +271,22 @@ fn helper_title(item: &Value) -> String {
             .get("tool")
             .and_then(Value::as_str)
             .map_or_else(|| "Helper agent".into(), clean_text),
+    }
+}
+
+/// "Started helper review" or "Helper review finished", by the task name Codex gave it.
+fn helper_activity_label(item: &Value) -> String {
+    let name = item
+        .get("agentPath")
+        .and_then(Value::as_str)
+        .and_then(|path| path.rsplit('/').find(|part| !part.is_empty()))
+        .map(clean_text)
+        .filter(|name| !name.is_empty())
+        .map(|name| name.chars().take(HELPER_TITLE_CHARS).collect::<String>());
+    let name = name.as_deref().unwrap_or("helper");
+    match item.get("kind").and_then(Value::as_str) {
+        Some("completed") => format!("Helper {name} finished"),
+        _ => format!("Started helper {name}"),
     }
 }
 

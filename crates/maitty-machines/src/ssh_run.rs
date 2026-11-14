@@ -286,12 +286,14 @@ mod tests {
         assert_eq!(ran.stderr.trim(), "err");
     }
 
+    // `exec`, because dash forks a `-c` command instead of becoming it: killing the shell would
+    // leave `sleep` holding the output pipes, and collecting the output would wait the 30 s out.
     #[test]
     fn a_cancel_ends_a_line_that_would_run_on() {
         let watch = Watch::default();
         watch.cancel.store(true, Ordering::Relaxed);
         let started = Instant::now();
-        let ran = run_watched(&sh("sleep 30"), None, ASK_LIMIT, &watch).unwrap();
+        let ran = run_watched(&sh("exec sleep 30"), None, ASK_LIMIT, &watch).unwrap();
         assert!(ran.cancelled);
         assert_eq!(ran.code, None);
         assert!(started.elapsed() < Duration::from_secs(10));
@@ -299,7 +301,7 @@ mod tests {
 
     #[test]
     fn the_time_limit_ends_a_line_that_never_finishes() {
-        let ran = run(&sh("sleep 30"), None, Duration::from_millis(200)).unwrap();
+        let ran = run(&sh("exec sleep 30"), None, Duration::from_millis(200)).unwrap();
         assert_eq!(ran.code, None);
         assert!(!ran.cancelled, "the limit is not a cancel");
     }

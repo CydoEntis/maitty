@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { toast } from '@/lib/toast'
 import { allowAlways, answerUserInput, approveRequest, loadTerminalScreen } from '@/api/daemon'
+import { machineNameOf, terminalOf } from '@/api/machines'
 import { errorMessage } from '@/lib/error-message'
 import { readConversationPermissions } from '@/data/conversationPermissions'
 import type { ChatAgent, ChatLink } from '@/features/workspace/model/chatView'
@@ -41,6 +42,7 @@ import { ProblemBanner } from './ProblemBanner'
 import { summaryOf } from '../summary'
 import type { ChatProblem } from '../problem'
 import { SubagentBar, SubagentChat } from './SubagentChat'
+import { RunBar, RunView, type OpenRun } from './RunView'
 import { VirtualList } from './VirtualList'
 import { copyText } from '@/lib/clipboard'
 import { ConfirmCloseDialog } from '@/features/workspace/components/ConfirmCloseDialog'
@@ -132,6 +134,8 @@ type Props = {
   onOpenFolder?: (() => void) | null
   /** A subagent whose own chat shows instead of the session's, and the way back. */
   subagent?: SubagentView | null
+  /** A workflow run whose steps show instead of the session's chat. */
+  run?: OpenRun | null
   onBackToMain?: () => void
   /** What the session's agent reported using (context, plan limits), for the strip under the message box. */
   usage?: SessionUsage
@@ -152,7 +156,7 @@ type Props = {
 }
 
 /** The chat of one session: its history as a virtualised list, the daemon's status, and the composer under it. */
-export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage, problem = null, branchMenu, effort = null, rewind, hideSuccessfulTools = false, fileSearch }: Props) {
+export function ChatSession({ link, agent, online, hasTerminal = true, worktree: paneWorktree, root = null, onOpenDiff = null, onOpenFile = null, typeInto, paneQueue, ask = null, sessionId, paneStatus, folder = '', branch = null, onOpenFolder = null, subagent = null, onBackToMain, onShowTerminal, usage, problem = null, branchMenu, effort = null, rewind, hideSuccessfulTools = false, fileSearch, run = null }: Props) {
   const { feed, events, offline, readError, refresh, recordAnswer, unwatchedReads } = useChatFeed({ conversation: link.conversation, generation: link.generation, provider: agent })
   const paneWorking = paneStatus === 'working'
   const [branches] = useFolderBranches(root ?? '')
@@ -499,10 +503,15 @@ export function ChatSession({ link, agent, online, hasTerminal = true, worktree:
       )}
       {/* Politely announces a change of state only; the log itself is not a live region, so streaming text never floods a screen reader. */}
       <div role="status" aria-live="polite" className="sr-only">{announcement(feed, agent, working)}</div>
-      {subagent !== null ? (
+      {run !== null && subagent === null ? (
+        <>
+          <RunBar run={run.view} onBack={() => { onBackToMain?.() }} />
+          <RunView run={run.view} helpers={run.helpers} onOpenHelper={run.onOpenHelper} />
+        </>
+      ) : subagent !== null ? (
         <>
           <SubagentBar subagent={subagent} onBack={() => { onBackToMain?.() }} />
-          <SubagentChat subagent={subagent} agent={agent} />
+          <SubagentChat subagent={subagent} agent={agent} root={root} term={sessionId !== undefined && machineNameOf(sessionId) === null ? terminalOf(sessionId) : null} />
         </>
       ) : feed.loaded && rows.length === 0 ? (
         <p className="mx-chat-empty">{hasTerminal ? 'No messages yet. Send one below, or type in the terminal.' : 'No messages yet. Send one below.'}</p>

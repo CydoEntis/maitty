@@ -27,7 +27,7 @@ const terminal = vi.hoisted(() => ({
 
 const remoteTerm = {
   id: 7, cols: 80, rows: 24, title: 't', process: 'bash', agent: null, status: 'Idle', cwd: '/srv/app', summary: '', name: 'job',
-  label: '', pinned: false, archived: false, model: '', said: '', branch: null, linked: false, helperAsk: [], subagents: [],
+  label: '', pinned: false, archived: false, model: '', said: '', branch: null, linked: false, helperAsk: [], subagents: [], workflows: [],
   conversation_id: null, popup: false, remote: null, root: '/srv/app', top: null, since: 0, asleep: false, win32_input: false,
 }
 
