@@ -9,10 +9,18 @@ export type AskChoice = 'approve' | 'deny'
 /**
  * The keys that answer Claude Code's permission menu, checked against Claude Code 2.1.319 (see
  * docs/agent-status.md): the menu numbers its choices with "Yes" first, so `1` allows once; Esc
- * refuses. `y` and `n` do nothing there. Codex's keys have not been verified, so the daemon does
- * not mark its prompts answerable and the chat sends nothing for them.
+ * refuses. `y` and `n` do nothing there.
  */
 export const ANSWER_KEYS: Record<AskChoice, string> = { approve: '1', deny: '\x1b' }
+
+/**
+ * The keys that answer Codex's command and file-change approval menus, checked against codex-cli
+ * 0.166.0 in a terminal: `y` ("Yes, proceed") ran the command or applied the patch once, Esc ("No,
+ * and tell Codex what to do differently") ran and changed nothing. The daemon marks a Codex prompt
+ * answerable only while its screen is that menu (`codex_prompt_answerable`), so any other Codex
+ * prompt falls back to the terminal's own menu and the arrow-key row.
+ */
+export const CODEX_ANSWER_KEYS: Record<AskChoice, string> = { approve: 'y', deny: '\x1b' }
 
 /**
  * The key that picks a choice of a question Claude asks: its menu numbers the choices from 1, so the

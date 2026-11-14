@@ -1,6 +1,6 @@
 import { CODEX_START_MODES, PICKABLE_MODES } from '@/features/chat/chatMeta'
 import { isSlashLine } from '@/features/chat/slashCommands'
-import { ANSWER_KEYS, type AskChoice } from '@/features/chat/permissionAsk'
+import { ANSWER_KEYS, CODEX_ANSWER_KEYS, type AskChoice } from '@/features/chat/permissionAsk'
 import type { ChatAgent, StructuredAgent } from './chatView'
 
 /** Where the composer's slash commands come from, and how Codex's differ. */
@@ -86,7 +86,7 @@ const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
     permissionModes: { modes: CODEX_START_MODES, switchBy: 'command' },
     structuredChat: true,
     moveToWorktree: true,
-    answerKeys: null,
+    answerKeys: CODEX_ANSWER_KEYS,
     sidebarAnswerKeys: LETTERS,
     changeAgent: false,
     bangToTerminal: false,

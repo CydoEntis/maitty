@@ -9495,9 +9495,23 @@ fn a_permission_hook_reports_what_it_asks_until_the_agent_moves_on() {
 fn only_the_agents_whose_key_is_known_can_be_answered_from_the_chat() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
-    d.apply_hook(permission_report(t, HookStatus::Blocked, "PermissionRequest", "codex", "shell", "ls"), None, vec![]);
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "PermissionRequest", "gemini", "shell", "ls"), None, vec![]);
     let ask = d.terms[&t].ask_now().expect("shown");
-    assert!(!ask.answerable, "Codex's keys are not verified, so the chat says to answer in the terminal");
+    assert!(!ask.answerable, "no verified keys, so the chat says to answer in the terminal");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_codex_prompt_is_answerable_only_while_its_screen_has_the_checked_menu() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "PermissionRequest", "codex", "Bash", "echo probe > probe.txt"), None, vec![]);
+    assert!(!d.terms[&t].ask_now().expect("shown").answerable, "nothing on screen yet");
+    let menu = "Would you like to run the following command?\r\n$ echo probe > probe.txt\r\n\u{203a} 1. Yes, proceed (y)\r\n  2. Yes, and don't ask again for commands that start with `echo probe > probe.txt` (p)\r\n  3. No, and tell Codex what to do differently (esc)\r\n\r\n  Press enter to confirm or esc to cancel";
+    d.terms.get_mut(&t).unwrap().parser.process(menu.as_bytes());
+    assert!(d.terms[&t].ask_now().expect("shown").answerable);
+    d.terms.get_mut(&t).unwrap().parser.process(b"\x1b[2J\x1b[HWorking");
+    assert!(!d.terms[&t].ask_now().expect("shown").answerable, "the menu is gone");
     close(&mut d, &[t]);
 }
 

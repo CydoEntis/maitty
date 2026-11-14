@@ -21,9 +21,44 @@ const MAX_ASK_QUESTIONS: usize = 4;
 /// so the key that allows a tool there would pick the first choice for the person.
 const QUESTION_TOOL: &str = "AskUserQuestion";
 
-/// The agents whose permission prompt the daemon knows how to answer with a key.
+/// The agents whose permission prompt the daemon knows how to answer with a key. Claude's menu is
+/// the same everywhere; Codex's is trusted only while its screen still has the shape checked
+/// below, so for Codex this is "may be answerable", settled by `codex_prompt_answerable`.
 pub(super) fn knows_answer_keys(agent: &str) -> bool {
-    agent == "claude"
+    matches!(agent, "claude" | "codex")
+}
+
+const CODEX_COMMAND_TITLE: &str = "Would you like to run the following command?";
+const CODEX_EDIT_TITLE: &str = "Would you like to make the following edits?";
+const CODEX_APPROVE_OPTION: &str = "1. Yes, proceed (y)";
+const CODEX_ALWAYS_OPTION: &str = "2. Yes, and don't ask again";
+const CODEX_DECLINE_OPTION: &str = "3. No, and tell Codex what to do differently (esc)";
+const CODEX_MENU_FOOTER: &str = "Press enter to confirm or esc to cancel";
+
+/// Whether the screen is Codex's command or file-change approval menu, in the shape checked
+/// against codex-cli 0.166.0 by driving a real Codex in a terminal (`y` ran the command or applied
+/// the patch, Esc did neither; the chat's keys are `CODEX_ANSWER_KEYS` in `apps/gui`). A newer Codex
+/// may reword a menu, which is why the screen is compared rather than the keys assumed. The shape is
+/// the title, three options with "Yes, proceed (y)" first and
+/// the decline (esc) last, then the footer as the last line. Any other screen (a network or tool
+/// approval, a menu from a newer Codex, a prompt already answered) is not, and the chat falls
+/// back to showing the terminal's own menu.
+pub(super) fn codex_prompt_answerable(screen: &str) -> bool {
+    let lines: Vec<&str> = screen
+        .lines()
+        .map(|line| line.trim().trim_start_matches('\u{203a}').trim())
+        .filter(|line| !line.is_empty())
+        .collect();
+    let Some(footer_at) = lines.len().checked_sub(1) else { return false };
+    if footer_at < 4 || lines[footer_at] != CODEX_MENU_FOOTER {
+        return false;
+    }
+    let options = &lines[footer_at - 3..footer_at];
+    options[0] == CODEX_APPROVE_OPTION
+        && options[1].starts_with(CODEX_ALWAYS_OPTION)
+        && (options[1].ends_with("(p)") || options[1].ends_with("(a)"))
+        && options[2] == CODEX_DECLINE_OPTION
+        && lines[..footer_at - 3].iter().any(|line| *line == CODEX_COMMAND_TITLE || *line == CODEX_EDIT_TITLE)
 }
 
 /// A hook's report of a permission prompt, made safe to keep and show: hidden and control
@@ -42,8 +77,8 @@ pub(super) fn clean_ask(ask: PermissionAsk, agent: &str) -> Option<PermissionAsk
     let detail = mask_secrets(&hidden::sanitize(&ask.detail, false));
     let detail = detail.trim().chars().take(MAX_ASK_DETAIL_CHARS).collect();
     let answerable = knows_answer_keys(agent) && tool != QUESTION_TOOL;
-    // Only a question has choices, and only for an agent whose number keys are known.
-    let choices = if tool == QUESTION_TOOL && knows_answer_keys(agent) {
+    // Only a question has choices, and only for Claude, whose number keys are known.
+    let choices = if tool == QUESTION_TOOL && agent == "claude" {
         ask.choices
             .iter()
             .take(MAX_ASK_CHOICES)
@@ -61,7 +96,7 @@ pub(super) fn clean_ask(ask: PermissionAsk, agent: &str) -> Option<PermissionAsk
     let clean = |text: &str, most: usize| -> String {
         mask_secrets(&hidden::sanitize(text, false)).trim().chars().take(most).collect()
     };
-    let questions: Vec<AskQuestion> = if tool == QUESTION_TOOL && knows_answer_keys(agent) && ask.questions.len() <= MAX_ASK_QUESTIONS {
+    let questions: Vec<AskQuestion> = if tool == QUESTION_TOOL && agent == "claude" && ask.questions.len() <= MAX_ASK_QUESTIONS {
         ask.questions
             .iter()
             .map(|asked| AskQuestion {
@@ -91,7 +126,12 @@ impl super::term::Term {
     /// The permission prompt the pane is stopped on, if its agent said what it asks and the pane
     /// still needs you.
     pub(super) fn ask_now(&self) -> Option<PermissionAsk> {
-        self.ask.clone().filter(|_| self.status == Status::Blocked)
+        let mut ask = self.ask.clone().filter(|_| self.status == Status::Blocked)?;
+        // Codex's keys were checked against one menu shape: read the screen now, not when the hook fired.
+        if self.agent.as_deref() == Some("codex") {
+            ask.answerable &= codex_prompt_answerable(&self.parser.screen().contents());
+        }
+        Some(ask)
     }
 }
 
@@ -116,8 +156,9 @@ mod tests {
             (cleaned.tool.as_str(), cleaned.detail.as_str(), cleaned.answerable),
             ("Bash", "cargo test", true)
         );
-        let codex = clean_ask(ask("Bash", "cargo test"), "codex").unwrap();
-        assert!(!codex.answerable, "a hook cannot claim a key the daemon does not know");
+        let gemini = clean_ask(ask("Bash", "cargo test"), "gemini").unwrap();
+        assert!(!gemini.answerable, "a hook cannot claim a key the daemon does not know");
+        assert!(clean_ask(ask("shell", "ls"), "codex").unwrap().answerable, "Codex is settled by its screen, in ask_now");
         assert!(clean_ask(ask("  ", "x"), "claude").is_none());
         let question = clean_ask(ask("AskUserQuestion", "Which? 1 A · 2 B"), "claude").unwrap();
         assert!(!question.answerable, "the allow key would pick the first choice of a question");
@@ -125,7 +166,7 @@ mod tests {
         asked.choices = vec!["A".into(), " B\u{1b}".into(), "".into()];
         let cleaned = clean_ask(asked.clone(), "claude").unwrap();
         assert_eq!(cleaned.choices, ["A", "B"], "cleaned, and an empty one dropped");
-        assert!(clean_ask(asked, "codex").unwrap().choices.is_empty(), "no keys known, no buttons");
+        assert!(clean_ask(asked, "codex").unwrap().choices.is_empty(), "no choice keys known, no buttons");
     }
 
     #[test]
@@ -139,7 +180,7 @@ mod tests {
         let cleaned = clean_ask(prompt.clone(), "claude").unwrap();
         assert_eq!(cleaned.questions.len(), 2);
         assert_eq!((cleaned.questions[0].question.as_str(), cleaned.questions[1].choices.clone()), ("Which?", vec!["C".to_string(), "D".into(), "E".into()]));
-        assert!(clean_ask(prompt.clone(), "codex").unwrap().questions.is_empty(), "no keys known");
+        assert!(clean_ask(prompt.clone(), "codex").unwrap().questions.is_empty(), "no choice keys known");
         // A choice that cleans to nothing would shift every number after it.
         prompt.questions[1].choices[1] = "\u{1b}".into();
         assert!(clean_ask(prompt.clone(), "claude").unwrap().questions.is_empty());
@@ -164,5 +205,58 @@ mod tests {
         assert!(!cleaned.detail.contains('\u{1b}') && !cleaned.detail.contains('\n'));
         let long = clean_ask(ask("Bash", &"a".repeat(5000)), "claude").unwrap();
         assert_eq!(long.detail.chars().count(), MAX_ASK_DETAIL_CHARS);
+    }
+
+    /// Captured from codex-cli 0.166.0 in a terminal (see `codex_prompt_answerable`); the folder and
+    /// file names are placeholders.
+    const CODEX_COMMAND_SCREEN: &str = "\
+  Would you like to run the following command?
+  Environment: local
+  Reason: The sandbox is read-only. Allow running this command outside the sandbox to create probe.txt?
+  $ echo probe > probe.txt
+\u{203a} 1. Yes, proceed (y)
+  2. Yes, and don't ask again for commands that start with `echo probe > probe.txt` (p)
+  3. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel
+";
+    const CODEX_EDIT_SCREEN: &str = "\
+\u{2022} Added note.txt (+1 -0)
+    1 +hi
+    + Show details
+  Would you like to make the following edits?
+  Description: Apply proposed file edits
+  Destination:
+  /work/project/note.txt
+\u{203a} 1. Yes, proceed (y)
+  2. Yes, and don't ask again for these files (a)
+  3. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel
+";
+
+    #[test]
+    fn codex_command_and_file_change_menus_are_answerable() {
+        assert!(codex_prompt_answerable(CODEX_COMMAND_SCREEN));
+        assert!(codex_prompt_answerable(CODEX_EDIT_SCREEN));
+    }
+
+    #[test]
+    fn a_codex_screen_off_the_verified_shape_is_not_answerable() {
+        assert!(!codex_prompt_answerable(""));
+        assert!(!codex_prompt_answerable("\u{203a} Ask Codex to do anything"));
+        // The menu already answered: the options are gone.
+        let answered = CODEX_COMMAND_SCREEN.replace("Press enter to confirm or esc to cancel", "Working (4s)");
+        assert!(!codex_prompt_answerable(&answered));
+        // A reworded approve key must not be answered with `y`.
+        assert!(!codex_prompt_answerable(&CODEX_EDIT_SCREEN.replace("1. Yes, proceed (y)", "1. Yes, proceed (enter)")));
+        // A reworded decline.
+        assert!(!codex_prompt_answerable(&CODEX_EDIT_SCREEN.replace("(esc)", "(n)")));
+        // Another menu with the same footer (a different approval) has no known title.
+        let other = CODEX_COMMAND_SCREEN.replace(CODEX_COMMAND_TITLE, "Allow the tool to run?");
+        assert!(!codex_prompt_answerable(&other));
+        // Extra options mean the keys' meaning has moved.
+        let more = CODEX_COMMAND_SCREEN.replace("  3. No,", "  3. Maybe\n  4. No,");
+        assert!(!codex_prompt_answerable(&more));
     }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CODEX_START_MODES, PICKABLE_MODES } from '@/features/chat/chatMeta'
-import { ANSWER_KEYS } from '@/features/chat/permissionAsk'
+import { ANSWER_KEYS, CODEX_ANSWER_KEYS } from '@/features/chat/permissionAsk'
 import { abilitiesOf, hasAbility, runsMidTurn, type StructuredAbility } from './agentAbilities'
 import { moveRefusal } from './moveToWorktree'
 import { CHAT_AGENTS } from './chatView'
@@ -26,14 +26,14 @@ describe('abilitiesOf', () => {
     })
   })
 
-  it('gives Codex the window\'s commands with $ skills, command-switched modes, a structured chat, moves, saved conversations and model discovery, but no verified keys, `!` lines or hooked asks', () => {
+  it('gives Codex the window\'s commands with $ skills, command-switched modes, a structured chat, moves, saved conversations and model discovery, and its verified answer keys, but no `!` lines or hooked asks', () => {
     expect(abilitiesOf('codex')).toEqual({
       slashCommands: { list: 'window', skillsAfterDollar: true, enterAfterPause: true },
       permissionModes: { modes: CODEX_START_MODES, switchBy: 'command' },
       structuredChat: true,
       moveToWorktree: true,
-      answerKeys: null,
-      // The chat sends nothing to Codex's menu (its keys are unverified), while the sidebar types the bare letters.
+      answerKeys: CODEX_ANSWER_KEYS,
+      // The chat answers Codex's approval menu with `y` and Esc, while the sidebar types the bare letters.
       // Pinned as each behaves, not reconciled.
       sidebarAnswerKeys: { y: 'y', a: 'a', n: 'n' },
       changeAgent: false,

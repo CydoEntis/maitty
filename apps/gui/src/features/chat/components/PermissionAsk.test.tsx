@@ -36,14 +36,14 @@ afterEach(() => {
 const LINK = { conversation: FAKE_CONVERSATION, generation: 1, readOnly: true }
 const WRITE_ASK: PermissionAsk = { tool: 'Write', detail: 'src/notes.txt', answerable: true }
 
-async function open(status: 'Blocked' | 'Idle', ask: PermissionAsk | null) {
+async function open(status: 'Blocked' | 'Idle', ask: PermissionAsk | null, agent: 'claude' | 'codex' = 'claude') {
   const daemon = new FakeDaemonHistory()
   daemon.upsert(daemon.message('t1', 'u', 'User', 'earlier'))
   daemon.status = status
   fake.current = daemon
   const typeInto = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) })
-  render(<ChatSession link={LINK} agent="claude" online typeInto={typeInto} ask={ask} />)
+  render(<ChatSession link={LINK} agent={agent} online typeInto={typeInto} ask={ask} />)
   await act(async () => { await vi.advanceTimersByTimeAsync(0) })
   return { typeInto, user }
 }
@@ -58,6 +58,25 @@ describe('the chat of an agent stopped on a permission prompt', () => {
 
     expect(typeInto).toHaveBeenCalledExactlyOnceWith(ANSWER_KEYS.approve)
     expect(ANSWER_KEYS.approve).toBe('1')
+  })
+
+  it('approves a Codex prompt with `y`, the key checked against Codex 0.166.0, and refuses with Esc', async () => {
+    const approve = await open('Blocked', WRITE_ASK, 'codex')
+    await approve.user.click(screen.getByRole('button', { name: /^Yes, once/ }))
+    expect(approve.typeInto).toHaveBeenCalledExactlyOnceWith('y')
+    cleanup()
+
+    const refuse = await open('Blocked', WRITE_ASK, 'codex')
+    await refuse.user.click(screen.getByRole('button', { name: /^No/ }))
+    expect(refuse.typeInto).toHaveBeenCalledExactlyOnceWith('\x1b')
+  })
+
+  it('shows the terminal\'s own menu and keys for a Codex prompt the daemon did not mark answerable', async () => {
+    const { typeInto } = await open('Blocked', { ...WRITE_ASK, answerable: false }, 'codex')
+
+    expect(screen.queryByRole('button', { name: /^Yes, once/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('group', { name: "Keys for the agent's terminal" })).toBeInTheDocument()
+    expect(typeInto).not.toHaveBeenCalled()
   })
 
   it('refuses with Esc', async () => {
