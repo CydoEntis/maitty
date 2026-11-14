@@ -910,6 +910,145 @@ and per agent with `resume` / `resume_last`. Each pane's recent output is kept o
 there after a restart; it can hold secrets that were on screen, so `output = false` (Settings ›
 Sessions › Keep each pane's recent output) stops saving it and deletes what was saved.
 
+## The desktop chat
+
+In the desktop app an agent has a chat view as well as its terminal. It is the same session: the
+Terminal and Chat switch never restarts the agent. This part is about working in the chat and
+checking what the agent did. What the status marks mean is in [What a session's status
+means](#what-a-sessions-status-means).
+
+### Starting a chat
+
+**New chat** (the top of the sidebar, or **New agent chat** in the command palette) opens a page that asks "What
+should we work on?". Pick a project (or paste a path, or **Browse…**), write the first message and
+press Enter. The agent starts in its own terminal and the chat opens.
+
+Under the project there are a few more choices:
+
+- **Branch.** Pick a branch, or type a new name to create one. It is left out when the folder is not
+  a git repository.
+- **Own copy** is on by default. The agent works in a worktree of its own, on a new branch named
+  from your message, so your checkout stays as it is. A line under it says what it starts from, and
+  how far behind its upstream it is. Turn it off and the agent edits the checkout. Then, if the
+  checkout is behind, a **Pull** button runs `git pull --ff-only`. It is refused while you have
+  uncommitted changes.
+- **Model, effort and permission mode** sit on the buttons under the message box. The agent is on
+  the model button too. If an agent is not installed, the page says so and offers **set it up**.
+- **Suggested tasks** under the choices start a chat on that task with one click, and **Resume**
+  lists the conversations Claude or Codex saved for the folder. Resuming starts in that folder
+  without a worktree.
+
+**Several agents at once.** Under the message box, **Also start with** lists the other agents
+installed on this computer. Tick one or more and the same message goes to each, every one in its own
+worktree and on its own new branch (`fix-login`, `fix-login-2`, …). That needs Own copy. With it off
+the boxes cannot be ticked, and the page says "Each agent needs a copy of its own." The chat you
+see open is the agent on the model button. The others start on their own default model, effort and
+permission mode, and they are listed in the sidebar. They start only when you start a new chat, not
+when you resume a saved one, and the row is not offered for another machine.
+
+**Keep drafting.** Press Ctrl+Enter (⌘Enter on a Mac) instead of Enter. The chat starts and is listed
+in the sidebar, but it is not opened. The page stays, the message box and its files are emptied, and
+every other choice is kept, so you can write the next chat while the first one starts. With Own copy on,
+the next one gets a new branch name. If a start fails, a line under the box says why, with **Put back**,
+which puts the message and its files back in the box after whatever you typed since, and **Dismiss**.
+On another machine Ctrl+Enter is a plain start. Esc closes the page.
+
+### Answering prompts
+
+When an agent stops to ask you something, its session needs you and the chat shows a card over the
+message box. The message box is off, and says why, until you have answered.
+
+- **Wants to run a command** (or "Wants to use <tool>"). For Claude the card has **Yes, once** and
+  **No**, and the keys `y` and `n` do the same from anywhere in the chat except a text field. They
+  type Claude's own answer into its terminal.
+- **A question Claude asks.** Each choice is a button. A prompt with several questions shows each one
+  with its choices and one **Send answers** button, which stays off until every question has an
+  answer. Nothing is typed to the agent before then, so you can still change an answer. A question
+  that takes several answers, or "Type something", is answered in the terminal.
+- **Codex, and any menu the chat has no buttons for.** Maitty does not press a button for these,
+  because it has not checked that those keys are right. The card shows the question as the terminal
+  draws it, with a row of **↑ ↓ ← → Enter Esc** buttons. They press those keys in the agent's terminal,
+  the way you would. For a session on another machine the screen cannot be read: the card says the
+  question is in the terminal and keeps the keys.
+
+A chat that Maitty's background service runs (see [Worktrees](#worktrees)) shows **Yes, once**,
+**This session** and **No** instead, with **Always in this project** for a command.
+
+### Queue and Send now
+
+While the agent works you can still write. Enter queues the message, and it goes in when the turn
+ends. The queue is kept by the daemon, so closing the window loses nothing. Each queued message is a
+dashed card above the box that says **Queued**. With several, they stack with the next one in front
+and show `1 of 3`; click the stack to spread them out. A card has:
+
+- **Edit**, which takes the message back into the box, with its files, to change it. Nothing has been
+  sent.
+- **Remove**, which drops it.
+- **Send now** (an up arrow), which does not wait for the turn to end.
+
+What Send now does depends on the chat. For an agent in a terminal it types the message into the turn
+that is running, as typing there would, so the agent reads it at its next step. For a chat that
+Maitty's service runs, Codex takes the message into the running turn where its version supports that.
+Otherwise, and for Claude, the turn is interrupted and your message is sent next, ahead of the others
+in the queue. If the agent refuses (the turn just ended, or it is waiting on an approval), the reason
+shows under the box and the message stays queued. The button is hidden while a question is showing, and
+off while Maitty waits for the answer.
+
+### Naming a file with @
+
+Type `@` at the start of the message, or after a space, then a few letters of a name. A list of the
+session's files that match opens over the box. The arrow keys move, Enter or Tab inserts, Esc closes,
+and a click picks one. The path goes in relative to the session's folder, followed by a space. A path
+with a space in it is put in quotes. At most 50 are listed, so keep typing to narrow them. An `@`
+inside a word, such as an email address, opens nothing.
+
+### What a turn changed
+
+A turn that edited files ends with a row such as "3 changed files +111 −0" and **Review**. Click it
+and the side panel opens on **Changes** with only what that turn changed, headed "This turn's
+changes". **All changes** goes back to the whole working tree.
+
+This works from the snapshots Maitty keeps of the checkout. If none from before the turn (or from
+after it) is kept, or the turn has no times, the panel shows the whole working tree instead, and says
+why: "Whole working tree · no snapshot from before this turn is kept". The turn's diff covers the
+checkout, not the agent, so a file you or another agent in the same checkout edited meanwhile is in
+it. This is for sessions on this computer.
+
+### Edit from here
+
+Point at a message you sent and open its **⋯** menu, then choose **Edit from here**. Maitty puts the
+files back to how they were before that message, and puts the message back in the box so you can change
+it and send it again. It asks first. The prompt says how many files change back (**Restore 3
+files**), and that what is there now is kept as a "before a restore" snapshot. Nothing is changed
+until you confirm. If you had typed something in the box, the message goes above it.
+
+The agent's own conversation is not rewound. The next message you send starts with one line telling
+it the files were restored, and a line under the box lets you drop it (**Leave it out**).
+
+It is greyed out, with the reason in the menu, while the agent works, while the service is offline,
+for a session on another machine, and when another open session on this computer works in the same
+checkout, because a restore would undo that session's files too. If no snapshot from before the message
+is kept, a notice says so and nothing is restored.
+
+### The worktree manager
+
+**New worktree** (Ctrl+Shift+N, ⌘⇧N on a Mac, or the command palette) opens a dialog that makes a branch in its own folder next to the
+project. When the project already has other worktrees, the dialog lists them below. Each row says
+where that worktree stands, for example "inactive 3 days · not merged anywhere · last commit …" or "2
+uncommitted changes", and has:
+
+- **Merge**, which merges its branch into the main checkout's branch (never a fast-forward). It is off,
+  with the reason, when the worktree has uncommitted changes, has no branch, or its work is already on
+  another branch.
+- **Remove**, which closes what runs in the worktree and removes its folder. The branch stays unless it
+  is merged. When that would lose uncommitted changes, or commits that are on no other branch, the
+  button first becomes "Lose … ? Remove" and you press it again.
+- **Recreate**, for a worktree whose folder is gone, which makes it again from its branch.
+
+If two worktrees changed the same file, a line at the top says so, so you hear about a merge conflict
+before the merge. The list is for projects on this computer. For the rest of how maitty names and
+cleans up worktrees, see [Worktrees](#worktrees).
+
 ## Worktrees
 
 ```sh
