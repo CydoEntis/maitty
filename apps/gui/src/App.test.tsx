@@ -320,6 +320,62 @@ describe('conversation workspace', () => {
     expect(screen.queryByRole('button', { name: /^Review daemon recovery,/ })).not.toBeInTheDocument()
   })
 
+  describe('renaming a tab in place', () => {
+    async function openTabRename(user: ReturnType<typeof userEvent.setup>) {
+      localStorage.clear()
+      renderApp()
+      await user.click(screen.getByRole('button', { name: /^Review the daemon restore flow, Done, maitty$/i }))
+      fireEvent.contextMenu(screen.getByRole('tab', { name: /Review the daemon restore flow/ }))
+      await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
+      const field = await screen.findByRole('textbox', { name: 'Tab name' })
+      await waitFor(() => { expect(field).toHaveFocus() })
+      return field
+    }
+
+    it('saves a new name on Enter and shows it on the tab and the row', async () => {
+      const user = userEvent.setup()
+      const field = await openTabRename(user)
+      expect(field).toHaveValue('Review the daemon restore flow')
+      await user.clear(field)
+      await user.type(field, 'Review daemon recovery{Enter}')
+
+      expect(screen.queryByRole('textbox', { name: 'Tab name' })).not.toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: /Review daemon recovery/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^Review daemon recovery,/ })).toBeInTheDocument()
+    })
+
+    it('keeps the old name on Escape', async () => {
+      const user = userEvent.setup()
+      const field = await openTabRename(user)
+      await user.clear(field)
+      await user.type(field, 'Never saved{Escape}')
+
+      expect(screen.queryByRole('textbox', { name: 'Tab name' })).not.toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: /Review the daemon restore flow/ })).toBeInTheDocument()
+      expect(screen.queryByText('Never saved')).not.toBeInTheDocument()
+    })
+
+    it('keeps the old name when the field is emptied', async () => {
+      const user = userEvent.setup()
+      const field = await openTabRename(user)
+      await user.clear(field)
+      await user.keyboard('{Enter}')
+
+      expect(screen.queryByRole('textbox', { name: 'Tab name' })).not.toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: /Review the daemon restore flow/ })).toBeInTheDocument()
+    })
+
+    it('saves when focus leaves the field', async () => {
+      const user = userEvent.setup()
+      const field = await openTabRename(user)
+      await user.clear(field)
+      await user.type(field, 'Renamed on blur')
+      await user.tab()
+
+      expect(screen.getByRole('tab', { name: /Renamed on blur/ })).toBeInTheDocument()
+    })
+  })
+
   it('opens the next conversation that needs attention with Ctrl+Shift+A', async () => {
     const user = userEvent.setup()
     renderApp()
