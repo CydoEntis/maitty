@@ -139,7 +139,7 @@ function DirectoryNode({
         <CircleAlert size={13} />
         Couldn’t load {directory || 'project files'}.
         <Button
-          variant="outline"
+          variant="soft"
           size="sm"
           onClick={() => void listing.refetch()}
         >
@@ -261,7 +261,7 @@ function FilePreview({
           <CircleAlert size={13} />
           Couldn’t load this file preview.
           <Button
-            variant="outline"
+            variant="soft"
             size="sm"
             onClick={() => void file.refetch()}
           >

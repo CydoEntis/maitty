@@ -380,7 +380,7 @@ function ApprovalRequest({
               {choices.includes('AcceptForSession') && (
                 <Button
                   data-approval-choice="AcceptForSession"
-                  variant="outline"
+                  variant="soft"
                   size="sm"
                   onClick={() => {
                     onResolve('AcceptForSession')
@@ -451,7 +451,7 @@ export function RecoveryNotice({
       </span>
       {canResumeInChat && (
         <Button
-          variant="outline"
+          variant="soft"
           size="sm"
           onClick={onResume}
           disabled={disabled}

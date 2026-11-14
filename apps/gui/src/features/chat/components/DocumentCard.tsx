@@ -1,3 +1,4 @@
+import { TypeTag } from '@/components/ui/tag'
 import { useState } from 'react'
 import { toast } from '@/lib/toast'
 import type { WrittenDocument } from '../writtenDocument'
@@ -24,7 +25,7 @@ export function DocumentCard({ path, document }: DocumentCardProps) {
   return (
     <div role="group" aria-label={`Write ${path}`} className="mx-step-card mx-doc">
       <div className="mx-doc-file">
-        <span className="mx-ftag is-large">MD</span>
+        <TypeTag tag="MD" />
         <span className="mx-doc-path">{path} · wrote {document.lineCount} {document.lineCount === 1 ? 'line' : 'lines'}</span>
       </div>
       <div className="mx-doc-text">

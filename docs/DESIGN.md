@@ -232,6 +232,23 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   `--ease` of `cubic-bezier(.2,.8,.2,1)`; Reduce motion zeroes the three durations). The usage meters read `--m-ok`,
   `--m-mid`, `--m-or` and `--m-hi`, which every theme sets. `--card`, `--done` and `--sh-pop` are set in `index.css`
   and `workspace.css`.
+- **Primitives (`apps/gui/src/components/ui/`).** The chat handoff's shared pieces, each on the tokens above and named
+  as the system page names them: **Card** (`card.tsx`: shell, `CardHead` 36px with its buttons at the right,
+  `CardBody` 10px 12px, `CardFoot` 40px with the answers; `tone` `needs` for an amber edge, `err` for a red one;
+  `interactive` for a card that is itself a button, `--line2` edge on hover and the focus ring outside), **Button**
+  (`button.tsx`: kinds `primary` (the theme's accent), `needs` (only the main answer to something waiting on you),
+  `soft`, `ghost`, `danger`, `link`; sizes `sm` 24px, `md` 30px, `icon` 28px; `keyHint` draws the key that also
+  presses it; hover brightens, press darkens toward `--bg`, focus is a 2px `--focus` ring outside a 2px `--bg` gap,
+  disabled is 42% opacity), **IconButton** (an icon with its label as tooltip and name), **Tag** (`tag.tsx`: a
+  mono word in a hairline, `neutral`, `done`, `err` or `working`), **FileBadge** (the type tag in its `--tag-*` tone,
+  then the path with its folder dimmed; a long path shortens from the front so the name stays), **CodeChip**,
+  **TextLink**, **StatusMark** (`status-mark.tsx`: running a spinner (the Settings spinner where the caller passes
+  it), done ✓, failed ×, stopped ■, waiting ·, needs you ! on the needs square; with `word`, the state's word beside
+  it in its colour), **Fold** (a 30px row: "Show 12 more lines" or "Hide"), **Progress** (a 4px bar on `--sel`),
+  **Counter**, **Divider** and **ToastCard** (`toast-card.tsx`: one line on the card with the pop shadow). The
+  chat's step marks, file badges and change tags (`cardParts.tsx`) and the workspace toast are built from them. The
+  gallery shows every primitive in every state on any theme and either corners: open the app or the browser preview
+  with `#gallery` (`#gallery?theme=Paper&corners=rounded`; `features/gallery/`).
 - **Corners: Square or Rounded, any theme** (Settings › Appearance › Corners, `corners`; the root carries
   `data-corners`, and `data-finish` is always `flat`). Square is the default. Corners are shape only, never colour or
   type: every theme wears either, in Inter and JetBrains Mono (`withLook` in `theme/corners.ts` sets `--ui`, `--mono`

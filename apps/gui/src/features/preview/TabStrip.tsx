@@ -71,7 +71,7 @@ export function ConversationTabStrip({
       )}
       <Button
         variant="ghost"
-        size="icon-sm"
+        size="icon"
         aria-label="New tab"
         title="New conversation in a new tab (Ctrl+N)"
         onClick={onNewTab}
@@ -156,7 +156,7 @@ export function ConversationTabStrip({
             aria-label="Conversation view"
           >
             <Button
-              variant={!showTerminal ? 'secondary' : 'ghost'}
+              variant={!showTerminal ? 'soft' : 'ghost'}
               size="sm"
               disabled={!showTerminal}
               onClick={onToggleTerminal}
@@ -166,7 +166,7 @@ export function ConversationTabStrip({
               Chat
             </Button>
             <Button
-              variant={showTerminal ? 'secondary' : 'ghost'}
+              variant={showTerminal ? 'soft' : 'ghost'}
               size="sm"
               disabled={showTerminal}
               onClick={onToggleTerminal}

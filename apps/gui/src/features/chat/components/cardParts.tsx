@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import { fileTag } from '@/features/inspect/fileTag'
+import { StatusMark, type MarkState } from '@/components/ui/status-mark'
+import { FileBadge as UiFileBadge, Tag } from '@/components/ui/tag'
 import { Icon, Spinner } from '@/features/workspace/components/glyphs'
 import type { FileChangeKind, ItemStatus } from '../chatEvents'
 
@@ -7,21 +9,17 @@ import type { FileChangeKind, ItemStatus } from '../chatEvents'
 
 const STATUS_WORD: Record<ItemStatus, string> = { running: 'Running', completed: 'Done', failed: 'Failed', interrupted: 'Stopped' }
 
-const GLYPH_CHECK_SIZE = 13
-const GLYPH_CHECK_STROKE = 2.8
+const MARK_OF: Record<ItemStatus, MarkState> = { running: 'running', completed: 'done', failed: 'failed', interrupted: 'stopped' }
 
 /**
- * The mark every step starts with: the spinner while it runs, a green check when done, a red × tile
- * when it failed, a grey square when it was stopped. One waiting on the person shows the amber tile.
+ * The mark every step starts with (`StatusMark`): the spinner while it runs, ✓ when done, × when it failed, ■ when it
+ * was stopped, and ! on the needs square while it waits on the person. The row says the state in words, so the mark
+ * is hidden from screen readers here.
  */
 export function StepGlyph({ status, waiting = false }: { status: ItemStatus; waiting?: boolean }) {
   return (
     <span className="mx-step-glyph" aria-hidden="true">
-      {waiting ? <span className="mx-step-bang">!</span>
-        : status === 'running' ? <Spinner />
-        : status === 'completed' ? <Icon name="check" size={GLYPH_CHECK_SIZE} strokeWidth={GLYPH_CHECK_STROKE} />
-        : status === 'failed' ? <span className="mx-step-x">×</span>
-        : <span className="mx-step-stop" />}
+      <StatusMark state={waiting ? 'needs' : MARK_OF[status]} spinner={<Spinner />} />
     </span>
   )
 }
@@ -60,22 +58,7 @@ export function StepRow({ status, verb, target, meta, metaTone = 'dim', open, on
     : <button type="button" className={className} aria-expanded={open} onClick={onToggle}>{body}</button>
 }
 
-const TAG_TONE: Readonly<Record<string, string>> = { TS: 'is-blue', TSX: 'is-blue', JS: 'is-green', JSX: 'is-green', IMG: 'is-green', SVG: 'is-green', '{ }': 'is-mag', TOML: 'is-mag', YML: 'is-mag' }
-
-/** The short type tag before a file's name; nothing for a type that has none. */
-export function FileTag({ name }: { name: string }) {
-  const tag = fileTag(name)
-  return tag === null ? null : <span className={`mx-ftag ${TAG_TONE[tag] ?? ''}`}>{tag}</span>
-}
-
 const FOLDER_ICON_SIZE = 14
-
-/** A path split where its last name starts: a folder keeps its closing slash with the name. */
-function splitPath(path: string): { dir: string; name: string } {
-  const slashed = path.replace(/\\/g, '/')
-  const cut = slashed.replace(/\/$/, '').lastIndexOf('/')
-  return { dir: slashed.slice(0, cut + 1), name: slashed.slice(cut + 1) }
-}
 
 type FileBadgeProps = {
   path: string
@@ -84,31 +67,17 @@ type FileBadgeProps = {
   onOpen?: (() => void) | undefined
 }
 
-/** A file's name as a badge: its type tag, the folder dimmed, the name bright, the line in the accent. */
+/** A file in the chat (`FileBadge`): its type tag, or a folder icon for a folder, then its path shortened from the front. */
 export function FileBadge({ path, line = null, onOpen }: FileBadgeProps) {
-  const { dir, name } = splitPath(path)
-  const body = (
-    <>
-      {name.endsWith('/') ? <span className="mx-fbadge-folder"><Icon name="files" size={FOLDER_ICON_SIZE} /></span> : <FileTag name={name} />}
-      {dir !== '' && <span className="mx-fbadge-dir">{dir}</span>}
-      <span className="mx-fbadge-name">{name}</span>
-      {line !== null && <span className="mx-fbadge-line">:{line}</span>}
-    </>
-  )
-  return onOpen === undefined
-    ? <span className="mx-fbadge" title={path}>{body}</span>
-    : <button type="button" className="mx-fbadge is-link" title={path} onClick={onOpen}>{body}</button>
+  const name = path.replace(/\\/g, '/').replace(/\/$/, '').split('/').pop() ?? path
+  const tag = path.endsWith('/') ? <span className="flex w-[22px] flex-none justify-center text-(--dim)"><Icon name="files" size={FOLDER_ICON_SIZE} /></span> : fileTag(name) ?? undefined
+  return <UiFileBadge path={path} tag={tag} line={line} onOpen={onOpen} />
 }
 
-/** A small coloured word in a pill: Added, Modified, Deleted, or an exit code. */
-export function Pill({ tone, children }: { tone: 'ok' | 'danger' | 'blue'; children: ReactNode }) {
-  return <span className={`mx-pill is-${tone}`}>{children}</span>
-}
-
-const CHANGE_PILL = { add: { word: 'Added', tone: 'ok' }, update: { word: 'Modified', tone: 'blue' }, delete: { word: 'Deleted', tone: 'danger' } } as const
+const CHANGE_TAG = { add: { word: 'Added', tone: 'done' }, update: { word: 'Modified', tone: 'neutral' }, delete: { word: 'Deleted', tone: 'err' } } as const
 
 /** What happened to a file, where the history says: a Write does not say whether the file was new. */
 export function ChangePill({ change }: { change: FileChangeKind }) {
   if (change === 'unknown') return null
-  return <Pill tone={CHANGE_PILL[change].tone}>{CHANGE_PILL[change].word}</Pill>
+  return <Tag tone={CHANGE_TAG[change].tone}>{CHANGE_TAG[change].word}</Tag>
 }

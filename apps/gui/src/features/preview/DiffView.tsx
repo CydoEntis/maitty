@@ -118,7 +118,7 @@ export function DiffView({
           retry.
         </p>
         <Button
-          variant="outline"
+          variant="soft"
           size="sm"
           onClick={() => {
             void diffQuery.refetch()
@@ -180,7 +180,7 @@ export function DiffView({
         <div>
           <Button
             variant="ghost"
-            size="icon-xs"
+            size="icon"
             aria-label="Previous changed file"
             onClick={() => {
               selectRelativeFile(-1)
@@ -191,7 +191,7 @@ export function DiffView({
           </Button>
           <Button
             variant="ghost"
-            size="icon-xs"
+            size="icon"
             aria-label="Next changed file"
             onClick={() => {
               selectRelativeFile(1)
@@ -274,7 +274,7 @@ export function DiffView({
       </section>
       {!desktop && (
         <Button
-          variant="outline"
+          variant="soft"
           className="open-editor-button"
           onClick={() =>
             toast.message('Open in editor is not connected in preview')

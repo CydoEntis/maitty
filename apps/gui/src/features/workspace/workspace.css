@@ -274,7 +274,7 @@
    renderer keeps the theme's opaque terminal ground, so a row repaint never blends through the card. */
 
 /* Toast */
-.mx-toast { position: absolute; left: 50%; top: 58px; transform: translateX(-50%); z-index: 45; padding: 8px 14px; border-radius: 999px; background: var(--m-raise); border: 1px solid var(--line2); font-size: 12.5px; color: var(--fg); box-shadow: 0 12px 40px rgba(0, 0, 0, .45); white-space: nowrap; animation: v7fade .22s ease-out; }
+.mx-toast { position: absolute; left: 50%; top: 58px; transform: translateX(-50%); z-index: 45; white-space: nowrap; animation: v7fade .22s ease-out; }
 
 /* Settings */
 .mx-settings-scrim { position: fixed; inset: 0; z-index: 40; background: rgba(3, 5, 8, .62); backdrop-filter: var(--blur-pop); display: flex; align-items: center; justify-content: center; padding: 24px; animation: v7scrim .2s ease-out; }

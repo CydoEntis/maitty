@@ -108,7 +108,7 @@ export function ServiceBehindNotice({ sessionsQuery, restartWhenIdle = false }: 
         </DialogHeader>
         <DialogFooter>
           <Button
-            variant="outline"
+            variant="soft"
             disabled={pending}
             onClick={() => {
               setDialogOpen(false)
