@@ -184,6 +184,18 @@ describe('the model button and its menu', () => {
     await user.click(within(screen.getByRole('radiogroup', { name: 'Model' })).getByRole('radio', { name: /Fable 5\.2/ }))
     expect(wireChoice(7, 'claude')).toBeNull()
   })
+
+  it('ticks the model the agent says it runs while nothing is picked, as its button names it', async () => {
+    const user = userEvent.setup()
+    setDiscoveredModels('claude', [{ id: 'claude-sonnet-5-5', label: 'claude-sonnet-5-5', blurb: '', isDefault: true }, { id: 'claude-opus-5-5', label: 'claude-opus-5-5', blurb: '' }])
+    render(<AgentPicker agent="claude" choice={{ model: 'default', reasoning: 'default' }} onChange={() => undefined} currentModel="claude-opus-5-5" />)
+    const button = screen.getByRole('button', { name: /Agent, model and reasoning/ })
+    expect(button).toHaveTextContent('Claude Opus 5.5')
+    await user.click(button)
+    const models = within(screen.getByRole('radiogroup', { name: 'Model' }))
+    expect(models.getByRole('radio', { name: /Opus 5\.5/ })).toBeChecked()
+    expect(models.getByRole('radio', { name: /Sonnet 5\.5/ })).not.toBeChecked()
+  })
 })
 
 describe('what the picker sends with a message', () => {

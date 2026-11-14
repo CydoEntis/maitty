@@ -3791,6 +3791,56 @@ async fn history_projection_accepts_only_current_owned_events_and_drops_disconne
     }).await;
 }
 
+/// The order Codex 0.166's app-server sent when a turn started one helper (measured live): the
+/// parent's `subAgentActivity` items, then the helper's own turn on its own thread. The helper is
+/// listed and finishes with its answer; its turn never reaches the conversation's history, error or
+/// status.
+#[tokio::test]
+async fn a_codex_helper_is_listed_and_its_own_turn_never_touches_the_conversation() {
+    with_fixture(move |session| {
+        Box::pin(async move {
+            let TestSession { fixture: f, daemon: d, events: rx } = session;
+            d.start_conversation(f.launch("normal")).unwrap();
+            let ready = next(rx).await;
+            let owner = ready.owner;
+            d.handle(Ev::Conversation(ready));
+            d.handle(Ev::Conversation(next(rx).await));
+            let id = f.record.id;
+            let thread = f.record.binding.session_id.clone();
+            let before = {
+                let state = &d.conversation_states[&id];
+                (state.status, state.error.clone(), state.history_ready)
+            };
+            let started = json!({"type":"subAgentActivity","id":"call_1","kind":"started","agentThreadId":"helper-thread",
+                "agentPath":"/root/probe_helper","model":"gpt-a","reasoningEffort":"low","startedAtMs":1_000});
+            let finished = json!({"type":"subAgentActivity","id":"subagent-completed-x","kind":"completed",
+                "agentThreadId":"helper-thread","agentPath":"/root/probe_helper"});
+            let events = [
+                ("item/started", json!({"threadId":thread,"turnId":"parent-turn","item":started})),
+                ("item/completed", json!({"threadId":thread,"turnId":"parent-turn","item":started})),
+                ("turn/started", json!({"threadId":"helper-thread","turn":{"id":"helper-turn","status":"inProgress","items":[]}})),
+                ("item/completed", json!({"threadId":"helper-thread","turnId":"helper-turn","item":{"type":"agentMessage","id":"m","text":"pong"}})),
+                ("turn/completed", json!({"threadId":"helper-thread","turn":{"id":"helper-turn","status":"completed",
+                    "items":[{"type":"agentMessage","id":"m","text":"pong"}]}})),
+                ("item/started", json!({"threadId":thread,"turnId":"parent-turn","item":finished})),
+            ];
+            for (method, params) in events {
+                d.handle(Ev::Conversation(Event { owner, payload: Payload::Notification { method: method.into(), params } }));
+            }
+            let state = &d.conversation_states[&id];
+            assert_eq!((state.status, state.error.clone(), state.history_ready), before, "the helper changed nothing of the conversation's");
+            let summary = d.conversation_summaries().into_iter().find(|s| s.id == id).unwrap();
+            assert_eq!(summary.helpers.len(), 1);
+            let helper = &summary.helpers[0];
+            assert_eq!((helper.id.as_str(), helper.name.as_str()), ("helper-thread", "probe_helper"));
+            assert_eq!((helper.state, helper.result.as_deref()), (crate::protocol::SubagentState::Completed, Some("pong")));
+            d.dispose_conversation(id).unwrap();
+            d.handle(Ev::Conversation(next(rx).await));
+            stopped(f.pids().await).await;
+        })
+    }).await;
+}
+
 /// The stand-in daemon for `kill_server_stops_every_provider_before_the_daemon_exits` is this
 /// same test binary run again with this variable set to a scratch folder. `KillServer` ends in
 /// `process::exit`, which would end the test runner, so the daemon has to be a process of its own.

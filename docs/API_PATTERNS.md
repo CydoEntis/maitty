@@ -187,6 +187,30 @@ command is `add_branch_worktree` (`maitty_desktop_client::branch_worktree`); it 
 setup hook may take ten, and says the service is from an older release instead of asking a daemon that would never
 answer. It is this computer's daemon only. Structured runtimes may not ask for it.
 
+`ClientMsg::WorkflowReport { term, token, run }` is a workflow's progress from a process in the pane
+(`maitty workflow report`, which reads one run as JSON from stdin; ADR 0010). The daemon takes it
+only with the pane's token, checks it (`maitty_shared::workflow::checked`), stamps `reported_at`
+and keeps it in `TermInfo.workflows`, newest first: a report replaces the earlier one with the same
+workflow and run, and a pane keeps its latest 20 runs, saved with it. It is display only and never
+changes status. It came in protocol 95 (`WORKFLOW_REPORT_SINCE`, with its arm in
+`ClientMsg::introduced_in`); `COMPATIBLE_SINCE` stays 78, since the command checks the daemon's
+version and tells the person to restart an older one instead of sending. `TermInfo.workflows` is a
+defaulted field, empty from an older daemon.
+
+`Query::HelperRead { term, helper }` answers `Reply::HelperRead(HelperRecord)`: what one of the pane's
+helpers did, as history entries read from its own record (Claude's side-chain file, a Codex helper's
+rollout from where its own task begins), oldest first, with `start_missing` when the start is left
+out. The read runs off the event loop; a refusal is a `ServerMsg::Error` naming why, never content.
+It came in protocol 95 (`HELPER_READ_SINCE`, with arms in both `introduced_in`). Clients ask again
+while the view is open; it is not followed.
+
+`Query::Specialists { term }` answers `Reply::Specialists(SpecialistList)`: the Claude Code and Codex
+agent files (`.claude/agents/*.md`, `.codex/agents/*.toml`) of the pane's repository (the nearest
+folder above its working folder that holds `.git`) and of the user's home (`~/.claude/agents`,
+`$CODEX_HOME/agents`), project first, each with its name, description, path and text. It is
+read-only, for human clients, read off the event loop, and bounded (`specialists::SPECIALISTS_MAX`
+files, `SPECIALIST_TEXT_MAX` bytes of each). It came in protocol 95 (`SPECIALISTS_SINCE`).
+
 A pane's effort (`TermInfo.effort`, an optional field: no `PROTOCOL_VERSION` bump, a test decodes the old shape) is read by the
 daemon from the agent's own files every five seconds off the loop (`usage::poll_effort`): for Claude the level in the newest request
 line of its transcript, present only when a level was set; for Codex the level its thread settings name, else its model's default
@@ -932,6 +956,11 @@ cannot read it as an option). The prompt goes in the agent's command line quoted
 (`Config::agent_command`), as the MCP `start` tool does, never interpolated. The worktree itself is the
 usual one (`create_trusted_worktree`, the repo's setup hook, the `[worktree] dir` naming, clean-up when
 its last session closes). Local projects only: the window refuses another machine's project.
+
+`ConversationSummary.helpers` lists the helpers a chat session's provider reported starting, at its
+current generation (ADR 0010; Codex's `subAgentActivity` items). It is display only and never
+status. It is a defaulted field, empty from an older daemon, so it needs no `PROTOCOL_VERSION` bump;
+a test decodes the old shape.
 
 Protocol 65 removes the handoff between chat and terminal
 (`ConversationHandoffToNative`, `ConversationHandoffToChat`): a session is a chat

@@ -94,8 +94,16 @@ the status mark and the name (bold and bright for an agent with something going 
 the project's colour, the project and the branch in violet. No status words anywhere, except
 `limited 16:30` (`limited Sun 16:30` on another day) in amber on a session that hit its plan limit. Agents come
 first, then shells, each in the order they started, so a row never moves when its status changes.
-The open session has the row ground and an accent `▎`. An agent's subagents in its current turn
-follow it: `└` and a mark each, or under the open session one row each with `├`/`└` and the name.
+The open session has the row ground and an accent `▎`. An agent's subagents follow it: one still
+running for as long as it runs (after its parent's turn too), one finished in the current turn for a
+few seconds; `└` and a mark each, or under the open session one row each with `├`/`└` and the name,
+and a quiet `└ 3 done · show` line that lists the finished ones (`· hide` folds them again). A subagent's row
+opens its own steps in a modal ("subagent name": what it was asked, `▸` what it ran, what it said, the newest that
+fit, asked again every 1.5 s while it works); Enter goes to its parent's pane. Another machine's opens the pane. Under the
+open session, after its subagents, the workflow runs it reported that are still going (ADR 0010), one line
+each: the step's mark (`·` waiting, the spinner working, `✓` passed, `✕` failed, `↺` sent back, `●` needs you
+in amber, `–` skipped), the ticket and the step (`├ ● MAITTY-43 spec`), then `└ 2 runs done`. A run's line
+opens its steps in a modal ("run MAITTY-42"): each step's mark, name, note and helper.
 On the bottom border the release chip (` ↑ v0.15.0 ` when a release is out, else the version) and
 ` menu `, each opening a menu upward. See UI › *the sidebar*; the Machines dialog and its states
 are in UI › *Machines dialog*.
@@ -334,6 +342,13 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   is named by the name you gave it, else a shell's folder, else its agent. **Rename**: double-click, F2 or the menu
   turns the name into a field; Enter or leaving saves, Esc cancels, empty clears. Project colours are five tokens
   (`--proj-1` to `--proj-5`: teal, blue, pink, violet, green), chosen from the project's name, never amber or red.
+  **Workflow runs** (the daemon's `workflows`, ADR 0010, `model/workflows.ts`, [brief](features/workflow-view/brief.md)): under
+  the selected session, after its subagents, one row per run still going (its step mark, ticket key, and the step it is on in
+  quiet text), then a quiet "N runs done · show" line that lists the finished ones. A run opens in the session's pane in
+  place of the chat, as a subagent's chat does: the bar ("Run · MAITTY-42 · Add export", Back to main session) and its
+  steps, each with a mark of its own shape (`·` waiting, spinner working, `✓` passed, `✕` failed, `↺` sent back, `●` needs
+  you in amber, `–` skipped), its note, and the helper doing it, a link to that subagent's chat where one of the session's
+  subagents has that name.
   **Subagents** (the daemon's `subagent_activity`, `model/subagents.ts`): under a session that is not selected, an
   elbow line and one 14px tile per subagent with a corner mark (teal spinner working, amber square needs you, green
   check done), no text; under the selected session, a 28px row each on a guide line. Clicking one opens its own chat.
@@ -572,7 +587,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   with a divider ("Finished in 3m 40s · 10:46", red when it failed) and, when it edited files, the changed-files
   card. The working line is the spinner and "claude is working · m:ss". Problems with the history (offline, incomplete, a provider error) and Full access show in one
   slim strip above the list. **A subagent's chat** replaces the list with a bar ("Subagent · name · time", **Back to
-  main session**), then what it was asked, what it is doing while it works and its report once done.
+  main session**), then the helper's own steps drawn as the chat's rows (read from the record its agent keeps,
+  every 1.5 s while it works, "Its earlier steps are not shown." above them when the start was cut). Where there is
+  no record (another machine, an older service, another agent) it shows what it was asked, what it is doing while
+  it works and its report once done.
 - **Message box** (`features/chat/components/Composer.tsx`), in three layers. **1. The question tray**, only while the
   agent asks: a slightly narrower tray rising from behind the box (`mxRise`, 0.28s). A request is tinted amber: "Needs
   you" and "Wants to run a command", the command in a sunken mono box, and **Yes, once** `y` (filled with the accent),

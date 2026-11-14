@@ -23,7 +23,7 @@ conflict.
 | [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) | animations, timers, rendering, polling, output path | measured causes of lag, how to re-measure |
 | [`docs/COMMIT-STANDARDS.md`](docs/COMMIT-STANDARDS.md) | committing, branching, opening a PR | message format, git safety |
 | [`docs/stack/`](docs/stack/) | touching a technology with a stack doc | per-technology rules |
-| [`docs/adr/`](docs/adr/README.md) | changing a recorded decision | the nine decisions that are expensive to reverse |
+| [`docs/adr/`](docs/adr/README.md) | changing a recorded decision | the decisions that are expensive to reverse |
 | the Plane project (see *Planning*) | starting, finishing, scoping work | what is in, out, and in what order |
 
 ## How the docs are structured

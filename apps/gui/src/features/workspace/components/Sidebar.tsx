@@ -16,9 +16,10 @@ import { SessionRow } from './SessionRow'
 import { RowHoverCard } from './RowHoverCard'
 import { HOVER_CARD_DELAY_MS, type Box } from '../model/hoverCard'
 import { SubagentList, SubagentPeek } from './SubagentRows'
+import { WorkflowList } from './WorkflowRows'
 
-/** A subagent whose own chat a pane shows. */
-export type OpenSubagent = { sessionId: string; subagentId: string }
+/** What a pane shows instead of its session's chat: a subagent's own chat, or a workflow run's steps. */
+export type OpenSubagent = { sessionId: string; subagentId: string; runKey?: undefined } | { sessionId: string; runKey: string; subagentId?: undefined }
 
 export type SidebarProps = {
   /** Every session of every machine. Each machine lists its own, in `order`. */
@@ -57,6 +58,8 @@ export type SidebarProps = {
   onUpdateMachine: (name: string, action: UpdateAction) => void
   onShowSession: (id: string) => void
   onShowSubagent: (sessionId: string, subagentId: string) => void
+  /** Opens a workflow run's steps in its session's pane. */
+  onShowRun: (sessionId: string, runKey: string) => void
   onRenameSession: (id: string | null) => void
   onSetName: (id: string, name: string) => void
   /** Shows a session beside the pane that has focus. */
@@ -75,6 +78,8 @@ export type SidebarProps = {
   onUnsnooze: (id: string) => void
   /** Asks for a file to pull from the machine of session `id`. */
   onGetFile: (id: string) => void
+  /** Lists the specialist agent files a session of this computer can see. */
+  onSpecialists?: (id: string) => void
   onEndSession: (id: string) => void
   onOpenSettings: () => void
   /** Opens the list of agent sessions closed on this computer. */
@@ -222,6 +227,7 @@ function Expanded(props: SidebarProps) {
       { label: 'Copy folder path', run: () => { props.onCopyPath(session.id) } },
       ...(session.machineName === null ? [] : [{ label: 'Rename machine…', run: () => { props.onRenameMachine(session.machineName ?? '') } }]),
       ...(session.machineName === null ? [] : [{ label: 'Get a file…', disabled: !props.online, run: () => { props.onGetFile(session.id) } }]),
+      ...(session.machineName === null && session.pane > 0 && props.onSpecialists !== undefined ? [{ label: 'Specialist agents…', disabled: !props.online, run: () => { props.onSpecialists?.(session.id) } }] : []),
       // A finished agent waits under Finished until you look; this files it under Idle without opening it.
       ...(session.status === 'done' ? [{ label: 'Mark as done', disabled: !props.online, run: () => { props.onMarkDone(session.id) } }] : []),
       ...(canPutAway(session) ? [{ label: 'Put away', disabled: !props.online, run: () => { props.onPutAway(session.id) } }] : []),
@@ -288,12 +294,21 @@ function Expanded(props: SidebarProps) {
               <SubagentList
                 process={session.process}
                 subagents={subagents}
-                openId={props.openSubagent?.sessionId === session.id ? props.openSubagent.subagentId : null}
+                openId={props.openSubagent?.sessionId === session.id ? props.openSubagent.subagentId ?? null : null}
                 onOpen={(id) => { props.onShowSubagent(session.id, id) }}
                 onContextMenu={(subagent, event) => { openMenu(event, subagent.name, subagentMenu(session, subagent)) }}
               />
             </Collapse>
           </>
+        )}
+        {session.workflows.length > 0 && (
+          <Collapse open={selected}>
+            <WorkflowList
+              runs={session.workflows}
+              openKey={props.openSubagent?.sessionId === session.id ? props.openSubagent.runKey ?? null : null}
+              onOpen={(key) => { props.onShowRun(session.id, key) }}
+            />
+          </Collapse>
         )}
       </div>
     )

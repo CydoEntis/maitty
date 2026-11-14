@@ -33,12 +33,14 @@ mod scan;
 mod search;
 mod secrets;
 mod snooze;
+mod specialists;
 mod status;
 mod term;
 mod terminal_sends;
 mod usage;
 mod usage_store;
 mod warm;
+mod workflow;
 mod worktrees;
 
 use crate::brand::APP_COMMAND;
@@ -246,6 +248,14 @@ pub enum Ev {
         client: ClientId,
         cmd: String,
         result: Result<reopen::Ready, String>,
+    },
+    HelperReadReady {
+        client: ClientId,
+        result: Result<crate::protocol::HelperRecord, String>,
+    },
+    SpecialistsReady {
+        client: ClientId,
+        list: crate::specialists::SpecialistList,
     },
     SavedConversationsReady {
         client: ClientId,
@@ -2375,6 +2385,13 @@ impl Daemon {
                 tag,
                 listing,
             } => self.send(client, ServerMsg::Reply(Reply::Folders { tag, listing })),
+            Ev::HelperReadReady { client, result } => match result {
+                Ok(record) => self.send(client, ServerMsg::Reply(Reply::HelperRead(record))),
+                Err(e) => self.send(client, ServerMsg::Error(e)),
+            },
+            Ev::SpecialistsReady { client, list } => {
+                self.send(client, ServerMsg::Reply(Reply::Specialists(list)));
+            }
             Ev::SavedConversationsReady { client, tag, found } => {
                 self.send(client, ServerMsg::Reply(Reply::SavedConversations { tag, found }));
             }
@@ -2570,8 +2587,10 @@ impl Daemon {
             let allowed = match &msg {
                 ClientMsg::Query(_) => self.may(client, Grant::Read, None),
                 ClientMsg::Resize { .. } => self.may(client, Grant::Write, None),
-                ClientMsg::Hook { .. } | ClientMsg::Usage { .. } => Err(anyhow::anyhow!(
-                    "Structured callers cannot report pane status or usage"
+                ClientMsg::Hook { .. }
+                | ClientMsg::Usage { .. }
+                | ClientMsg::WorkflowReport { .. } => Err(anyhow::anyhow!(
+                    "Structured callers cannot report pane status, usage or workflows"
                 )),
                 _ => Ok(()),
             };
@@ -2687,6 +2706,22 @@ impl Daemon {
                     .is_some_and(|t| term::same_secret(&t.token, &token))
                 {
                     self.report_usage(term, usage, limits);
+                }
+            }
+            ClientMsg::WorkflowReport { term, token, run } => {
+                let Some(t) = self.terms.get_mut(&term) else {
+                    return;
+                };
+                if !term::same_secret(&t.token, &token) {
+                    tracing::info!("ignoring a workflow report for pane {term} without its secret");
+                    return;
+                }
+                match maitty_shared::workflow::checked(run) {
+                    Ok(run) => {
+                        workflow::record(&mut t.workflows, run, term::unix_now());
+                        self.dirty = true;
+                    }
+                    Err(reason) => tracing::info!("pane {term}: workflow report refused: {reason}"),
                 }
             }
             ClientMsg::Command(cmd) => {
@@ -2971,6 +3006,66 @@ impl Daemon {
                         });
                         return;
                     }
+                    Query::HelperRead { .. } if self.client_is_agent(client) => {
+                        ServerMsg::Error("Only a human client can read a helper's record".into())
+                    }
+                    Query::HelperRead { term, helper } => {
+                        match self.helper_file(client, term, &helper) {
+                            Ok(file) => {
+                                let tx = self.tx.clone();
+                                tokio::task::spawn_blocking(move || {
+                                    let result = conversation::follow::user_home()
+                                        .ok_or("The home folder is unknown")
+                                        .and_then(|home| {
+                                            conversation::helper_record::read(file, &home, usage::codex_helper_file)
+                                                .map_err(|failure| failure.words())
+                                        })
+                                        .map(|record| crate::protocol::HelperRecord {
+                                            term,
+                                            helper,
+                                            entries: record.entries,
+                                            start_missing: record.start_missing,
+                                        })
+                                        .map_err(str::to_string);
+                                    let _ = tx.blocking_send(Ev::HelperReadReady { client, result });
+                                });
+                            }
+                            Err(e) => self.send(client, ServerMsg::Error(e.into())),
+                        }
+                        return;
+                    }
+                    Query::Specialists { .. } if self.client_is_agent(client) => {
+                        ServerMsg::Error("Only a human client can list specialist agents".into())
+                    }
+                    Query::Specialists { term } => {
+                        let cwd = self
+                            .may_use_terminal(client, term)
+                            .and_then(|()| self.may(client, Grant::Read, Some(term)))
+                            .and_then(|()| {
+                                self.terms
+                                    .get(&term)
+                                    .map(|t| t.cwd.clone())
+                                    .ok_or_else(|| anyhow::anyhow!("no pane {term}"))
+                            });
+                        match cwd {
+                            Ok(cwd) => {
+                                let tx = self.tx.clone();
+                                tokio::task::spawn_blocking(move || {
+                                    let home = conversation::follow::user_home();
+                                    let codex = usage::codex_home();
+                                    let list = specialists::list(
+                                        term,
+                                        &cwd,
+                                        home.as_deref(),
+                                        codex.as_deref(),
+                                    );
+                                    let _ = tx.blocking_send(Ev::SpecialistsReady { client, list });
+                                });
+                            }
+                            Err(error) => self.send(client, ServerMsg::Error(format!("{error:#}"))),
+                        }
+                        return;
+                    }
                     Query::SavedConversations { .. } if self.client_is_agent(client) => {
                         ServerMsg::Error("Only a human client can list saved conversations".into())
                     }
@@ -3135,6 +3230,37 @@ impl Daemon {
 
     /// Whether an app may see this pane. A pane that is gone is shown to nobody's list it can
     /// act on anyway, so only a pane we know to belong to the other app is hidden.
+    /// Where a pane's helper keeps its record, from the pane's own verified reports: the helper
+    /// must be one they named, in a pane this client is shown.
+    fn helper_file(
+        &self,
+        client: ClientId,
+        term: TermId,
+        helper: &str,
+    ) -> Result<conversation::helper_record::HelperFile, &'static str> {
+        let t = self
+            .terms
+            .get(&term)
+            .filter(|_| self.shown_to(term, self.surface_of(client)))
+            .ok_or("No such pane")?;
+        if !t.subagent_activity.iter().any(|a| a.id == helper) {
+            return Err("The pane's agent reported no such helper");
+        }
+        let session = t.session.clone().ok_or("The pane's agent has not said which session it is")?;
+        match t.agent.as_deref() {
+            Some("claude") => Ok(conversation::helper_record::HelperFile::Claude {
+                transcript: t.transcript.clone().ok_or("The pane's agent has not named its transcript")?,
+                session,
+                helper: helper.to_string(),
+            }),
+            Some("codex") => Ok(conversation::helper_record::HelperFile::Codex {
+                parent: session,
+                helper: helper.to_string(),
+            }),
+            _ => Err("Only Claude and Codex helpers keep a record Maitty can read"),
+        }
+    }
+
     fn shown_to(&self, term: TermId, surface: Surface) -> bool {
         self.terms.get(&term).is_none_or(|t| t.owner == surface)
     }
@@ -3278,6 +3404,7 @@ impl Daemon {
                         pr: self.pr_of(t),
                         queued: t.queue.iter().cloned().collect(),
                         subagent_activity: t.subagent_activity.clone(),
+                        workflows: t.workflows.clone(),
                         session: t.session.clone(),
                     },
                 )

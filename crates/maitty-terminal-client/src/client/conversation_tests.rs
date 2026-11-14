@@ -20,6 +20,7 @@ fn conversation() -> ConversationSummary {
         archived: false,
         root: None,
         branch: None,
+        helpers: Vec::new(),
     }
 }
 

@@ -941,6 +941,37 @@ fn the_markers_claude_puts_around_a_paste_are_not_shown_as_said() {
     assert_eq!(without_paste_tags("keep <pasted_content oops"), "keep <pasted_content oops");
 }
 
+#[test]
+fn a_codex_custom_tools_output_in_text_parts_is_shown_without_its_header() {
+    let at = "2026-11-13T19:44:40.000Z";
+    let lines = [
+        codex(at, "event_msg:task_started", json!({ "turn_id": "turn-a" })),
+        codex(
+            at,
+            "response_item:custom_tool_call",
+            json!({ "name": "exec", "call_id": "c1", "input": "cat a.txt" }),
+        ),
+        // As Codex 0.166 writes it: the output is a list of text parts, a header then the output.
+        codex(
+            at,
+            "response_item:custom_tool_call_output",
+            json!({ "call_id": "c1", "output": [
+                { "type": "input_text", "text": "Script completed\nWall time 0.2 seconds\nOutput:\n" },
+                { "type": "input_text", "text": "alpha\n" },
+            ] }),
+        ),
+    ];
+    let history = history_of(Format::Codex, &lines);
+    let tool = items(&history)
+        .into_iter()
+        .find_map(|item| match &item.content {
+            Content::Tool { output, duration_ms, .. } => Some((output.clone(), *duration_ms)),
+            _ => None,
+        })
+        .expect("the tool call is shown");
+    assert_eq!(tool, ("alpha\n".to_string(), Some(200)));
+}
+
 fn reasoning_texts(history: &History) -> Vec<&str> {
     history
         .entries

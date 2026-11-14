@@ -3,6 +3,9 @@ import { WorkingMark } from './WorkingMark'
 import { subagentWord, type SubagentView } from '@/features/workspace/model/subagents'
 import { splitLead, paragraphsOf } from '../chatRows'
 import { InlineMarkdown, Markdown } from './Markdown'
+import { ChatItem } from './ChatItems'
+import { useHelperRecord } from '../useHelperRecord'
+import type { ChatAgent } from '@/features/workspace/model/chatView'
 
 const SECOND_MS = 1000
 
@@ -31,11 +34,35 @@ export function SubagentBar({ subagent, onBack }: { subagent: SubagentView; onBa
   )
 }
 
+type ChatProps = {
+  subagent: SubagentView
+  agent: ChatAgent
+  /** The pane on this computer whose helper it is; null for one on another machine, whose record is not read. */
+  term?: number | null
+  /** The session's folder, so file names are shown relative to it. */
+  root?: string | null
+}
+
 /**
- * A subagent's own chat, from what its runtime reports: what it was asked, what it is doing while it
- * works, and its report once done. Nothing it did not report is shown or guessed.
+ * A subagent's own chat: its own steps, read from the record its runtime keeps for it (ADR 0010), and
+ * where there is none, what the runtime reported: what it was asked, what it is doing, and its report.
+ * Nothing it did not do or report is shown or guessed.
  */
-export function SubagentChat({ subagent, agent }: { subagent: SubagentView; agent: string }) {
+export function SubagentChat({ subagent, agent, term = null, root = null }: ChatProps) {
+  const record = useHelperRecord(term, subagent.id, agent, subagent.status === 'working')
+  if (record?.kind === 'rows' && record.rows.length > 0) {
+    return (
+      <div className="mx-chat-scroll" role="log" aria-label={`Subagent ${subagent.name}`}>
+        <div className="mx-chat-column">
+          {record.startMissing && <p className="mx-sub-note">Its earlier steps are not shown.</p>}
+          {record.rows.map((row) => (
+            <ChatItem key={row.key} row={row} agent={agent} workingSince={null} approval={null} root={root} openDiff={null} goToStep={null} waitingStep={null} />
+          ))}
+          <SubagentNote subagent={subagent} />
+        </div>
+      </div>
+    )
+  }
   const { lead, rest } = splitLead(subagent.result === null ? [] : paragraphsOf(subagent.result))
   return (
     <div className="mx-chat-scroll" role="log" aria-label={`Subagent ${subagent.name}`}>
@@ -53,10 +80,16 @@ export function SubagentChat({ subagent, agent }: { subagent: SubagentView; agen
             <span>{subagent.latest ?? `${agent} is working`}</span>
           </div>
         )}
-        {subagent.status === 'needs' && <p className="mx-sub-note">It is waiting for an answer. Answer it in the session&apos;s terminal.</p>}
-        {subagent.status === 'stopped' && <p className="mx-sub-note">It stopped before it reported back.</p>}
+        <SubagentNote subagent={subagent} />
         {subagent.status === 'done' && subagent.result === null && <p className="mx-sub-note">It finished without a report the runtime kept.</p>}
       </div>
     </div>
   )
+}
+
+/** What the runtime says of a helper that is not simply working or done. */
+function SubagentNote({ subagent }: { subagent: SubagentView }) {
+  if (subagent.status === 'needs') return <p className="mx-sub-note">It is waiting for an answer. Answer it in the session&apos;s terminal.</p>
+  if (subagent.status === 'stopped') return <p className="mx-sub-note">It stopped before it reported back.</p>
+  return null
 }
