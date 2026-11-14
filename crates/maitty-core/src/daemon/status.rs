@@ -301,6 +301,7 @@ impl Daemon {
             // subagent's news (`Same`) and the ping that follows the prompt leave it alone.
             if event == "PermissionRequest" {
                 t.ask = ask.and_then(|ask| super::permission_ask::clean_ask(ask, &agent));
+                t.ask_agent = t.ask.as_ref().map(|_| agent.clone());
             } else if status != HookStatus::Same && !event.starts_with("Notification:") {
                 t.ask = None;
             }

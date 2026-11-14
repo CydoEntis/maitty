@@ -9501,17 +9501,65 @@ fn only_the_agents_whose_key_is_known_can_be_answered_from_the_chat() {
     close(&mut d, &[t]);
 }
 
+const CODEX_LONG_COMMAND: &str = "cargo test --workspace --exclude maitty-gui --all-targets -- --nocapture --test-threads=1";
+const CODEX_OPTIONS_TAIL: &str = "  3. No, and tell Codex what to do differently (esc)\r\n\r\n  Press enter to confirm or esc to cancel";
+
+/// Codex's command menu as it draws it in 80 columns: it wraps the command and option 2 itself.
+fn codex_narrow_menu(title: &str) -> String {
+    format!(
+        "{title}\r\n  Environment: local\r\n  $ cargo test --workspace --exclude maitty-gui --all-targets --\r\n  --nocapture --test-threads=1\r\n\u{203a} 1. Yes, proceed (y)\r\n  2. Yes, and don't ask again for commands that start with `cargo test\r\n  --workspace --exclude maitty-gui --all-targets -- --nocapture\r\n  --test-threads=1` (p)\r\n{CODEX_OPTIONS_TAIL}"
+    )
+}
+
+fn codex_ask(d: &mut Daemon, t: TermId, detail: &str) {
+    d.apply_hook(permission_report(t, HookStatus::Blocked, "PermissionRequest", "codex", "Bash", detail), None, vec![]);
+}
+
 #[test]
 fn a_codex_prompt_is_answerable_only_while_its_screen_has_the_checked_menu() {
     let (mut d, _rx) = daemon();
     let t = pane(&mut d);
-    d.apply_hook(permission_report(t, HookStatus::Blocked, "PermissionRequest", "codex", "Bash", "echo probe > probe.txt"), None, vec![]);
+    codex_ask(&mut d, t, "echo probe > probe.txt");
     assert!(!d.terms[&t].ask_now().expect("shown").answerable, "nothing on screen yet");
     let menu = "Would you like to run the following command?\r\n$ echo probe > probe.txt\r\n\u{203a} 1. Yes, proceed (y)\r\n  2. Yes, and don't ask again for commands that start with `echo probe > probe.txt` (p)\r\n  3. No, and tell Codex what to do differently (esc)\r\n\r\n  Press enter to confirm or esc to cancel";
     d.terms.get_mut(&t).unwrap().parser.process(menu.as_bytes());
     assert!(d.terms[&t].ask_now().expect("shown").answerable);
     d.terms.get_mut(&t).unwrap().parser.process(b"\x1b[2J\x1b[HWorking");
     assert!(!d.terms[&t].ask_now().expect("shown").answerable, "the menu is gone");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_codex_menu_is_answerable_through_the_real_parser_only_for_what_the_hook_reported() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.terms.get_mut(&t).unwrap().parser.process(codex_narrow_menu("Would you like to run the following command?").as_bytes());
+    codex_ask(&mut d, t, CODEX_LONG_COMMAND);
+    assert!(d.terms[&t].ask_now().expect("shown").answerable, "a wrapped option 2 and command are the same menu");
+    codex_ask(&mut d, t, "cargo publish");
+    assert!(!d.terms[&t].ask_now().expect("shown").answerable, "the hook said another command");
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_codex_menu_under_the_wrong_title_is_not_answerable() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    d.terms.get_mut(&t).unwrap().parser.process(codex_narrow_menu("Allow network access?").as_bytes());
+    codex_ask(&mut d, t, CODEX_LONG_COMMAND);
+    assert!(!d.terms[&t].ask_now().expect("shown").answerable);
+    close(&mut d, &[t]);
+}
+
+#[test]
+fn a_codex_ask_is_checked_even_when_the_pane_no_longer_names_codex() {
+    let (mut d, _rx) = daemon();
+    let t = pane(&mut d);
+    codex_ask(&mut d, t, CODEX_LONG_COMMAND);
+    d.terms.get_mut(&t).unwrap().agent = None;
+    assert!(!d.terms[&t].ask_now().expect("shown").answerable, "no menu on screen, whatever the pane's agent says");
+    d.terms.get_mut(&t).unwrap().agent = Some("claude".into());
+    assert!(!d.terms[&t].ask_now().expect("shown").answerable);
     close(&mut d, &[t]);
 }
 
