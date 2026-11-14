@@ -39,20 +39,37 @@ export type ThemeTokens = {
   ansiGreen: string
   pane: string
   paneLine: string
+  /** The usage meters' four steps, from low to high use: comfortable, half, getting close, nearly out. */
+  meterOk: string
+  meterMid: string
+  meterHigh: string
+  meterMax: string
+}
+
+/**
+ * A theme the desktop design draws exactly (`themes.json`'s `palette`): every colour role as written, plus the two
+ * shading strengths (`hk` for highlights and hovers, `sk` for shadows and scrims).
+ */
+export type ThemePalette = {
+  bg: string; main: string; raise: string; hover: string; sel: string; line: string; line2: string; well: string; term: string
+  fg: string; fg2: string; muted: string; dim: string
+  accent: string; accentText: string; onAccent: string; accentLine: string
+  working: string; warn: string; onWarn: string; danger: string; ok: string; blue: string; mag: string
+  paneLine: string; mOk: string; mMid: string; mOr: string; mHi: string; hk: string; sk: string
 }
 
 /** The six colours (and a light flag) a theme is made from; a TUI theme imports as these. */
 export type ThemeInputs = { bg: string; fg: string; accent: string; mag: string; blue: string; green: string; light: boolean }
 
 /**
- * What a window style adds to a theme besides colours: the fonts, the two glass dials (`hk` is the
+ * What the look (`corners.ts`) adds to a theme besides colours: the fonts, the two shading dials (`hk` is the
  * highlight strength, `sk` the shadow strength), the resting card sheen (`sh`) and the background glow
  * strengths. A field left out keeps the stylesheet's default.
  */
 export type StyleLook = { ui: string; mono: string; hk?: string; sk?: string; sh?: string; glowAccent?: string; glowMag?: string }
 
-/** `cardRing` is the solid card colour that rings a status badge so it reads as cut out of the card. `look` is set by `withWindowStyle`. */
-export type ThemeEntry = { id: string; name: string; family: string; light: boolean; tokens: ThemeTokens; cardRing: string; look?: StyleLook }
+/** `cardRing` is the solid card colour that rings a status badge so it reads as cut out of the card. `look` is set by `withLook` (`corners.ts`). */
+export type ThemeEntry = { id: string; name: string; family: string; light: boolean; tokens: ThemeTokens; cardRing: string; look?: StyleLook; shading?: { hk: string; sk: string } }
 
 /** Which theme is in use: the dark theme, the light theme, or whichever one the system's own setting asks for. */
 export type ThemeMode = 'system' | 'dark' | 'light'
@@ -68,11 +85,15 @@ const CSS_VARIABLES: Record<keyof ThemeTokens, string> = {
   warnSoft: '--warn-soft', warnLine: '--warn-line', onWarn: '--on-warn', danger: '--danger',
   dangerSoft: '--danger-soft', dangerLine: '--danger-line', ok: '--ok', ansiBlue: '--ansi-blue',
   ansiMag: '--ansi-mag', ansiGreen: '--ansi-green', pane: '--pane', paneLine: '--pane-line',
+  meterOk: '--m-ok', meterMid: '--m-mid', meterHigh: '--m-or', meterMax: '--m-hi',
 }
 
 const DARK_STATUS = { warn: '#F2B65A', warnSoft: 'rgba(242,182,90,.07)', warnLine: 'rgba(242,182,90,.28)', onWarn: '#151007', danger: '#F07F78', dangerSoft: 'rgba(240,127,120,.07)', dangerLine: 'rgba(240,127,120,.3)' }
 // Dark enough for AA on the grounds of every generated light theme (Gruvbox Light's cream is the tightest).
 const LIGHT_STATUS = { warn: '#8F5400', warnSoft: 'rgba(143,84,0,.07)', warnLine: 'rgba(143,84,0,.3)', onWarn: '#FFFFFF', danger: '#B8362C', dangerSoft: 'rgba(184,54,44,.06)', dangerLine: 'rgba(184,54,44,.3)' }
+/** The usage meters' steps for a theme without a palette of its own, as the desktop design draws them on dark and light grounds. */
+const DARK_METERS = { meterOk: '#7fd99a', meterMid: '#e8c25a', meterHigh: '#f0964a', meterMax: '#ef5350' }
+const LIGHT_METERS = { meterOk: '#2e7d32', meterMid: '#9a6b00', meterHigh: '#c25e00', meterMax: '#c62828' }
 
 
 
@@ -109,6 +130,33 @@ function maittyTheme(side: MaittySide, light: boolean): ThemeTokens {
     ok: state.doneText,
     ansiBlue: light ? '#2F5FD0' : '#82AAFF', ansiMag: light ? '#8146C9' : '#C3A6F2', ansiGreen: state.doneText,
     paneLine: withAlpha(text.strong, MAITTY_MIX.paneLine),
+    ...(light ? LIGHT_METERS : DARK_METERS),
+  }
+}
+
+/** How strong a palette theme's soft fills are (percent of the colour), as the design tints them. */
+const PALETTE_MIX = { accentSoft: 13, warnSoft: 7, warnLine: 30, dangerSoft: 7, dangerLine: 30 }
+
+/**
+ * A theme from the desktop design's palette, drawn exactly as written: no role is mixed or shifted. Only the soft fills
+ * and lines the palette does not name are made from its own colours. The card and the pane are the palette's `main`.
+ */
+export function paletteTheme(palette: ThemePalette): ThemeTokens {
+  return {
+    bg: palette.bg, main: palette.main, raise: palette.raise, hover: palette.hover, sel: palette.sel,
+    line: palette.line, line2: palette.line2, well: palette.well, term: palette.term,
+    fg: palette.fg, fg2: palette.fg2, muted: palette.muted, dim: palette.dim,
+    accent: palette.accent, accentText: palette.accentText, onAccent: palette.onAccent, accentLine: palette.accentLine,
+    accentSoft: withAlpha(palette.accent, PALETTE_MIX.accentSoft),
+    working: palette.working,
+    warn: palette.warn, onWarn: palette.onWarn,
+    warnSoft: withAlpha(palette.warn, PALETTE_MIX.warnSoft), warnLine: withAlpha(palette.warn, PALETTE_MIX.warnLine),
+    danger: palette.danger,
+    dangerSoft: withAlpha(palette.danger, PALETTE_MIX.dangerSoft), dangerLine: withAlpha(palette.danger, PALETTE_MIX.dangerLine),
+    ok: palette.ok,
+    ansiBlue: palette.blue, ansiMag: palette.mag, ansiGreen: palette.ok,
+    pane: palette.main, paneLine: palette.paneLine,
+    meterOk: palette.mOk, meterMid: palette.mMid, meterHigh: palette.mOr, meterMax: palette.mHi,
   }
 }
 const MAITTY_NIGHT = maittyTheme(maittyTokens.night, false)
@@ -176,26 +224,32 @@ export function generateTheme(inputs: ThemeInputs): ThemeTokens {
     ansiGreen: greenText,
     pane: bg,
     paneLine: withAlpha(fg, MIX.paneLine),
+    ...(light ? LIGHT_METERS : DARK_METERS),
   }
 }
 
-const entry = (id: string, name: string, family: string, light: boolean, tokens: ThemeTokens): ThemeEntry => ({
+const entry = (id: string, name: string, family: string, light: boolean, tokens: ThemeTokens, shading?: ThemeEntry['shading']): ThemeEntry => ({
   id,
   name,
   family,
   light,
   tokens,
   cardRing: composite(tokens.pane, tokens.bg),
+  ...(shading === undefined ? {} : { shading }),
 })
 
 const MAITTY_TOKENS = { night: MAITTY_NIGHT, day: MAITTY_DAY, dark: MAITTY_DARK, light: MAITTY_LIGHT } as const
 
 /**
- * The themes both apps ship, in display order, from `themes.json` (the TUI reads the same list): four of Maitty's own, built
- * from `maitty-tokens.json`, and six families with a dark and a light each, generated from six colours.
+ * The themes both apps ship, in display order, from `themes.json` (the TUI reads the same list): Maitty's own nine, drawn
+ * exactly from the desktop design's palettes, the Retro pair, and families with a dark and a light each, generated from six colours.
  */
 export const THEMES: readonly ThemeEntry[] = themeManifest.themes.map((theme) => {
   const kind = theme.light ? 'light' : 'dark'
+  if ('palette' in theme) {
+    const palette: ThemePalette = theme.palette
+    return entry(theme.id, theme.name, `${theme.family} · ${kind}`, theme.light, paletteTheme(palette), { hk: palette.hk, sk: palette.sk })
+  }
   if ('tokens' in theme) return entry(theme.id, theme.name, `${theme.family} · ${kind}`, theme.light, MAITTY_TOKENS[theme.tokens as keyof typeof MAITTY_TOKENS])
   const { bg, fg, accent, mag, blue, green, light } = theme
   return entry(theme.id, theme.name, `${theme.family} · ${kind}`, light, generateTheme({ bg, fg, accent, mag, blue, green, light }))
@@ -252,15 +306,21 @@ export function themeStyle(theme: ThemeEntry): Record<string, string> {
   const style: Record<string, string> = { '--card-ring': theme.cardRing, colorScheme: theme.light ? 'light' : 'dark', '--branch': theme.light ? BRANCH_LIGHT : BRANCH_DARK, ...(theme.light ? LIGHT_GLASS : DARK_GLASS) }
   for (const [key, variable] of Object.entries(CSS_VARIABLES)) style[variable] = theme.tokens[key as keyof ThemeTokens]
   if (!theme.light) Object.assign(style, frostOf(theme.tokens.main))
-  const { look } = theme
-  if (look === undefined) return style
-  style['--ui'] = look.ui
-  style['--mono'] = look.mono
-  if (look.hk !== undefined) style['--hk'] = look.hk
-  if (look.sk !== undefined) style['--sk'] = look.sk
-  if (look.sh !== undefined) style['--sh'] = look.sh
-  if (look.glowAccent !== undefined) style['--glow-accent'] = look.glowAccent
-  if (look.glowMag !== undefined) style['--glow-mag'] = look.glowMag
+  const { look, shading } = theme
+  if (look !== undefined) {
+    style['--ui'] = look.ui
+    style['--mono'] = look.mono
+    if (look.hk !== undefined) style['--hk'] = look.hk
+    if (look.sk !== undefined) style['--sk'] = look.sk
+    if (look.sh !== undefined) style['--sh'] = look.sh
+    if (look.glowAccent !== undefined) style['--glow-accent'] = look.glowAccent
+    if (look.glowMag !== undefined) style['--glow-mag'] = look.glowMag
+  }
+  // A palette theme's own shading strengths win over the look's, as the design sets them per theme.
+  if (shading !== undefined) {
+    style['--hk'] = shading.hk
+    style['--sk'] = shading.sk
+  }
   return style
 }
 

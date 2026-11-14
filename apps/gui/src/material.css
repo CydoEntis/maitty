@@ -1,5 +1,5 @@
 /*
- * The window's material: the one place Glass and Flat are told apart.
+ * The window's material: the roles every surface reads its look from.
  *
  * Every surface in the app is one of three roles, and reads its look from the role's tokens, never
  * from its own colours:
@@ -8,60 +8,25 @@
  *   field  what you type into or press (the message box and its tray)
  * A component picks its role by being listed below, or by carrying `mx-pop` (a popover or menu
  * from a library) or `mx-field`. A new surface joins a list here; it does not set a background of
- * its own. Terminal panes stay solid in both finishes: the terminal draws its own ground.
+ * its own. Terminal panes stay solid: the terminal draws its own ground.
  *
- * The four window styles (Glass, Squared, Flat, Retro Pixel; ids glass, mono, console, pixel) sit on two finishes, chosen by
- * `data-finish` (Glass is `glass`; the other three are `flat`), and differ in the component
- * tokens (`--c-*`) and the few shape rules keyed by `data-style` at the end of this file. A component
- * never asks which style is on; it reads the tokens.
- *
- * Glass: translucent fills with a blur behind them, a hairline and a top highlight that catch the
- * light (`--hl`), and soft shadows (`--sd`). The window behind carries two soft tints of the theme
- * so there is something to see through the glass; on Windows the window itself is Mica and the
- * desktop shows through instead.
- * Flat: solid fills, a hairline, no blur, no highlight, no shadow. Floats keep one plain shadow so
- * they stay apart from what is under them.
+ * The desktop has one look, flat: solid fills, a hairline, no blur. Floats keep one plain shadow so
+ * they stay apart from what is under them. The one shape choice is the corners (`data-corners`,
+ * the rule at the end of this file and the `--r-*` tokens in `tokens.css`). A component never asks
+ * which is on; it reads the tokens.
  */
 
 /* ---- tokens ---- */
 /* Portalled content can sit outside the window root, so the light and shade have defaults here. */
 :root { --hl: 255, 255, 255; --hs: 255, 255, 255; --hk: 1; --sd: 0, 0, 0; --sk: 1; --gk: 1; }
-/* The theme's own solid colours, under the role names. Flat uses them as they are; Glass replaces
-   them below. Declared on the window root as well, because the theme colours are set inline there. */
+/* The theme's own solid colours, under the role names. Declared on the window root as well, because
+   the theme colours are set inline there. */
 :root, .mx-app, .app-shell {
   --m-well: var(--well);
   --m-raise: var(--raise);
   --m-sel: var(--sel);
   --m-hover: var(--hover);
   --m-pane: var(--pane);
-}
-/* Glass, as the redesign draws it: opaque cards on the window ground, each with a faint top highlight,
-   a hairline and a soft drop shadow (panel); what opens over them gets a stronger highlight, a hairline and
-   a long shadow (float); the message box sits between (field). The light and shade are the theme's. */
-:root[data-finish="glass"],
-:root[data-finish="glass"] .mx-app {
-  --m-panel: var(--main, var(--popover));
-  --m-float: var(--main, var(--popover));
-  --m-field: var(--main, var(--popover));
-  --m-line: rgba(var(--hl), calc(.09 * var(--hk)));
-  --m-sheen: linear-gradient(180deg, rgba(var(--hl), calc(.035 * var(--hk))), rgba(var(--hl), calc(.012 * var(--hk))) 120px);
-  --m-edge: inset 0 1px 0 rgba(var(--hl), calc(.05 * var(--hk)));
-  --m-shadow: 0 10px 30px -12px rgba(var(--sd), calc(.7 * var(--sk)));
-  --m-blur: none;
-  --m-sheen-main: linear-gradient(rgba(var(--hl), calc(.018 * var(--hk))), rgba(var(--hl), calc(.018 * var(--hk))));
-  --m-line-float: rgba(var(--hl), calc(.12 * var(--hk)));
-  --m-sheen-float: linear-gradient(180deg, rgba(var(--hl), calc(.07 * var(--hk))), rgba(var(--hl), calc(.03 * var(--hk))));
-  --m-edge-float: inset 0 1px 0 rgba(var(--hl), calc(.07 * var(--hk)));
-  --m-shadow-float: 0 18px 44px -12px rgba(var(--sd), calc(.75 * var(--sk)));
-  --m-blur-float: blur(14px) saturate(1.2);
-  --m-line-field: rgba(var(--hl), calc(.12 * var(--hk)));
-  --m-sheen-field: linear-gradient(180deg, rgba(var(--hl), calc(.075 * var(--hk))), rgba(var(--hl), calc(.035 * var(--hk))));
-  /* Sunken controls, and rows that are hovered, picked or raised, are tints of the light and shade. */
-  --m-well: rgba(var(--sd), calc(.22 * var(--sk)));
-  --m-raise: rgba(var(--hl), calc(.1 * var(--hk)));
-  --m-sel: rgba(var(--hl), calc(.14 * var(--hk)));
-  --m-hover: rgba(var(--hl), calc(.07 * var(--hk)));
-  --m-pane: var(--m-float);
 }
 :root[data-finish="flat"],
 :root[data-finish="flat"] .mx-app {
@@ -82,57 +47,25 @@
   --m-blur-float: none;
   --m-line-field: var(--line2);
   --m-sheen-field: none;
-  /* Gradients and lift (every rule that multiplies by --gk) take nothing in Flat; hover tints stay. */
+  /* Gradients and lift (every rule that multiplies by --gk) take nothing; hover tints stay. */
   --gk: 0;
 }
 /* ---- component tokens ----
-   The shared pieces every control reads, so one component serves every style and theme:
+   The shared pieces every control reads, so one component serves every theme:
      --c-sel-*    every "selected" state (a focused sidebar row, a settings nav item, a chosen segment)
      --c-field-*  dropdown buttons, pickers and inputs
      --c-track-*  the tray behind a segmented control
      --c-sw-* / --c-knob-*  the toggle switch
      --c-tile-ring  agent and shell icon tiles
      --c-head-bg  sticky headers
-   Declared on the window root, where the theme's `--hl`/`--hk` and `--sd`/`--sk` are set, so the
-   defaults (Glass) see them. The flat styles override them below. */
+   The one look is flat: hairline fields and tracks, the accent for a switch that is on. */
 .mx-app {
-  --c-sel-bg: linear-gradient(180deg, rgba(var(--hl), calc(.085 * var(--hk))), rgba(var(--hl), calc(.045 * var(--hk))));
-  --c-sel-sh: inset 0 0 0 1px rgba(var(--hl), calc(.11 * var(--hk))), inset 0 1px 0 rgba(var(--hl), calc(.07 * var(--hk))), 0 2px 8px -2px rgba(var(--sd), calc(.5 * var(--sk)));
-  --c-field-bg: linear-gradient(180deg, rgba(var(--hl), calc(.055 * var(--hk))), rgba(var(--hl), calc(.025 * var(--hk))));
-  --c-field-sh: inset 0 0 0 1px rgba(var(--hl), calc(.1 * var(--hk))), inset 0 1px 0 rgba(var(--hl), calc(.06 * var(--hk)));
-  --c-tile-ring: inset 0 0 0 1px rgba(var(--hl), calc(.14 * var(--hk))), inset 0 1px 0 rgba(var(--hl), calc(.1 * var(--hk))), 0 1px 2px rgba(var(--sd), calc(.35 * var(--sk)));
-  --c-head-bg: color-mix(in srgb, var(--main) 72%, transparent);
-  --c-track-bg: rgba(var(--sd), calc(.22 * var(--sk)));
-  --c-track-sh: inset 0 0 0 1px rgba(var(--hl), calc(.07 * var(--hk))), inset 0 1px 2px rgba(var(--sd), calc(.3 * var(--sk)));
-  --c-sw-on: linear-gradient(180deg, color-mix(in srgb, var(--accent), #fff 14%), var(--accent));
-  --c-sw-off: rgba(var(--hl), calc(.1 * var(--hk)));
-  --c-sw-sh: inset 0 1px 2px rgba(var(--sd), calc(.35 * var(--sk))), inset 0 0 0 1px rgba(var(--hl), calc(.12 * var(--hk)));
-  --c-knob: linear-gradient(180deg, #fff, #E6EAEE);
-  --c-knob-sh: 0 1px 3px rgba(var(--sd), calc(.45 * var(--sk))), inset 0 -1px 0 rgba(0, 0, 0, .08);
-}
-:root[data-style="mono"] .mx-app {
-  --c-sel-bg: var(--sel); --c-sel-sh: inset 0 0 0 1px var(--fg2);
-  --c-field-bg: var(--main); --c-field-sh: inset 0 0 0 1px var(--line2);
-  --c-tile-ring: inset 0 0 0 1px var(--line2); --c-head-bg: var(--main);
-  --c-track-bg: var(--main); --c-track-sh: inset 0 0 0 1px var(--line2);
-  --c-sw-on: var(--fg); --c-sw-off: var(--line); --c-sw-sh: inset 0 0 0 1px var(--line2);
-  --c-knob: var(--bg); --c-knob-sh: inset 0 0 0 1px var(--fg2);
-}
-:root[data-style="console"] .mx-app {
   --c-sel-bg: var(--sel); --c-sel-sh: none;
   --c-field-bg: var(--well); --c-field-sh: inset 0 0 0 1px var(--line2);
   --c-tile-ring: inset 0 0 0 1px var(--line2); --c-head-bg: var(--main);
   --c-track-bg: var(--well); --c-track-sh: inset 0 0 0 1px var(--line2);
   --c-sw-on: var(--accent); --c-sw-off: var(--line2); --c-sw-sh: none;
   --c-knob: var(--fg); --c-knob-sh: 0 1px 2px rgba(0, 0, 0, .4);
-}
-:root[data-style="pixel"] .mx-app {
-  --c-sel-bg: var(--sel); --c-sel-sh: inset 0 0 0 2px var(--accent);
-  --c-field-bg: var(--raise); --c-field-sh: inset 0 0 0 2px var(--line2), 2px 2px 0 rgba(var(--sd), calc(.5 * var(--sk)));
-  --c-tile-ring: inset 0 0 0 2px var(--pane-line); --c-head-bg: var(--main);
-  --c-track-bg: var(--well); --c-track-sh: inset 0 0 0 2px var(--line2);
-  --c-sw-on: var(--accent); --c-sw-off: var(--line); --c-sw-sh: inset 0 0 0 2px var(--pane-line);
-  --c-knob: var(--fg); --c-knob-sh: 2px 2px 0 rgba(var(--sd), calc(.5 * var(--sk)));
 }
 
 /* Without a GPU the blur is dropped (workspace.css), and the fills turn solid with it. */
@@ -250,63 +183,8 @@
 .mx-app .mx-settings-header { border-bottom-color: var(--m-line); }
 .mx-app .mx-settings-nav-item.is-current { background: var(--c-sel-bg); box-shadow: var(--c-sel-sh); }
 
-/* ---- style rules ----
-   What the tokens cannot say: corners, borders, type and the few surfaces a style draws its own way.
-   Only the flat styles lose their blur; Squared and Retro Pixel square every corner. */
-:root[data-style="mono"] .mx-app *, :root[data-style="pixel"] .mx-app * { border-radius: 0 !important; }
-:root:not([data-style="glass"]) .mx-app * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-:root[data-style="mono"] .mx-app * { letter-spacing: -.01em; }
-:root[data-style="pixel"] .mx-app * { -webkit-font-smoothing: none; }
-:root[data-style="pixel"] .mx-app .mx-sidebar,
-:root[data-style="pixel"] .mx-app .mx-main { border: 3px solid var(--pane-line); box-shadow: 4px 4px 0 rgba(var(--sd), calc(.55 * var(--sk))); }
-:root[data-style="pixel"] .mx-app button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
-/* Faint scanlines over everything, never taking the pointer. */
-:root[data-style="pixel"] .mx-app::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 999; background: repeating-linear-gradient(180deg, transparent 0 2px, rgba(var(--sd), calc(.14 * var(--sk))) 2px 3px); }
-/* Glass's atmosphere is painted on the whole window, title bar included, so no seam shows under the controls. */
-:root[data-style="glass"] .mx-app { background: var(--bg); isolation: isolate; }
-/* The atmosphere is the theme's own colours at low strength: its accent top left, its blue bottom right, its magenta top right, over the
-   theme's window ground, so each theme tints its own glass and none brings a colour it does not have. Three different hues, not the
-   accent twice: a generated theme's working colour is its accent, and with it the glass read as one colour. */
-:root[data-style="glass"]:not([data-gpu="software"]) .mx-app {
-  background:
-    radial-gradient(circle at 10% 12%, color-mix(in oklab, var(--accent) var(--glow-accent), transparent), transparent 36%),
-    radial-gradient(circle at 88% 90%, color-mix(in oklab, var(--ansi-blue) var(--glow-mag), transparent), transparent 36%),
-    radial-gradient(circle at 70% 20%, color-mix(in oklab, var(--ansi-mag) var(--glow-mag), transparent), transparent 26%),
-    var(--bg);
-}
-:root[data-style="glass"]:not([data-gpu="software"]) .mx-app .mx-window { background: transparent; }
-/* Frosted, not clear: the sidebar and the main card are mostly opaque with a milky sheen and a strong blur, so what is behind them
-   reaches the eye as a soft wash of colour and never as shapes. The fill, sheen and edge strength differ for dark and light. */
-.mx-app { --g-fill: 90%; --g-hi: .06; --g-lo: .02; --g-edge: .12; --g-glow: 4%; }
-.mx-app[data-theme-kind="light"] { --g-fill: 84%; --g-hi: .45; --g-lo: .2; --g-edge: .6; --g-glow: 5%; }
-:root[data-style="glass"] .mx-app .mx-sidebar,
-:root[data-style="glass"] .mx-app .mx-main {
-  background: linear-gradient(140deg, rgba(var(--hs), var(--g-hi)), rgba(var(--hs), var(--g-lo))), color-mix(in srgb, var(--main) var(--g-fill), transparent);
-  backdrop-filter: blur(20px) saturate(115%);
-  -webkit-backdrop-filter: blur(20px) saturate(115%);
-  border: 1px solid rgba(var(--hs), var(--g-edge));
-  border-radius: 22px;
-  box-shadow: 0 24px 44px -24px rgba(var(--sd), calc(.45 * var(--sk))), inset 0 1px 0 rgba(var(--hs), .25), inset 0 0 50px color-mix(in srgb, var(--working) var(--g-glow), transparent);
-}
-/* A terminal pane is the frost itself: the header and the margin around the text show the card, and the text is drawn on it when the
-   terminal is see-through (the default). Without WebGL the canvas paints the theme's solid ground, which differs only at its edge. */
-:root[data-finish="glass"] .mx-app .mx-pane.is-terminal,
-:root[data-finish="glass"] .mx-app .mx-pane-body:not(.is-chat) { background: transparent; }
-/* The card around a solid terminal is that same ground, so no lighter frame shows around the pane (see-through terminal off, or no WebGL). */
-:root[data-finish="glass"] .mx-app .mx-main:has(.terminal-view:not(.is-transparent)) { background: var(--main); backdrop-filter: none; -webkit-backdrop-filter: none; }
-/* When the terminal paints its own solid ground (no WebGL, or see-through off), the whole pane takes that same ground, so the text area
-   and the header and margin around it are one colour. */
-:root[data-finish="glass"] .mx-app .mx-pane.is-terminal:has(.terminal-view:not(.is-transparent)),
-:root[data-finish="glass"] .mx-app .mx-pane-body:not(.is-chat):has(.terminal-view:not(.is-transparent)) { background: var(--main); }
-:root[data-style="glass"] .mx-app .mx-notice,
-:root[data-style="glass"] .mx-app [role="dialog"] { border-radius: 18px; }
-:root[data-style="glass"] .mx-app .mx-settings { border-radius: 22px; }
-
-/* The notification card's own glass: a heavier blur and a deeper shadow than the other floats, and Glass rounds it more. */
-:root[data-finish="glass"] .mx-app .mx-notice {
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.09 * var(--hk))), rgba(var(--hl), calc(.035 * var(--hk)))), var(--main);
-  border-color: rgba(var(--hl), calc(.13 * var(--hk)));
-  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.1 * var(--hk))), 0 18px 48px -12px rgba(var(--sd), calc(.75 * var(--sk)));
-  backdrop-filter: blur(22px) saturate(1.3);
-}
-:root[data-style="glass"] .mx-app .mx-notice { border-radius: 18px; }
+/* ---- shape rules ----
+   What the tokens cannot say. The look is flat (no blur anywhere), and Square corners square every corner;
+   Rounded keeps each component's own radius. */
+:root[data-corners="square"] .mx-app * { border-radius: 0 !important; }
+.mx-app * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }

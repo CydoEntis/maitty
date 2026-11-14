@@ -239,6 +239,7 @@ pub fn is_light(name: &str) -> bool {
 /// Every built-in theme, kept in alphabetical order of its display name: the theme browser,
 /// the Theme setting's cycling and the unknown-theme warning all list it as written.
 pub const BUILTIN: &[&str] = &[
+    "maitty-abyss",
     "alucard",
     "ayu-dark",
     "ayu-light",
@@ -250,6 +251,8 @@ pub const BUILTIN: &[&str] = &[
     "doom-one",
     "doom-one-light",
     "dracula",
+    "maitty-dusk",
+    "maitty-ember",
     "everforest-dark",
     "everforest-light",
     "flexoki-dark",
@@ -270,6 +273,7 @@ pub const BUILTIN: &[&str] = &[
     "maitty-retro-light",
     "melange-dark",
     "melange-light",
+    "maitty-moss",
     "nightfox",
     "nord",
     "nord-light",
@@ -277,6 +281,7 @@ pub const BUILTIN: &[&str] = &[
     "one-half-dark",
     "one-half-light",
     "one-light",
+    "maitty-paper",
     "papercolor-dark",
     "papercolor-light",
     "rose-pine",
@@ -293,6 +298,7 @@ pub const BUILTIN: &[&str] = &[
 
 /// The display names Settings shows; a theme missing here shows its config name in title case.
 pub const DESIGN: &[(&str, &str)] = &[
+    ("maitty-abyss", "Abyss"),
     ("alucard", "Alucard"),
     ("ayu-dark", "Ayu Dark"),
     ("ayu-light", "Ayu Light"),
@@ -304,6 +310,8 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("doom-one", "Doom One"),
     ("doom-one-light", "Doom One Light"),
     ("dracula", "Dracula"),
+    ("maitty-dusk", "Dusk"),
+    ("maitty-ember", "Ember"),
     ("everforest-dark", "Everforest Dark"),
     ("everforest-light", "Everforest Light"),
     ("flexoki-dark", "Flexoki Dark"),
@@ -324,6 +332,7 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("maitty-retro-light", "Maitty Retro Light"),
     ("melange-dark", "Melange Dark"),
     ("melange-light", "Melange Light"),
+    ("maitty-moss", "Moss"),
     ("nightfox", "Nightfox"),
     ("nord", "Nord"),
     ("nord-light", "Nord Light"),
@@ -331,6 +340,7 @@ pub const DESIGN: &[(&str, &str)] = &[
     ("one-half-dark", "One Half Dark"),
     ("one-half-light", "One Half Light"),
     ("one-light", "One Light"),
+    ("maitty-paper", "Paper"),
     ("papercolor-dark", "PaperColor Dark"),
     ("papercolor-light", "PaperColor Light"),
     ("rose-pine", "Rosé Pine"),
@@ -840,6 +850,38 @@ impl Theme {
                 ["#ffffff", "#1a1c2c", "#4d5670", "#2e8b1e"],
                 [
                     "#d0003c", "#2e8b1e", "#b05a00", "#1868c8", "#c24a24", "#1868c8", "#566c86",
+                ],
+            ),
+            // The desktop design's own themes (themes.json has their full palettes): ground, text, dim, accent;
+            // then red, green, yellow, blue, magenta, cyan and grey, with cyan the working teal.
+            "maitty-abyss" => Theme::palette(
+                ["#0f1422", "#e3e7f2", "#8d96ae", "#7aa2ff"],
+                [
+                    "#f7768e", "#9ece6a", "#e8c25a", "#7aa2ff", "#bb9af7", "#5fd4e8", "#8d96ae",
+                ],
+            ),
+            "maitty-dusk" => Theme::palette(
+                ["#18141f", "#e8e3ef", "#978ea8", "#c792ea"],
+                [
+                    "#ff7a93", "#a3e48f", "#e8c25a", "#82aaff", "#c792ea", "#89ddff", "#978ea8",
+                ],
+            ),
+            "maitty-ember" => Theme::palette(
+                ["#1b1512", "#ece2d6", "#9d9080", "#e0823d"],
+                [
+                    "#f0766c", "#a8c97f", "#e8c25a", "#8fb3d9", "#d6a2c8", "#d9b45c", "#9d9080",
+                ],
+            ),
+            "maitty-moss" => Theme::palette(
+                ["#121a15", "#e1ebe3", "#8e9f93", "#8fcf7a"],
+                [
+                    "#f08a7e", "#8fcf7a", "#e8c25a", "#86b8e0", "#c6a6e8", "#6fd3b8", "#8e9f93",
+                ],
+            ),
+            "maitty-paper" => Theme::palette(
+                ["#faf6ee", "#1f1b14", "#5c5446", "#b5552b"],
+                [
+                    "#b3261e", "#2f6b3a", "#9a6b00", "#2b5aa8", "#7a3fa8", "#2c6e63", "#5c5446",
                 ],
             ),
             "dracula" => Theme::classic([
@@ -1454,8 +1496,8 @@ mod audit {
         assert!(near.is_empty(), "grounds near the line: {near:?}");
         assert!(!super::is_light("not-a-theme"));
         let light = super::BUILTIN.iter().filter(|n| super::is_light(n)).count();
-        assert_eq!(light, 25, "twenty-five light themes");
-        assert_eq!(super::BUILTIN.len() - light, 25, "and twenty-five dark ones");
+        assert_eq!(light, 26, "twenty-six light themes");
+        assert_eq!(super::BUILTIN.len() - light, 29, "and twenty-nine dark ones");
     }
 
     /// Every theme gives each status its own colour, as the design's roles do: working,
@@ -1707,13 +1749,13 @@ mod manifest {
     }
 
     #[test]
-    fn the_built_in_themes_are_exactly_the_manifests_fifty() {
+    fn the_built_in_themes_are_exactly_the_manifests_fifty_five() {
         let manifest = themes();
         let mut ids: Vec<&str> = manifest.iter().map(|t| text(t, "id")).collect();
         let mut built: Vec<&str> = BUILTIN.to_vec();
         ids.sort_unstable();
         built.sort_unstable();
-        assert_eq!(ids.len(), 50);
+        assert_eq!(ids.len(), 55);
         assert_eq!(built, ids, "BUILTIN and themes.json list the same themes");
     }
 

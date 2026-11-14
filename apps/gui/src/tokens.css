@@ -1,0 +1,63 @@
+/*
+ * The desktop design's tokens (MAITTY-374). Components read these role names, never a theme colour or a raw value:
+ * the theme (`theme/themes.ts`) sets the colours underneath, and `data-corners` on the root sets the corners, so every
+ * theme and both corner styles are a swap of tokens only. Like `material.css`, this file may read the theme's solid
+ * surface colours; nothing else does (`material.test.ts`). The `--card`, `--done` and `--sh-pop` roles are set in
+ * `index.css` and `workspace.css`.
+ */
+.mx-app {
+  /* Surfaces */
+  --bubble: var(--sel);
+  /* Status: amber-family needs is each theme's own warn, and means needs you and nothing else. */
+  --needs: var(--warn);
+  --on-needs: var(--on-warn);
+  --err: var(--danger);
+  --focus: var(--ansi-blue);
+  --link: var(--ansi-blue);
+  /* Code */
+  --code-kw: var(--ansi-mag);
+  --code-str: var(--ok);
+  --code-fn: var(--ansi-blue);
+  --code-num: var(--working);
+  --code-com: var(--dim);
+  /* File-type tags have their own tone, never the needs colour. */
+  --tag-ts: var(--ansi-blue);
+  --tag-tsx: var(--working);
+  --tag-data: var(--ansi-mag);
+  --tag-sql: var(--ok);
+  --tag-env: var(--danger);
+  --tag-text: var(--fg2);
+
+  /* Spacing */
+  --s1: 2px; --s2: 4px; --s3: 6px; --s4: 8px; --s5: 12px; --s6: 16px; --s7: 20px; --s8: 24px; --s9: 32px;
+
+  /* Type */
+  /* `--ui` and `--mono` are the look's two fonts (`theme/corners.ts`). */
+  --text-h1: 650 22px/1.3 var(--ui);
+  --text-h2: 650 18px/1.3 var(--ui);
+  --text-h3: 650 16px/1.3 var(--ui);
+  --text-reply: 400 14.5px/1.65 var(--ui);
+  --text-body: 400 14px/1.55 var(--ui);
+  --text-ui: 500 13px/1.4 var(--ui);
+  --text-small: 400 12px/1.45 var(--ui);
+  --text-meta: 400 11.5px/1.4 var(--mono);
+  --text-tag: 600 10.5px/1 var(--mono);
+  --text-code: 400 12.5px/1.65 var(--mono);
+
+  /* Corners: square by default; Rounded is 6px on controls and 10px on panels, dialogs and menus. */
+  --r-control: 0px;
+  --r-panel: 0px;
+  --r-badge: 0px;
+
+  /* Shadow: a waiting card rises from the message box; menus and toasts use `--sh-pop`; cards in the feed have none. */
+  --sh-rise: 0 -6px 18px rgba(var(--sd), calc(.42 * var(--sk)));
+
+  /* Motion */
+  --t-fast: 120ms;
+  --t-base: 180ms;
+  --t-slow: 260ms;
+  --t-spin: 900ms;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+}
+:root[data-corners="rounded"] .mx-app { --r-control: 6px; --r-panel: 10px; --r-badge: 3px; }
+:root[data-reduced-motion="true"] .mx-app { --t-fast: 0ms; --t-base: 0ms; --t-slow: 0ms; }

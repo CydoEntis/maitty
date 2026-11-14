@@ -1048,7 +1048,7 @@ await user.click(within(await screen.findByRole('alertdialog')).getByRole('butto
     const app = renderDesktopApp()
     await screen.findByRole('heading', { name: 'No sessions running' })
     const root = () => document.querySelector<HTMLElement>('.mx-app')
-    expect(root()?.style.getPropertyValue('--bg')).toBe('#05131a')
+    expect(root()?.style.getPropertyValue('--bg')).toBe('#071318')
 
     await user.keyboard('{Control>},{/Control}')
     await user.keyboard('a')
@@ -1280,7 +1280,7 @@ describe('desktop overlays and pane tools', () => {
     expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument()
   })
 
-  it('keeps the status bar to quick controls: theme, layout style, text size and the shortcuts', async () => {
+  it('keeps the status bar to quick controls: theme, corners, text size and the shortcuts', async () => {
     window.localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: true }))
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([
@@ -1309,19 +1309,20 @@ describe('desktop overlays and pane tools', () => {
     expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument()
   })
 
-  it('changes the layout style from the status bar', async () => {
+  it('changes the corners from the status bar', async () => {
     window.localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ statusBar: true }))
     const user = userEvent.setup()
     daemon.loadConversations.mockResolvedValue([term(2, `${HOME}/a`)])
     renderDesktopApp()
     const bar = await screen.findByLabelText('Status')
+    expect(document.documentElement.dataset.corners).toBe('square')
 
-    await user.click(within(bar).getByRole('button', { name: /^Layout style/ }))
-    await user.click(await screen.findByRole('menuitemradio', { name: 'Squared' }))
+    await user.click(within(bar).getByRole('button', { name: /^Corners/ }))
+    await user.click(await screen.findByRole('menuitemradio', { name: 'Rounded' }))
 
-    expect(document.documentElement.dataset.style).toBe('mono')
+    expect(document.documentElement.dataset.corners).toBe('rounded')
     expect(document.documentElement.dataset.finish).toBe('flat')
-    expect(within(bar).getByRole('button', { name: 'Layout style: mono' })).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: 'Corners: Rounded' })).toBeInTheDocument()
   })
 
   it('picks a theme from the status bar and opens the full list in Settings', async () => {

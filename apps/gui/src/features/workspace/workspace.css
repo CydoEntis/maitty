@@ -18,7 +18,7 @@
 
 .mx-app {
   --ease-out: cubic-bezier(.2, .8, .2, 1);
-  /* The window style sets --ui and --mono inline; these are the Glass defaults. */
+  /* The look (`theme/corners.ts`) sets --ui and --mono inline; these are the fallbacks. */
   --ui: "Geist Variable", Geist, system-ui, sans-serif;
   --mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
   position: fixed;
@@ -73,9 +73,7 @@
   overflow: hidden;
   background: var(--bg);
 }
-:root[data-glow="on"]:not([data-gpu="software"]) .mx-window,
-/* Glass panels are see-through, so Glass always has its soft atmosphere behind them. */
-:root[data-style="glass"]:not([data-gpu="software"]) .mx-window {
+:root[data-glow="on"]:not([data-gpu="software"]) .mx-window {
   background:
     radial-gradient(1000px 600px at 15% 0%, color-mix(in oklab, var(--accent) var(--glow-accent), transparent), transparent 70%),
     radial-gradient(900px 560px at 100% 100%, color-mix(in oklab, var(--ansi-mag) var(--glow-mag), transparent), transparent 70%),
@@ -192,7 +190,6 @@
 .mx-upd-dot::after { animation-duration: .7s; }
 .mx-badge.is-needs::after { animation: v7pulse 1.6s ease-out infinite; }
 :root[data-window="inactive"] .mx-badge.is-needs::after { animation-play-state: paused; }
-/* Every badge takes the window style's corners: a rounded square on a rounded style, a square on a squared one. */
 .mx-badge.is-done { color: var(--ok); }
 .mx-badge.is-idle svg { width: 100%; height: 100%; }
 .mx-badge.is-idle { color: var(--muted); animation: none; }
@@ -637,18 +634,17 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
 :root[data-gpu="software"] .mx-app { --blur-pop: none; --sh-pop: 0 0 0 1px var(--line2); }
 :root[data-gpu="software"] .mx-app[data-theme-kind="light"] { --sh-pop: 0 0 0 1px rgba(17, 22, 27, .14); }
 
-/* Window style variables, set on the app root so they can use the theme's colours. Glass is the default; Flat softens the radii and shadow; Tiled pulls the layout edge to
-   edge (square corners, 4px gaps, a flush 40px tab strip with hairlines). The layout rules above read these.
-   --rk multiplies the radii that Tiled squares off. --strip-* are the tab bar's buttons: Tiled drops their fill and ring. */
+/* Layout variables, set on the app root so they can use the theme's colours. The layout rules above read these.
+   --rk multiplies the larger radii. */
 .mx-app {
   --rk: 1; --gk: 1; --r14: 14px; --r16: 16px;
   /* Project squares in the sidebar: never amber or red, which only ever mean status. */
   --proj-1: #2BB8A6; --proj-2: #4C8DF6; --proj-3: #E86FA8; --proj-4: #8B7CF6; --proj-5: #4CC38A; --pg: 12px; --ptop: 0px; --tbh: 56px; --tbp: 0 10px; --tbg: 6px; --tbb: 0;
   --tabh: 36px; --tabbr: 0; --tick: transparent;
-  /* The title bar: a dark veil over the ground on dark themes, the card colour on light ones. Tiled sets a card colour and a hairline. */
+  /* The title bar: a dark veil over the ground on dark themes, the card colour on light ones. */
   --tbar: transparent; --tbar-b: 0;
-  /* Glass surfaces: opaque cards with a hairline and, on dark themes, a 1px top highlight; blur and a soft
-     shadow only on short-lived popovers. */
+  /* Surfaces: opaque cards with a hairline and, on dark themes, a faint top highlight; a soft shadow only on
+     short-lived popovers. */
   --card: var(--main); --sh: inset 0 1px 0 rgba(var(--hl), calc(.045 * var(--hk))); --blur-pop: blur(14px) saturate(1.2); --sh-pop: 0 16px 40px rgba(0, 0, 0, .45);
   --glow-accent: 10%; --glow-mag: 7%;
   --sbm: 12px 0 12px 12px; --sbw: 1px; --tba: center; --tl: 4px; --edge: 8px; --tsh: 32px; --tsw: 26px; --ibh: 30px;
@@ -656,8 +652,6 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
 .mx-app[data-theme-kind="light"] { --sh: none; --sh-pop: 0 12px 32px rgba(17, 24, 32, .14), 0 0 0 1px rgba(17, 22, 27, .08); --glow-accent: 9%; --glow-mag: 6%; }
 
 .mx-app .title-bar { background: var(--tbar); border-bottom: var(--tbar-b); }
-
-/* Settings › Appearance › Window style cards. The preview's own colours are in material.css (`.mx-sp`). */
 
 /* Updates: the sidebar footer's left slot, its card, and the restart screen. */
 .mx-foot-slot { flex: 1; min-width: 0; display: flex; align-items: center; }
@@ -782,12 +776,7 @@ button.mx-sb-item:hover { background: rgba(var(--hl), calc(.07 * var(--hk))); co
 @keyframes mx-caret-blink { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .mx-caret.is-blinking { animation: none; } }
 /* A style's tile is a small window in its shape, in the theme in use. */
-.mx-style-tile { width: 30px; height: 24px; flex: none; display: flex; align-items: flex-end; justify-content: flex-end; padding: 4px; border: 1px solid var(--line2); border-radius: 8px; background: var(--main); }
-.mx-style-tile i { width: 10px; height: 4px; border-radius: 2px; background: var(--accent); }
-.mx-style-tile[data-shape="mono"], .mx-style-tile[data-shape="pixel"] { border-radius: 0; }
-.mx-style-tile[data-shape="pixel"] { border-width: 2px; }
-.mx-style-tile[data-shape="pixel"] i, .mx-style-tile[data-shape="mono"] i { border-radius: 0; }
-.mx-style-tile[data-shape="console"] { border-radius: 3px; }.mx-worktree-overlap { margin: 0 0 6px; font-size: 12px; color: var(--warn, var(--fg2)); }
+.mx-worktree-overlap { margin: 0 0 6px; font-size: 12px; color: var(--warn, var(--fg2)); }
 .mx-approved { margin-top: 18px; }
 .mx-approved ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
 .mx-approved-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; }

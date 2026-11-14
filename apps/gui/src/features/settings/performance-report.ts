@@ -7,7 +7,7 @@ export type PerformanceEnvironment = {
   userAgent: string
   /** `webgl` or `software`, as `data-gpu` on the root. */
   gpu: string
-  style: string
+  corners: string
   reduceMotion: boolean
   terminalFontSize: number
 }
@@ -52,7 +52,7 @@ export function buildPerformanceReport(environment: PerformanceEnvironment, samp
     `Maitty desktop ${environment.version ?? '(version unknown)'}`,
     `Web view: ${environment.userAgent}`,
     `GPU: ${environment.gpu}`,
-    `Window style: ${environment.style}; reduce motion ${environment.reduceMotion ? 'on' : 'off'}; terminal ${String(environment.terminalFontSize)}px`,
+    `Corners: ${environment.corners}; reduce motion ${environment.reduceMotion ? 'on' : 'off'}; terminal ${String(environment.terminalFontSize)}px`,
     '',
   ]
   if (sample === null) {

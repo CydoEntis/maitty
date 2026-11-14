@@ -1,41 +1,50 @@
 import { describe, expect, it } from 'vitest'
 import { contrastRatio, mixOklab, parseColor } from './color'
+import themeManifest from '@tokens/themes.json'
 import type { ThemeEntry } from './themes'
-import { findTheme, generateTheme, MIN_TEXT_CONTRAST, terminalMinimumContrast, themeStyle, THEMES, xtermTheme } from './themes'
+import { findTheme, generateTheme, MIN_TEXT_CONTRAST, paletteTheme, terminalMinimumContrast, themeStyle, THEMES, xtermTheme } from './themes'
+
+const PALETTES = new Map(themeManifest.themes.flatMap((theme) => ('palette' in theme ? [[theme.name, theme.palette] as const] : [])))
+const MAITTY = ['Maitty Night', 'Maitty Day', 'Maitty Dark', 'Maitty Light', 'Abyss', 'Ember', 'Moss', 'Dusk', 'Paper', 'Maitty Retro Dark', 'Maitty Retro Light']
 
 describe('themes', () => {
-  it("ships fifty themes, twenty-five dark and twenty-five light: Maitty's six, then twenty-two families with a dark and a light each", () => {
-    expect(THEMES).toHaveLength(50)
-    expect(THEMES.filter((theme) => theme.light)).toHaveLength(25)
-    expect(THEMES.slice(0, 6).map((theme) => theme.name)).toEqual(['Maitty Night', 'Maitty Day', 'Maitty Dark', 'Maitty Light', 'Maitty Retro Dark', 'Maitty Retro Light'])
+  it("ships fifty-five themes, twenty-six light: Maitty's eleven, then twenty-two families with a dark and a light each", () => {
+    expect(THEMES).toHaveLength(55)
+    expect(THEMES.filter((theme) => theme.light)).toHaveLength(26)
+    expect(THEMES.slice(0, MAITTY.length).map((theme) => theme.name)).toEqual(MAITTY)
     expect(findTheme('Catppuccin Mocha').family).toBe('Catppuccin · dark')
     expect(findTheme('Maitty Retro Light').family).toBe('Maitty · light')
+    expect(findTheme('Paper').family).toBe('Maitty · light')
     // Every family after Maitty's own has exactly one dark and one light.
     const sides = new Map<string, boolean[]>()
-    for (const theme of THEMES.slice(6)) sides.set(theme.family.split(' · ')[0] ?? '', [...(sides.get(theme.family.split(' · ')[0] ?? '') ?? []), theme.light])
+    for (const theme of THEMES.slice(MAITTY.length)) sides.set(theme.family.split(' · ')[0] ?? '', [...(sides.get(theme.family.split(' · ')[0] ?? '') ?? []), theme.light])
     expect(sides.size).toBe(22)
     for (const [family, lights] of sides) expect([family, [...lights].sort()]).toEqual([family, [false, true]])
-    expect(new Set(THEMES.map((theme) => theme.id)).size).toBe(50)
+    expect(new Set(THEMES.map((theme) => theme.id)).size).toBe(55)
     expect(findTheme('Gruvbox Light').light).toBe(true)
     expect(findTheme('No such theme').name).toBe('Maitty Night')
   })
 
-  it('builds Maitty Night and Maitty Day from the tokens file exactly: brass accent, teal only for working, coral only for needs you', () => {
+  it("draws the design's nine themes exactly as written, shading included", () => {
+    expect([...PALETTES.keys()]).toEqual(MAITTY.slice(0, 9))
+    for (const [name, palette] of PALETTES) {
+      const theme = findTheme(name)
+      expect(theme.tokens, name).toEqual(paletteTheme(palette))
+      const style = themeStyle(theme)
+      expect([style['--hk'], style['--sk']], name).toEqual([palette.hk, palette.sk])
+    }
     const night = themeStyle(findTheme('Maitty Night'))
-    expect(night['--bg']).toBe('#05131a')
-    expect(night['--main']).toBe('#0a2329')
+    expect(night['--bg']).toBe('#071318')
+    expect(night['--main']).toBe('#0f2026')
     expect(night['--pane']).toBe(night['--main'])
-    expect(night['--accent']).toBe('#e3a72f')
+    expect(night['--accent']).toBe('#d39a2a')
+    expect(night['--accent-text']).toBe('#e0ab45')
     expect(night['--working']).toBe('#3dd6c6')
-    expect(night['--warn']).toBe('#ff6a4a')
-    expect(night['--fg']).toBe('#eef5f2')
-    expect(night['--dim']).toBe('#8fa8a1')
+    expect(night['--warn']).toBe('#ff7a5c')
+    expect(night['--m-or']).toBe('#f0964a')
     const day = themeStyle(findTheme('Maitty Day'))
     expect(day['--bg']).toBe('#e9f0ed')
-    expect(day['--accent']).toBe('#e3a72f')
-    // Text uses the file's darker *Text colours so every pair passes AA on the light ground.
     expect(day['--accent-text']).toBe('#8a5a00')
-    expect(day['--working']).toBe('#09605a')
     expect(day['--warn']).toBe('#9e2e12')
     // One violet for every branch name, deeper on a light ground.
     expect(night['--branch']).toBe('#A78BFA')
@@ -50,7 +59,8 @@ describe('themes', () => {
   })
 
   it('never changes what amber and red mean within a kind of theme', () => {
-    const generated = THEMES.filter((candidate) => !['Maitty Night', 'Maitty Day', 'Maitty Dark', 'Maitty Light'].includes(candidate.name))
+    // The design's themes set their own amber and red; every theme built from six inputs shares one of each.
+    const generated = THEMES.filter((candidate) => !PALETTES.has(candidate.name))
     for (const theme of generated) {
       expect(theme.tokens.warn).toBe(theme.light ? '#8F5400' : '#F2B65A')
       const danger = theme.light ? '#B8362C' : '#F07F78'
@@ -86,13 +96,13 @@ describe('themes', () => {
   it('maps the ANSI palette for xterm from the theme tokens', () => {
     const { tokens } = findTheme('Maitty Night')
     const palette = xtermTheme(tokens)
-    expect(palette.cyan).toBe('#e3a72f')
+    expect(palette.cyan).toBe('#e0ab45')
     expect(palette.magenta).toBe('#C3A6F2')
     expect(palette.blue).toBe('#82AAFF')
     expect(palette.green).toBe('#7fd99a')
-    expect(palette.yellow).toBe('#ff6a4a')
+    expect(palette.yellow).toBe('#ff7a5c')
     expect(palette.red).toBe('#F07F78')
-    expect(palette.brightBlack).toBe('#8fa8a1')
+    expect(palette.brightBlack).toBe('#8fa49e')
   })
 })
 
@@ -130,7 +140,7 @@ describe('contrast audit', () => {
     }
   })
 
-  it.each(['Maitty Night', 'Maitty Day', 'Maitty Dark', 'Maitty Light'])('%s keeps accent, status and ANSI text readable on --term and --bg', (name) => {
+  it.each(MAITTY.slice(0, 9))('%s keeps accent, status and ANSI text readable on --term and --bg', (name) => {
     const { tokens } = findTheme(name)
     for (const [ground, colour] of TEXT_GROUNDS(tokens)) {
       for (const slot of [...STATUS_TEXT_SLOTS, ...ANSI_TEXT_SLOTS]) {

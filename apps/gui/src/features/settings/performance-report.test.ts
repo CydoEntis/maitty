@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildPerformanceReport, formatMemory, formatRate, type PerformanceEnvironment } from './performance-report'
 
-const ENVIRONMENT: PerformanceEnvironment = { version: '0.64.0', userAgent: 'WebKit test', gpu: 'webgl', style: 'glass', reduceMotion: false, terminalFontSize: 14 }
+const ENVIRONMENT: PerformanceEnvironment = { version: '0.64.0', userAgent: 'WebKit test', gpu: 'webgl', corners: 'square', reduceMotion: false, terminalFontSize: 14 }
 
 describe('performance report', () => {
   it('formats sizes in binary units', () => {

@@ -6,9 +6,9 @@ function show(machine: FocusMachine | null) {
   const none = vi.fn()
   render(
     <StatusBar
-      online machine={machine} themeMode="dark" lightInUse={false} activeTheme="Catppuccin Mocha" style="glass" textSize={15} minTextSize={11}
+      online machine={machine} themeMode="dark" lightInUse={false} activeTheme="Catppuccin Mocha" corners="square" textSize={15} minTextSize={11}
       maxTextSize={20} shortcutChord={['Ctrl', '/']} portalContainer={null} onThemeMode={none} onPickTheme={none} onAllThemes={none}
-      onStyle={none} onTextSize={none} onResetTextSize={none} onOpenShortcuts={none}
+      onCorners={none} onTextSize={none} onResetTextSize={none} onOpenShortcuts={none}
     />,
   )
 }

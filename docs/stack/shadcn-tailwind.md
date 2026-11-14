@@ -62,14 +62,14 @@ pnpm dlx shadcn@latest add button dialog form
 
 ## Project-specific: shadcn-tailwind
 
-Follow the approved `Maitty Desktop specification` handoff and the redesign handoff (four window styles, see [DESIGN](../DESIGN.md#desktop-app)) in
-`docs/features/chat-gui/design-brief.md`. Use Geist Variable for interface text
-and Geist Mono Variable for code, paths, shortcuts and diff numbers. Use the
-4-pixel spacing scale, 6–8-pixel control and row radii, 9–10-pixel card radii,
-12-pixel workspace radius and 14–16-pixel composer/dialog radius.
+Follow the chat handoff (`design_handoff_maitty_chat`, see [DESIGN](../DESIGN.md#desktop-app)) and
+`docs/features/chat-gui/design-brief.md`. Use Inter for interface text and JetBrains Mono for code,
+paths, shortcuts and diff numbers. Use the spacing tokens `--s1`..`--s9` and the radius tokens
+`--r-control` (6px) and `--r-panel` (10px, panels, dialogs and menus), which are 0 under Square corners
+(`apps/gui/src/tokens.css`).
 
 Maitty Night is the default dark theme and Maitty Day the default light one (sea-glass and brass,
-`crates/maitty-settings/maitty-tokens.json`). Brass is the accent; teal means only working; coral means only
+their `palette` in `crates/maitty-settings/themes.json`). Brass is the accent; teal means only working; coral means only
 needs-you; red is reserved for errors and recovery. Use the shared CSS variables for every
 theme and keep shadcn primitives unchanged unless an accessibility or product
 need is documented.
