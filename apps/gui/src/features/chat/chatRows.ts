@@ -153,7 +153,8 @@ function isQuietRow(row: ChatRow): boolean {
 
 /**
  * The rows without the runs of reads and searches that succeeded. The two parts of a turn's message
- * that such a run stood between read as the one message they would have been without it.
+ * that such a run stood between read as the one message they would have been without it, and so do two thoughts.
+ * A thought between two messages stays a row of its own, so they stay two messages.
  */
 function withoutQuietRuns(rows: readonly ChatRow[]): ChatRow[] {
   const kept: ChatRow[] = []
@@ -162,6 +163,8 @@ function withoutQuietRuns(rows: readonly ChatRow[]): ChatRow[] {
     const previous = kept.at(-1)
     if (row.kind === 'agent' && previous?.kind === 'agent' && previous.turnId === row.turnId) {
       kept[kept.length - 1] = { ...previous, paragraphs: [...previous.paragraphs, ...row.paragraphs], status: mergedStatus(previous.status, row.status) }
+    } else if (row.kind === 'thought' && previous?.kind === 'thought' && previous.turnId === row.turnId) {
+      kept[kept.length - 1] = { ...previous, texts: [...previous.texts, ...row.texts] }
     } else kept.push(row)
   }
   return kept

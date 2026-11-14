@@ -17,6 +17,12 @@ describe('buildRows', () => {
     expect(rows[1]).toMatchObject({ key: 'r1', turnId: 't1', texts: ['Weighing two fixes'] })
   })
 
+  it('ends the run of steps before a thought and splits an agent message around it', () => {
+    const rows = buildRows([command('c1'), command('c2'), reasoningEvent('r1', 'Hm.'), command('c3'), message('a1', 'agent', 'A.'), reasoningEvent('r2', 'Hm.'), message('a2', 'agent', 'B.')], false)
+
+    expect(rows.map((row) => row.kind)).toEqual(['work', 'thought', 'step', 'agent', 'thought', 'agent'])
+  })
+
   it('merges reasoning that follows each other in one turn into one row, and keeps another turn apart', () => {
     const rows = buildRows([reasoningEvent('r1', 'First.'), reasoningEvent('r2', 'Second.'), reasoningEvent('r3', 'Other turn.', 't2')], false)
 
@@ -143,6 +149,18 @@ describe('buildRows with Hide successful tool calls', () => {
   const read = (id: string, over: Parameters<typeof toolEvent>[1] = {}) => toolEvent(id, { target: `${id}.ts`, ...over })
   const kinds = (events: Parameters<typeof buildRows>[0], hide: boolean) => buildRows(events, false, null, null, true, hide).map((row) => row.kind)
   const failedRun = [message('u', 'user', 'go'), commandEvent('c', { status: 'failed', exitCode: 1 }), read('r1'), read('r2'), read('r3'), turn('completed', true)]
+
+  it('merges thoughts that quiet runs stood between, as they would be merged without the runs', () => {
+    const rows = buildRows([reasoningEvent('t1', 'One.'), read('r1'), reasoningEvent('t2', 'Two.')], false, null, null, true, true)
+
+    expect(rows).toMatchObject([{ kind: 'thought', key: 't1', texts: ['One.', 'Two.'] }])
+  })
+
+  it('keeps a thought between two agent messages as a row of its own, so they stay two messages', () => {
+    const rows = buildRows([message('a1', 'agent', 'A.'), read('r1'), reasoningEvent('t1', 'Hm.'), read('g1', { name: 'Grep' }), message('a2', 'agent', 'B.')], false, null, null, true, true)
+
+    expect(rows.map((row) => row.kind)).toEqual(['agent', 'thought', 'agent'])
+  })
 
   it('draws every run while the setting is off', () => {
     expect(kinds([read('r1'), read('r2'), read('r3')], false)).toEqual(['work'])

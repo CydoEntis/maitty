@@ -949,7 +949,7 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   folded **Thought** row (`ThoughtRow`, a `thought` row of `buildRows`): reasoning that follows each other in a turn merge
   into one row, a Thought between two steps ends the run of steps before it, and a click or Enter opens its text. The text is
   model output, so it is plain paragraphs (no Markdown, no HTML), is not searched while folded, and is never logged or sent
-  anywhere. A reasoning item with no text gets no row. There is no live "thinking…" line while it runs.
+  anywhere. A reasoning item with no text gets no row. A merged row's button is named "Thought, N parts". A Thought always ends the run of steps before it and splits an agent message around it, so the message before and after stay two messages; with Hide successful tool calls on, thoughts that only quiet runs separated merge into one row, but a Thought between two messages still keeps them apart. There is no live "thinking…" line while it runs.
   Settings › Chat › Chat view › **Hide successful tool calls** (`hideSuccessfulTools`, off by default; a setting saved
   before it reads as off) leaves out a run, or a lone step, made only of reads and searches that completed
   (`isQuietRun`: Claude's Read, Grep, Glob, LS, NotebookRead, WebSearch, WebFetch and ToolSearch, matched on the whole

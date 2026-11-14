@@ -86,6 +86,14 @@ describe('a thought', () => {
     expect(screen.getByText('Weighing two fixes')).toBeInTheDocument()
   })
 
+  it('names the number of parts when a row holds several, and links the button to its panel', async () => {
+    render(thought(['One', 'Two', 'Three']))
+
+    const head = screen.getByRole('button', { name: 'Thought, 3 parts' })
+    await userEvent.click(head)
+    expect(document.getElementById(head.getAttribute('aria-controls') ?? '')).toHaveTextContent('Three')
+  })
+
   it('opens from the keyboard', async () => {
     render(thought(['Weighing two fixes']))
 
