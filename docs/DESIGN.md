@@ -427,8 +427,9 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   would answer the question. A chat the daemon runs has the same button on every queued message
   (`send_conversation_now`): the daemon steers it into the turn (Codex) or stops the turn and sends it next, and
   answers only once it has taken it. Its refusal (the turn ended a moment ago, an approval waits) is shown under the
-  box and the message stays queued; the button is hidden while a question or approval shows. A service older than
-  the command (protocol 94) is told so in words, and the message stays queued.
+  box and the message stays queued; the button is hidden while a question or approval shows. The button is off while its answer is
+  awaited. A local service older than the command (protocol 94) is told so in words; another machine's older one
+  cannot be told apart and times out, and the message stays queued either way.
 - **Pane** (`components/PaneCard.tsx`, `pane.css`). Agents and shells share one 42px header: the 26px app icon with its
   status badge, the name (15px, 600) over the folder (11px `--dim`) and the branch (mono 10.5px `--branch`), then at
   the right, icons only (layout 2e): the terminal | chat switch (agents with a chat), split right, the terminals

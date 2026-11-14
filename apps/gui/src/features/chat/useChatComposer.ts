@@ -101,6 +101,8 @@ const paneQueuedIndex = (id: number): number => -id - 1
 export type SentEcho = { readonly text: string; readonly baseline: number; readonly quiet: boolean }
 
 /** A message the daemon holds until the running turn ends. `id` is its operation number. */
+const NO_PENDING: ReadonlySet<number> = new Set()
+
 export type QueuedItem = { readonly id: number; readonly text: string }
 
 type Input = {
@@ -151,6 +153,8 @@ export type ChatComposer = {
    * (steered into the turn, or the turn stopped for it) and a refusal leaves it queued; absent while a request waits for an answer.
    */
   sendQueuedNow?: ((id: number) => void) | undefined
+  /** The queued messages whose Send now the daemon has not answered yet, so a second click cannot send it twice. */
+  sendingNow?: ReadonlySet<number> | undefined
   /** Sends the draft; while the agent works the daemon holds it and sends it when the turn ends. */
   submit: () => void
   /** Interrupts the running turn. */
@@ -196,6 +200,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
   const paneQueued = paneQueue?.queued ?? NO_QUEUED
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sendingNow, setSendingNow] = useState<ReadonlySet<number>>(NO_PENDING)
   const [echo, setEcho] = useState<SentEcho | null>(null)
   // A send that failed is tried again with the same operation number, so the daemon can tell it is the same message.
   const retry = useRef<{ text: string; operation: number } | null>(null)
@@ -362,10 +367,18 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
     if (operation >= 0) {
       // The daemon holds it: it answers only once the message was taken, and refuses with a reason (the turn ended, an
       // approval waits) otherwise, so the message is still in its queue then and the next read shows it.
+      if (sendingNow.has(operation)) return
+      const settled = () => { setSendingNow((current) => new Set([...current].filter((pending) => pending !== operation))) }
+      setSendingNow((current) => new Set([...current, operation]))
       sendQueuedMessageNow({ id: String(conversation), generation: link.generation }, operation)
-        .then(refresh)
+        .then(() => {
+          setError(null)
+          settled()
+          refresh()
+        })
         .catch((failure: unknown) => {
           setError(errorMessage(failure, 'Could not send the queued message now'))
+          settled()
           refresh()
         })
       return
@@ -385,7 +398,7 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
         setError(errorMessage(failure, 'Could not send the queued message now'))
       },
     )
-  }, [disabledReason, sending, send, takeBack, conversation, link.generation, refresh])
+  }, [disabledReason, sending, sendingNow, send, takeBack, conversation, link.generation, refresh])
 
   const removeQueued = useCallback((operation: number) => {
     if (operation < 0) {
@@ -447,5 +460,5 @@ export function useChatComposer({ link, agent, feed, online, refresh, typeInto, 
       .catch((failure: unknown) => { setError(errorMessage(failure, 'Could not interrupt the turn')) })
   }, [running, feed.cancelling, conversation, link.generation, refresh, typeText])
 
-  return { conversationKey: link.conversation, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, editQueued, sendQueuedNow: disabledReason === null || typing ? sendQueuedNow : undefined, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !holding, error, sendText: send, echo }
+  return { conversationKey: link.conversation, setDraft, attachments, attach, readOnly, attachable: !readOnly || typing, queue, removeQueued, editQueued, sendQueuedNow: disabledReason === null ? sendQueuedNow : undefined, sendingNow, submit, stop, running, sending, disabledReason, ready: disabledReason === null && !holding, error, sendText: send, echo }
 }

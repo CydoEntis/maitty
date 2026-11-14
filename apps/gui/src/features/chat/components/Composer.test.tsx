@@ -342,6 +342,43 @@ describe('while the agent works', () => {
     expect(screen.getByRole('list', { name: 'Queued messages' })).toHaveTextContent('steer left')
   })
 
+  it('sends a message now once, however often the button is pressed before the daemon answers', async () => {
+    const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
+    daemonQueues(daemon)
+    let answer: () => void = () => undefined
+    fake.sendQueuedMessageNow.mockImplementation(() => new Promise<void>((resolve) => { answer = resolve }))
+    await user.type(box, 'steer left{Enter}')
+    await settle()
+
+    const button = screen.getByRole('button', { name: 'Send now' })
+    await user.click(button)
+    await user.click(button)
+    await settle()
+
+    expect(fake.sendQueuedMessageNow).toHaveBeenCalledTimes(1)
+    expect(button).toBeDisabled()
+    answer()
+    await settle()
+    expect(button).toBeEnabled()
+  })
+
+  it('clears the reason of an earlier refusal when the daemon takes the message', async () => {
+    const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
+    daemonQueues(daemon)
+    fake.sendQueuedMessageNow.mockRejectedValueOnce(new Error('the turn ended a moment ago'))
+    await user.type(box, 'steer left{Enter}')
+    await settle()
+    await user.click(screen.getByRole('button', { name: 'Send now' }))
+    await settle()
+    expect(screen.getByRole('alert')).toHaveTextContent('the turn ended a moment ago')
+
+    await user.click(screen.getByRole('button', { name: 'Send now' }))
+    await settle()
+
+    expect(fake.sendQueuedMessageNow).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('offers no Send now while a request waits for an answer', async () => {
     const { daemon, user, box } = await open((setup) => { setup.status = 'Working' })
     daemonQueues(daemon)
