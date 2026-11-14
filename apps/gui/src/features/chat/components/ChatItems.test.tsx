@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import type { ChatRow } from '../chatRows'
 import { messageEvent } from '../eventFixtures'
@@ -65,5 +66,40 @@ describe('a reply from the agent', () => {
 
     expect(container).not.toHaveTextContent('|')
     expect(container).toHaveTextContent('Here:')
+  })
+})
+
+describe('a thought', () => {
+  const thought = (texts: string[]) => {
+    const row: ChatRow = { kind: 'thought', key: 'r1', turnId: 't1', texts }
+    return <ChatItem row={row} {...context} />
+  }
+
+  it('is one folded row labelled Thought until it is clicked', async () => {
+    render(thought(['Weighing two fixes']))
+
+    const head = screen.getByRole('button', { name: /Thought/ })
+    expect(head).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('Weighing two fixes')).toBeNull()
+    await userEvent.click(head)
+    expect(head).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('Weighing two fixes')).toBeInTheDocument()
+  })
+
+  it('opens from the keyboard', async () => {
+    render(thought(['Weighing two fixes']))
+
+    await userEvent.tab()
+    await userEvent.keyboard('{Enter}')
+    expect(screen.getByText('Weighing two fixes')).toBeInTheDocument()
+  })
+
+  it('shows the text as plain text, never as Markdown or HTML', async () => {
+    const { container } = render(thought(['**bold** <b>tag</b>', 'Second paragraph']))
+
+    await userEvent.click(screen.getByRole('button', { name: /Thought/ }))
+    expect(screen.getByText('**bold** <b>tag</b>')).toBeInTheDocument()
+    expect(container.querySelector('strong, b')).toBeNull()
+    expect(screen.getByText('Second paragraph')).toBeInTheDocument()
   })
 })

@@ -1,4 +1,4 @@
-import type { ApprovalEvent, CommandEvent, EditEvent, ItemFields, ItemStatus, MessageEvent, SubagentEvent, TodoEvent, ToolEvent } from './chatEvents'
+import type { ApprovalEvent, CommandEvent, EditEvent, ItemFields, ItemStatus, MessageEvent, ReasoningEvent, SubagentEvent, TodoEvent, ToolEvent } from './chatEvents'
 
 /** Builders for events in tests. Defaults describe a finished item with no daemon times. */
 
@@ -43,3 +43,5 @@ export const approvalEvent = (requestId: number | string, over: Partial<Approval
   resolution: { status: 'pending' },
   ...over,
 })
+
+export const reasoningEvent = (id: string, text: string, turnId = 't1'): ReasoningEvent => ({ ...fields(id, 'completed', turnId), kind: 'reasoning', text })

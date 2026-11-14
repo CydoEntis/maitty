@@ -262,11 +262,18 @@ describe('unknown tools', () => {
 
 describe('reasoning', () => {
   // Recorded: history/tests.rs `a_codex_reasoning_summary_is_kept_as_its_own_item_and_hidden_reasoning_is_not`.
-  it('shows nothing for a reasoning item and does not count it as unreadable', () => {
+  it('projects a reasoning item as a reasoning event and does not count it as unreadable', () => {
     const entries = [item(TURN, 'r', { Reasoning: { text: 'Weighing two fixes' } }), message('m1', 'Assistant', 'Done.')]
     const state = applyHistoryEntries(createChatProjection('codex'), entries, NOW)
 
-    expect(only(selectChatEvents(state))).toMatchObject({ kind: 'message', text: 'Done.' })
+    expect(selectChatEvents(state)).toMatchObject([{ kind: 'reasoning', text: 'Weighing two fixes' }, { kind: 'message', text: 'Done.' }])
+    expect(state.rejectedInputs).toBe(0)
+  })
+
+  it('shows nothing for a reasoning item with no text', () => {
+    const state = applyHistoryEntries(createChatProjection('claude'), [item(TURN, 'r', { Reasoning: { text: '  \n' } })], NOW)
+
+    expect(selectChatEvents(state)).toEqual([])
     expect(state.rejectedInputs).toBe(0)
   })
 })

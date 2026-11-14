@@ -16,6 +16,8 @@ export type ChatRow =
   | { readonly kind: 'user'; readonly key: string; readonly event: MessageEvent }
   /** One agent message: the text of the agent's messages that follow each other in a turn. */
   | { readonly kind: 'agent'; readonly key: string; readonly turnId: string; readonly paragraphs: readonly string[]; readonly status: ItemStatus }
+  /** The agent's reasoning that follows each other in a turn, as one folded row labelled Thought; its key is the first one's id. */
+  | { readonly kind: 'thought'; readonly key: string; readonly turnId: string; readonly texts: readonly string[] }
   | { readonly kind: 'step'; readonly key: string; readonly event: EditEvent | CommandEvent | TodoEvent | ToolEvent }
   /** Two or more steps that follow each other, folded into one line that opens to them; its key is the first step's id. */
   | { readonly kind: 'work'; readonly key: string; readonly events: readonly WorkStep[] }
@@ -99,6 +101,12 @@ export function buildRows(events: readonly ChatEvent[], working: boolean, root: 
         } else {
           rows.push({ kind: 'agent', key: event.id, turnId: event.turnId, paragraphs: paragraphsOf(event.text), status: event.status })
         }
+        break
+      }
+      case 'reasoning': {
+        const previous = rows.at(-1)
+        if (previous?.kind === 'thought' && previous.turnId === event.turnId) rows[rows.length - 1] = { ...previous, texts: [...previous.texts, event.text] }
+        else rows.push({ kind: 'thought', key: event.id, turnId: event.turnId, texts: [event.text] })
         break
       }
       case 'approval':

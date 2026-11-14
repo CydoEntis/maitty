@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TurnEvent } from './chatEvents'
-import { approvalEvent, commandEvent, editEvent, messageEvent, todoEvent, toolEvent } from './eventFixtures'
+import { approvalEvent, commandEvent, editEvent, messageEvent, reasoningEvent, todoEvent, toolEvent } from './eventFixtures'
 import { buildRows, dividerText, formatDuration, paragraphsOf, splitLead, streamingParagraphs } from './chatRows'
 
 const message = messageEvent
@@ -10,6 +10,19 @@ const turn = (outcome: TurnEvent['outcome'], timed: boolean): TurnEvent => ({ ki
 const writtenDoc = (id: string) => editEvent(id, { tool: 'Write', file: '/home/me/Downloads/plan.md', status: 'completed', change: 'add', diff: { status: 'available', hunks: [{ header: '@@ -0,0 +1,2 @@', lines: [{ kind: 'add', text: '# Plan' }, { kind: 'add', text: 'Do it.' }] }], added: 2, removed: 0, truncated: false } })
 
 describe('buildRows', () => {
+  it('shows reasoning between two tool steps as its own row, so the steps do not fold across it', () => {
+    const rows = buildRows([command('c1'), reasoningEvent('r1', 'Weighing two fixes'), command('c2')], false)
+
+    expect(rows.map((row) => row.kind)).toEqual(['step', 'thought', 'step'])
+    expect(rows[1]).toMatchObject({ key: 'r1', turnId: 't1', texts: ['Weighing two fixes'] })
+  })
+
+  it('merges reasoning that follows each other in one turn into one row, and keeps another turn apart', () => {
+    const rows = buildRows([reasoningEvent('r1', 'First.'), reasoningEvent('r2', 'Second.'), reasoningEvent('r3', 'Other turn.', 't2')], false)
+
+    expect(rows).toMatchObject([{ kind: 'thought', key: 'r1', texts: ['First.', 'Second.'] }, { kind: 'thought', key: 'r3', texts: ['Other turn.'] }])
+  })
+
   it('shows a Markdown document the agent wrote as a row of its own, not folded into the run around it', () => {
     const rows = buildRows([command('c1'), command('c2'), writtenDoc('doc'), command('c3'), command('c4')], false)
 

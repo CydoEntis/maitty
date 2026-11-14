@@ -945,6 +945,11 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   the run, which opens to the steps. Under the line is a stack of the run's latest commands and edits, three at most
   (`workStack.ts`), with "+N more" on the line when it leaves steps out; reads and searches get no card. The stack is a
   second place to click, not a second Tab stop. A run with a failed step starts open.
+  The agent's reasoning (the daemon's `Reasoning` history items, Claude's thinking and Codex's reasoning summary) is one
+  folded **Thought** row (`ThoughtRow`, a `thought` row of `buildRows`): reasoning that follows each other in a turn merge
+  into one row, a Thought between two steps ends the run of steps before it, and a click or Enter opens its text. The text is
+  model output, so it is plain paragraphs (no Markdown, no HTML), is not searched while folded, and is never logged or sent
+  anywhere. A reasoning item with no text gets no row. There is no live "thinking…" line while it runs.
   Settings › Chat › Chat view › **Hide successful tool calls** (`hideSuccessfulTools`, off by default; a setting saved
   before it reads as off) leaves out a run, or a lone step, made only of reads and searches that completed
   (`isQuietRun`: Claude's Read, Grep, Glob, LS, NotebookRead, WebSearch, WebFetch and ToolSearch, matched on the whole
