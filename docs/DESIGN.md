@@ -561,7 +561,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   all N lines"; an edit opens to its diff with the hunk header in `--ansi-blue`, added lines tinted with `--ok` at 13%
   and removed with `--danger` at 12%, syntax colours (keywords `--ansi-mag`, strings `--ansi-green`, comments
   `--dim`, numbers `--ansi-blue`), folded past 12 lines. A Markdown file the agent wrote is a **document card** (title,
-  first lines, **Open**, **Copy**), not a diff. **A run of steps** is one summary row over a **stack** of its latest
+  its first lines formatted as Markdown and faded at the cut, **Read** to show the whole document formatted, **Copy**),
+  not a diff. **A run of steps** is one summary row over a **stack** of its latest
   commands and edits: up to 3 cards 80px tall, each one behind 9px lower, 5% smaller and fainter, showing only its
   edge; the front card has a `--working` glow while it runs and a `--danger` edge when it failed. A click opens every
   step on a left rail (0.3s `cubic-bezier(.2,.8,.2,1)`); a failed step sits on a `--danger-soft` ground. **The plan**

@@ -172,8 +172,11 @@ button.mx-step-row:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); }
 .mx-doc-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
 .mx-doc-text { display: flex; flex-direction: column; gap: 4px; }
 .mx-doc-title { font-size: 16px; font-weight: 600; line-height: 1.35; color: var(--fg); }
-.mx-doc-excerpt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; font-size: 13px; line-height: 1.55; color: var(--fg2); }
-.mx-doc-body { margin: 0; max-height: 360px; overflow: auto; padding: 10px 12px; border-radius: 8px; background: var(--m-well); font: 12.5px/1.55 var(--mono); color: var(--fg2); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* The excerpt is the document's opening, formatted; a fade, not a line clamp, cuts it, since it can hold a list. The fade
+   sits at the cut, not at the bottom, so a short excerpt ends above it and the overflow hides it. */
+.mx-doc-excerpt { position: relative; max-height: 5.4em; overflow: hidden; gap: 4px; font-size: 13px; line-height: 1.55; color: var(--fg2); }
+.mx-doc-excerpt::after { content: ""; position: absolute; top: 3.8em; right: 0; left: 0; height: 1.6em; background: linear-gradient(transparent, var(--m-well)); }
+.mx-doc-body { max-height: 360px; overflow: auto; padding: 10px 12px; border-radius: 8px; background: var(--m-well); font-size: 13px; line-height: 1.55; color: var(--fg2); overflow-wrap: anywhere; }
 .mx-doc-actions { display: flex; align-items: center; gap: 6px; }
 
 /* The agent's plan. */

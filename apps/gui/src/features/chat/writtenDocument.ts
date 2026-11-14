@@ -18,6 +18,7 @@ export function documentOf(event: EditEvent): WrittenDocument | null {
   if (lines.length === 0) return null
   const written = lines.filter((line) => line.trim() !== '')
   const title = written.map((line) => HEADING.exec(line)?.[1]).find((heading) => heading !== undefined) ?? null
-  const excerpt = written.filter((line) => !HEADING.test(line)).slice(0, EXCERPT_LINES).join(' ')
+  // Kept as lines, so a list stays a list when the excerpt is drawn as Markdown.
+  const excerpt = written.filter((line) => !HEADING.test(line)).slice(0, EXCERPT_LINES).join('\n')
   return { title, excerpt, lineCount: lines.length, text: lines.join('\n') }
 }
