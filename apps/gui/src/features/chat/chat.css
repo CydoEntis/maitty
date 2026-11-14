@@ -1,21 +1,22 @@
-/* The agent chat and its message box (README: Agent chat, Message box). A 760px column, the person's
-   messages as glass bubbles, the agent's replies as plain text, and the three-layer message box. */
+/* The agent chat and its message box (docs/DESIGN.md, Chat). A 760px column, the person's messages as bubbles,
+   the agent's replies as plain text, and its work as solid cards with a hairline and no shadow. Every colour is a
+   theme token; amber (`--needs`) is only ever "needs you". */
 
-.mx-chat-layer { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; min-height: 0; background: transparent; font-family: "Geist Variable", Geist, system-ui, sans-serif; line-height: normal; cursor: default; }
+.mx-chat-layer { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; min-height: 0; background: transparent; font-family: var(--ui); line-height: normal; cursor: default; }
 .mx-pane-body.is-chat > :not(.mx-chat-layer) { visibility: hidden; }
 .mx-pane-body.is-chat { padding: 0; }
 /* The chat's size is the person's: `--chat-zoom` draws all of it larger or smaller (Settings › Chat text size), and
    `--chat-width` is how wide its column of messages and its message box may run. */
 .mx-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; zoom: var(--chat-zoom, 1); }
-.mx-chat-notices { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 20px 0; padding: 6px 12px; border-radius: 10px; background: rgba(var(--hl), calc(.04 * var(--hk))); border: 1px solid rgba(var(--hl), calc(.09 * var(--hk))); font-size: 12px; color: var(--fg2); }
-.mx-chat-notices .is-warn { color: var(--warn); }
+.mx-chat-notices { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 20px 0; padding: 6px 12px; border-radius: var(--r-panel); background: var(--card); border: 1px solid var(--line); font-size: 12px; color: var(--fg2); }
+.mx-chat-notices .is-warn { color: var(--needs); }
 /* In a chat that is still starting the hint floats over the top of the conversation: a bar that took its own row would push the
    conversation down when it came and up when the chat took over. */
 .mx-chat.is-starting { position: relative; }
-.mx-chat.is-starting .mx-chat-notices { position: absolute; top: 0; left: 0; right: 0; z-index: 2; margin-top: 10px; background: linear-gradient(rgba(var(--hl), calc(.04 * var(--hk))), rgba(var(--hl), calc(.04 * var(--hk)))), var(--main); }
+.mx-chat.is-starting .mx-chat-notices { position: absolute; top: 0; left: 0; right: 0; z-index: 2; margin-top: 10px; }
 .mx-chat-starting { font-weight: 600; color: var(--fg); }
-.mx-chat-tag { padding: 0 6px; border-radius: 4px; font-size: 11px; font-weight: 600; border: 1px solid var(--line2); }
-.mx-chat-tag.is-danger { color: var(--danger); border-color: var(--danger-line); }
+.mx-chat-tag { padding: 0 6px; font-family: var(--mono); font-size: 10.5px; font-weight: 600; box-shadow: inset 0 0 0 1px var(--line2); }
+.mx-chat-tag.is-danger { color: var(--err); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--err) 45%, transparent); }
 .mx-chat-empty { margin: 0; flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 24px; text-align: center; font-size: 13px; color: var(--dim); }
 
 /* The history scrolls under a fade at its top edge, so text never stops hard against the header. */
@@ -24,241 +25,215 @@
 .mx-chat-jump { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); }
 .mx-chat-scroller { -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 36px); mask-image: linear-gradient(180deg, transparent 0, #000 36px); padding: 36px 0 10px; }
 .mx-chat-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 36px 0 10px; display: flex; flex-direction: column-reverse; -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 36px); mask-image: linear-gradient(180deg, transparent 0, #000 36px); }
-.mx-chat-column { margin: 0 auto; width: 100%; max-width: var(--chat-width, 760px); padding: 0 20px; display: flex; flex-direction: column; gap: 14px; }
-.mx-chat-row { margin: 0 auto; width: 100%; max-width: var(--chat-width, 760px); padding: 7px 20px; }
+/* Rows are 16px apart: half of it above each row and half below. */
+.mx-chat-column { margin: 0 auto; width: 100%; max-width: var(--chat-width, 760px); padding: 0 20px; display: flex; flex-direction: column; gap: 16px; }
+.mx-chat-row { margin: 0 auto; width: 100%; max-width: var(--chat-width, 760px); padding: 8px 20px; }
 /* Inside the scroller the rows fill it: the scroller is already the column's width, and a width that is a share of
    the pane (`auto`) would be taken a second time, of the scroller, leaving the messages narrower than the box under them. */
 .mx-chat-scroller :is(.mx-chat-row, .mx-chat-column) { max-width: none; }
 /* The row Find stopped on. */
-.mx-chat-found { background: rgba(var(--hl), calc(.07 * var(--hk))); box-shadow: inset 3px 0 0 var(--accent); }
+.mx-chat-found { background: var(--m-sel); box-shadow: inset 2px 0 0 var(--focus); }
 
-.mx-msg-user { position: relative; display: flex; justify-content: flex-end; }
-/* When it was sent, under the bubble while the pointer is on it. It sits in the gap between rows, so showing it moves nothing. */
-.mx-msg-time { position: absolute; top: 100%; right: 2px; font-size: 11px; line-height: 14px; color: var(--dim); opacity: 0; transition: opacity .15s; pointer-events: none; }
-.mx-msg-user:hover .mx-msg-time { opacity: 1; }
-/* A sent message's actions: beside the bubble while the pointer is on it or the button has the keys, never moving the bubble. */
-.mx-msg-menu { align-self: center; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-right: 6px; border: 0; border-radius: 7px; background: none; color: var(--dim); opacity: 0; transition: opacity .15s; cursor: pointer; }
-.mx-msg-user:hover .mx-msg-menu, .mx-msg-menu:focus-visible, .mx-msg-menu[data-state="open"] { opacity: 1; }
-.mx-msg-menu:hover { background: rgba(var(--hl), calc(.08 * var(--hk))); color: var(--fg); }
+/* The person's message: attachments, the bubble, then its time and menu under it. */
+.mx-msg-user { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.mx-msg-user .mx-bubble { margin: 0; max-width: min(560px, 85%); padding: 9px 13px; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--bubble); font-size: 14px; line-height: 1.55; white-space: pre-wrap; text-wrap: pretty; overflow-wrap: anywhere; color: var(--fg); }
+.mx-msg-meta { display: flex; align-items: center; gap: 6px; min-height: 28px; font-size: 11.5px; color: var(--dim); }
+.mx-msg-user.is-echo .mx-bubble { opacity: .6; }
+.mx-msg-menu { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border: 0; background: none; color: var(--muted); cursor: pointer; outline: none; }
+.mx-msg-menu:hover, .mx-msg-menu[data-state="open"] { background: var(--m-hover); color: var(--fg); }
+.mx-msg-menu:focus-visible { box-shadow: 0 0 0 2px var(--focus); }
 .mx-msg-menu-why { margin: 2px 6px 4px; max-width: 240px; font-size: 11.5px; line-height: 1.4; color: var(--dim); white-space: normal; }
-.mx-msg-user > p, .mx-msg-user .mx-bubble { margin: 0; max-width: 82%; border-radius: 16px 16px 5px 16px; background: linear-gradient(180deg, rgba(var(--hl), calc(.1 * var(--hk))), rgba(var(--hl), calc(.06 * var(--hk)))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.1 * var(--hk))), inset 0 1px 0 rgba(var(--hl), calc(.08 * var(--hk) * var(--gk))); padding: 10px 14px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); }
-/* The echo of a message just sent looks exactly like the message the history then returns: a dimmer echo brightened when the swap happened, and that read as a blink. */
-.mx-msg-agent { display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
-.mx-msg-lead { margin: 0; font-size: 15px; line-height: 1.6; color: var(--fg); white-space: pre-wrap; }
+/* The agent's reply: its lead sentence in the text colour, the rest a step quieter, 10px between blocks. */
+.mx-msg-agent { display: flex; flex-direction: column; gap: 10px; font-size: 14.5px; line-height: 1.65; color: var(--fg2); overflow-wrap: anywhere; }
+.mx-msg-lead { margin: 0; font-weight: 600; color: var(--fg); white-space: pre-wrap; text-wrap: pretty; }
 .mx-msg-rest { color: var(--fg2); }
 .mx-msg-empty { margin: 0; font-size: 13px; font-style: italic; color: var(--dim); }
-.mx-working { display: flex; align-items: center; gap: 9px; padding: 2px 0; font-size: 13px; color: var(--muted); }
-.mx-working .mx-spin { color: var(--working); }
-/* The agent's tile with the spinner at its corner; the ring round the badge is the page behind it. */
-.mx-working-mark { --card-ring: var(--main); margin-right: 3px; }
-.mx-report { margin: 0; display: flex; align-items: baseline; gap: 7px; font-size: 12.5px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
+/* What the agent is doing now: the working spinner, the words, and the time in mono. */
+.mx-working { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13px; color: var(--muted); }
+.mx-working-mark { display: inline-flex; flex: none; width: 14px; height: 14px; align-items: center; justify-content: center; color: var(--working); }
+.mx-working-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-working-time { flex: none; font-family: var(--mono); font-size: 11.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+/* A helper's report: ↳, its summary cut short, and the time that never shrinks. */
+.mx-report { margin: 0; display: flex; min-width: 0; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.mx-report-arrow { flex: none; font-family: var(--mono); color: var(--dim); }
+.mx-report-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Rich text in a reply. */
-.mx-md-rule { margin: 0; border: 0; border-top: 1px solid rgba(var(--hl), calc(.09 * var(--hk))); }
+.mx-md-rule { margin: 6px 0; border: 0; border-top: 1px solid var(--line); }
 /* A table is a card like a code block: its Copy and Save sit in the head, never loose under it where they read as part of the next paragraph. */
 .mx-md-tablecard { min-width: 0; }
-.mx-md-tableacts { flex-wrap: wrap; gap: 2px; }
+.mx-md-tableacts { flex-wrap: wrap; }
+.mx-md-tabletitle { font-size: 12px; font-weight: 600; color: var(--fg2); }
+.mx-md-table table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; }
 /* The message breaks long words anywhere, which let a narrow column shrink to one letter a line. A cell keeps its words whole; a table too wide for the column scrolls in its own region. */
-.mx-md-table th, .mx-md-table td { overflow-wrap: normal; word-break: normal; }
-.mx-md-table th { white-space: nowrap; }
-.mx-md-table th { background: rgba(var(--hl), calc(.04 * var(--hk))); }
-.mx-md-table tbody tr { border-top: 1px solid rgba(var(--hl), calc(.07 * var(--hk))); }
-.mx-code-chip { padding: 1px 5px; border-radius: 5px; background: rgba(var(--hl), calc(.07 * var(--hk))); font-family: var(--mono); font-size: 12.5px; color: var(--fg); }
-.mx-code-lang { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
-.mx-code-body { margin: 0; padding: 9px 14px; overflow-x: auto; background: rgba(var(--sd), calc(.12 * var(--sk))); font-family: var(--mono); font-size: 12.5px; line-height: 1.65; white-space: pre; color: var(--fg); }
-.mx-chat .tok-keyword { color: var(--ansi-mag); }
-.mx-chat .tok-string { color: var(--ansi-green); }
-.mx-chat .tok-comment { color: var(--dim); font-style: italic; }
-.mx-chat .tok-number { color: var(--ansi-blue); font-weight: 400; }
-.mx-chat .tok-variable, .mx-chat .tok-flag { color: var(--ansi-blue); font-weight: 400; }
-
-/* A file's name as a badge, its type tag, and the small pills beside it. */
+.mx-md-table :is(th, td) { padding: 7px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; overflow-wrap: normal; word-break: normal; }
+.mx-md-table th { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.mx-md-table td { color: var(--fg2); }
+.mx-md-table tbody tr:last-child td { border-bottom: 0; }
+.mx-code-chip { padding: 1px 5px; background: var(--m-sel); font-family: var(--mono); font-size: .9em; color: var(--fg); }
+.mx-code-lang { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--muted); }
+.mx-code-body { margin: 0; padding: 8px 0; overflow-x: auto; overflow-y: hidden; background: var(--m-well); font-family: var(--mono); font-size: 12.5px; line-height: 1.65; white-space: pre; color: var(--fg2); }
+.mx-code-body .code-line { display: flex; min-width: max-content; }
+.mx-code-num { flex: none; width: 36px; padding-right: 10px; text-align: right; color: var(--dim); user-select: none; }
+.mx-code-text { padding-right: 12px; white-space: pre; }
+.mx-chat .tok-keyword { color: var(--code-kw); }
+.mx-chat .tok-string { color: var(--code-str); }
+.mx-chat .tok-comment { color: var(--code-com); font-style: italic; }
+.mx-chat .tok-number { color: var(--code-num); font-weight: 400; }
+.mx-chat .tok-variable, .mx-chat .tok-flag { color: var(--code-fn); font-weight: 400; }
 
 /* One step the agent took: a 30px row that opens to its detail. */
 .mx-step { display: flex; flex-direction: column; min-width: 0; }
-.mx-step-row { display: flex; width: 100%; min-width: 0; min-height: 30px; align-items: center; gap: 9px; padding: 0 8px; border-radius: 8px; text-align: left; font-size: 13px; color: var(--fg2); }
-button.mx-step-row:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); }
-/* Amber is the one colour that means "needs you", so only a step a request is waiting on wears it. */
-.mx-step-row.is-waiting, button.mx-step-row.is-waiting:hover { background: var(--warn-soft); box-shadow: inset 0 0 0 1px var(--warn-line); }
-.mx-step-glyph { flex: none; display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; }
+.mx-step-row { display: flex; width: 100%; min-width: 0; min-height: 30px; align-items: center; gap: 9px; padding: 0 4px; text-align: left; font-size: 13px; color: var(--fg2); outline: none; }
+button.mx-step-row:hover { background: var(--m-hover); }
+button.mx-step-row:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
+/* Amber is the one colour that means "needs you", so only a step a request is waiting on wears it: a tint and a left edge. */
+.mx-step-row.is-waiting, button.mx-step-row.is-waiting:hover { background: color-mix(in oklab, var(--needs) 9%, transparent); box-shadow: inset 2px 0 0 var(--needs); }
+.mx-step-glyph { flex: none; display: inline-flex; width: 14px; height: 14px; align-items: center; justify-content: center; }
 .mx-step-verb { flex: none; font-size: 13px; font-weight: 600; color: var(--fg); white-space: nowrap; }
-.mx-step-target { display: inline-flex; min-width: 0; align-items: center; gap: 7px; font-size: 12.5px; color: var(--fg2); white-space: nowrap; }
+.mx-step-target { display: inline-flex; min-width: 0; align-items: center; gap: 7px; font-family: var(--mono); font-size: 12.5px; color: var(--fg2); white-space: nowrap; }
 .mx-step-target > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.mx-step-target > [data-slot="tag"] { overflow: visible; }
+.mx-step-target > [data-slot="tag"] { flex: none; overflow: visible; }
 .mx-step-server { margin-right: 6px; font-weight: 500; color: var(--dim); }
 .mx-step-server::after { content: "·"; margin-left: 6px; }
 .mx-step-where { color: var(--dim); }
+.mx-step-plain, .mx-step-quoted { font-family: var(--ui); }
 .mx-step-mono { font-family: var(--mono); font-size: 12px; }
-.mx-step-meta { flex: none; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mx-step-meta { flex: none; font-family: var(--mono); font-size: 11.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .mx-step-meta.is-dim { color: var(--dim); }
-.mx-step-meta.is-danger { color: var(--danger); }
+.mx-step-meta.is-danger { color: var(--err); }
 .mx-step-meta.is-working { color: var(--working); }
-.mx-step-meta.is-warn { color: var(--warn); font-weight: 600; }
-.mx-step-add { font-family: var(--mono); font-size: 12px; color: var(--ok); }
-.mx-step-del { font-family: var(--mono); font-size: 12px; color: var(--danger); }
-.mx-step-body { display: flex; min-width: 0; flex-direction: column; gap: 6px; margin: 4px 0 6px 33px; }
-.mx-step-absent { margin: 0; font-size: 12.5px; font-style: italic; color: var(--dim); }
-.mx-step-secret { margin: 0; display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); }
-.mx-step-toolarge { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); }
-.mx-step-io { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; font-family: var(--mono); font-size: 12px; line-height: 1.6; }
+.mx-step-meta.is-warn { color: var(--needs); font-weight: 600; }
+.mx-step-add { font-family: var(--mono); font-weight: 500; color: var(--done); }
+.mx-step-del { font-family: var(--mono); font-weight: 500; color: var(--err); }
+.mx-step-body { display: flex; min-width: 0; flex-direction: column; gap: 6px; margin: 4px 0 6px 27px; }
+.mx-step-absent { margin: 0; padding: 0 12px; font-size: 12.5px; font-style: italic; color: var(--dim); }
+.mx-step-body > .mx-step-absent { padding: 0; }
+.mx-step-io { margin: 0; display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 6px 12px; padding: 10px 12px; background: var(--m-well); font-family: var(--mono); font-size: 12px; line-height: 1.6; }
 .mx-step-io dt { color: var(--dim); }
 .mx-step-io dd { margin: 0; max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg2); }
-.mx-step-io dd.is-absent { font-family: inherit; font-style: italic; color: var(--dim); }
-.mx-step-note { margin: 0; padding: 8px 14px; font-size: 12px; color: var(--dim); }
+.mx-step-io dd.is-absent { font-family: var(--ui); font-style: italic; color: var(--dim); }
+.mx-step-note { margin: 0; padding: 8px 12px; font-size: 12px; color: var(--dim); }
 .mx-step-body > .mx-step-note { padding: 0; }
+/* A well that says why there is no diff: a secret, too large, or still being written. */
+.mx-step-well { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: var(--m-well); font-size: 12.5px; color: var(--muted); }
+.mx-step-wellspin { display: inline-flex; width: 9px; height: 9px; align-items: center; justify-content: center; color: var(--working); }
 
-/* Cards: a command's output, a diff, a code block, a plan, helper agents. Each is a well sunk into the pane (darker
-   than the text around it), with a hairline, a light along its top edge and a soft shadow, so it reads as an object in
-   the conversation and not as more of the page. */
-.mx-step-card {
-  overflow: hidden; border-radius: 12px; border: 1px solid var(--chat-card-line);
-  background: var(--chat-card-sheen), var(--m-well);
-  box-shadow: var(--chat-card-edge);
-}
-:is(.mx-step-card, .mx-stack-card) { --chat-card-line: rgba(var(--hl), calc(.14 * var(--hk))); --chat-card-sheen: linear-gradient(180deg, rgba(var(--hl), calc(.05 * var(--hk) * var(--gk))), rgba(var(--hl), 0) 44px); --chat-card-edge: inset 0 1px 0 rgba(var(--hl), calc(.06 * var(--hk))), 0 10px 24px -14px rgba(var(--sd), calc(.6 * var(--sk))); }
-/* A card's header is a shade lighter than its body, over the line that parts them. */
-:is(.mx-step-head, .mx-plan-head, .mx-stack-head) { background: rgba(var(--hl), calc(.03 * var(--hk))); }
-.mx-step-head { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px 0 12px; border-bottom: 1px solid rgba(var(--hl), calc(.07 * var(--hk))); font-size: 12.5px; color: var(--fg2); }
+/* The detail under a step in a run: a card with a head and its well flush below. */
+.mx-step-card { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--card); }
+.mx-step-head { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--fg2); }
 .mx-step-head:last-child { border-bottom: 0; }
 .mx-step-head.is-command { align-items: flex-start; padding-right: 10px; }
-.mx-step-head.is-command > [data-slot="tag"] { margin-top: 6px; }
-.mx-step-prompt { flex: none; font-family: var(--mono); font-size: 12px; line-height: 18px; color: var(--dim); user-select: none; }
-.mx-step-head.is-command > .mx-step-prompt { padding: 7px 0; }
+.mx-step-head.is-command > [data-slot="tag"] { margin-top: 9px; }
+.mx-step-prompt { flex: none; font-family: var(--mono); font-size: 12.5px; line-height: 18px; color: var(--dim); user-select: none; }
+.mx-step-head.is-command > .mx-step-prompt { padding: 9px 0; }
 .mx-step-path { min-width: 0; flex: 1; font-family: var(--mono); font-size: 12px; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mx-step-command { display: block; flex: 1; min-width: 0; padding: 7px 0; font-family: var(--mono); font-size: 12px; line-height: 18px; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
-.mx-step-output { margin: 0; max-height: 320px; overflow: auto; padding: 9px 14px; background: rgba(var(--sd), calc(.12 * var(--sk))); font-family: var(--mono); font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg2); }
-.mx-step-more { display: block; width: 100%; height: 30px; border-top: 1px solid rgba(var(--hl), calc(.07 * var(--hk))); font-size: 12px; color: var(--muted); text-align: center; }
-.mx-step-more:hover { background: rgba(var(--hl), calc(.04 * var(--hk))); color: var(--fg); }
-.mx-diff { padding: 6px 0; overflow-x: auto; background: rgba(var(--sd), calc(.12 * var(--sk))); font-family: var(--mono); font-size: 12.5px; line-height: 1.75; }
-.mx-diff-hunk { padding: 0 14px 0 16px; color: var(--ansi-blue); white-space: pre; }
-.mx-diff-line { display: flex; white-space: pre; min-width: max-content; color: var(--fg); }
-.mx-diff-line.is-add { background: color-mix(in srgb, var(--ok) 13%, transparent); }
-.mx-diff-line.is-del { background: color-mix(in srgb, var(--danger) 12%, transparent); }
-.mx-diff-sign { width: 16px; flex: none; text-align: center; color: var(--dim); user-select: none; }
-.mx-diff-line.is-add .mx-diff-sign { color: var(--ok); }
-.mx-diff-line.is-del .mx-diff-sign { color: var(--danger); }
-.mx-diff-text { padding-right: 14px; }
-.mx-ghost-btn { flex: none; display: inline-flex; height: 24px; align-items: center; gap: 5px; padding: 0 8px; border-radius: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
-.mx-ghost-btn:hover { background: rgba(var(--hl), calc(.06 * var(--hk))); color: var(--fg); }
-.mx-soft-btn { display: inline-flex; height: 30px; align-items: center; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--fg); background: rgba(var(--hl), calc(.06 * var(--hk))); box-shadow: inset 0 0 0 1px rgba(var(--hl), calc(.1 * var(--hk))); }
-.mx-soft-btn:hover { background: rgba(var(--hl), calc(.1 * var(--hk))); }
-.mx-quiet-btn { display: inline-flex; height: 30px; align-items: center; padding: 0 10px; border-radius: 8px; font-size: 13px; color: var(--muted); }
-.mx-quiet-btn:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); color: var(--fg); }
+.mx-step-command { display: block; flex: 1; min-width: 0; padding: 9px 0; font-family: var(--mono); font-size: 12.5px; font-weight: 500; line-height: 18px; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.mx-step-command.is-short { padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-step-output { margin: 0; max-height: 320px; overflow: auto; padding: 8px 12px; background: var(--m-well); font-family: var(--mono); font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--fg2); }
+
+/* A command or an edit on its own in the chat: a card with the step's facts in its head. */
+.mx-step-alone.is-waiting { border-color: var(--needs); }
+.mx-step-cardhead { gap: 8px; }
+.mx-step-cardtoggle { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; align-self: stretch; text-align: left; outline: none; }
+.mx-step-cardtoggle:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
+.mx-step-cardtoggle > [data-slot="tag"] { flex: none; }
+.mx-step-cardhead > [data-slot="tag"] { flex: none; }
+.mx-step-cardbody { display: flex; min-width: 0; flex-direction: column; }
+.mx-step-cardbody > .mx-step-absent { padding: 10px 12px; }
+
+.mx-diff { padding: 6px 0; overflow-x: auto; background: var(--m-well); font-family: var(--mono); font-size: 12px; line-height: 1.65; }
+.mx-diff-hunk { padding: 0 12px 0 58px; color: var(--link); white-space: pre; }
+.mx-diff-line { display: flex; white-space: pre; min-width: max-content; color: var(--fg2); }
+.mx-diff-line.is-add { background: color-mix(in oklab, var(--done) 13%, transparent); }
+.mx-diff-line.is-del { background: color-mix(in oklab, var(--err) 13%, transparent); }
+.mx-diff-num { flex: none; width: 36px; padding-right: 8px; text-align: right; color: var(--dim); user-select: none; }
+.mx-diff-sign { width: 14px; flex: none; text-align: center; color: var(--dim); user-select: none; }
+.mx-diff-line.is-add .mx-diff-sign { color: var(--done); }
+.mx-diff-line.is-del .mx-diff-sign { color: var(--err); }
+.mx-diff-text { padding-right: 12px; }
+.mx-ghost-btn { flex: none; display: inline-flex; height: 24px; align-items: center; gap: 5px; padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--fg2); white-space: nowrap; }
+.mx-ghost-btn:hover { background: var(--m-hover); color: var(--fg); }
 
 /* A Markdown document the agent wrote, as a card to read. */
-.mx-doc { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; transition: border-color .15s; }
-.mx-doc:hover { border-color: var(--accent-line); }
-.mx-doc-file { display: flex; min-width: 0; align-items: center; gap: 8px; }
-.mx-doc-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
-.mx-doc-text { display: flex; flex-direction: column; gap: 4px; }
-.mx-doc-title { font-size: 16px; font-weight: 600; line-height: 1.35; color: var(--fg); }
-/* The excerpt is the document's opening, formatted; a fade, not a line clamp, cuts it, since it can hold a list. The fade
-   sits at the cut, not at the bottom, so a short excerpt ends above it and the overflow hides it. */
-.mx-doc-excerpt { position: relative; max-height: 5.4em; overflow: hidden; gap: 4px; font-size: 13px; line-height: 1.55; color: var(--fg2); }
-.mx-doc-excerpt::after { content: ""; position: absolute; top: 3.8em; right: 0; left: 0; height: 1.6em; background: linear-gradient(transparent, var(--m-well)); }
-.mx-doc-body { max-height: 360px; overflow: auto; padding: 10px 12px; border-radius: 8px; background: var(--m-well); font-size: 13px; line-height: 1.55; color: var(--fg2); overflow-wrap: anywhere; }
-.mx-doc-actions { display: flex; align-items: center; gap: 6px; }
+.mx-doc-lines { flex: none; font-size: 12px; font-weight: 400; color: var(--muted); white-space: nowrap; }
+.mx-doc [data-slot="card-body"] { display: flex; flex-direction: column; gap: 6px; }
+.mx-doc-title { font-size: 14.5px; font-weight: 650; line-height: 1.35; color: var(--fg); }
+/* The excerpt is the document's opening, formatted; a fade, not a line clamp, cuts it, since it can hold a list. */
+.mx-doc-excerpt { max-height: 150px; overflow: hidden; gap: 6px; font-size: 13.5px; line-height: 1.6; color: var(--fg2); -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+.mx-doc-body { max-height: 360px; overflow: auto; font-size: 13.5px; line-height: 1.6; color: var(--fg2); overflow-wrap: anywhere; }
 
 /* The agent's plan. */
-.mx-plan-head { display: flex; min-height: 36px; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid rgba(var(--hl), calc(.07 * var(--hk))); }
-.mx-plan-title { font-size: 13px; font-weight: 600; color: var(--fg); }
-.mx-plan-count { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
-.mx-plan-bar { flex: none; width: 72px; height: 4px; overflow: hidden; border-radius: 999px; background: rgba(var(--hl), calc(.1 * var(--hk))); }
-.mx-plan-bar > span { display: block; height: 100%; background: var(--accent); transform-origin: left center; transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
-.mx-plan-items { list-style: none; margin: 0; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; }
-.mx-plan-item { display: flex; min-height: 28px; align-items: flex-start; gap: 9px; padding: 5px 6px; border-radius: 7px; font-size: 13px; line-height: 18px; color: var(--fg2); overflow-wrap: anywhere; }
-.mx-plan-item.is-done { color: var(--dim); text-decoration: line-through; }
-.mx-plan-item.is-current { background: var(--accent-soft); font-weight: 600; color: var(--fg); }
-.mx-plan-mark { flex: none; display: inline-flex; width: 16px; height: 18px; align-items: center; justify-content: center; color: var(--ok); }
-.mx-plan-ring { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--dim); }
-.mx-plan-ring.is-current { border-color: var(--accent-text); }
+.mx-plan-bar { flex: none; width: 120px; }
+.mx-plan-items { list-style: none; margin: 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.mx-plan-item { display: flex; min-height: 26px; align-items: center; gap: 9px; font-size: 13px; line-height: 18px; color: var(--fg); overflow-wrap: anywhere; }
+.mx-plan-item.is-done .mx-plan-text { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--dim); }
+.mx-plan-item.is-current .mx-plan-text { font-weight: 600; }
+.mx-plan-now { flex: none; font-size: 12px; color: var(--muted); }
+.mx-plan-mark { flex: none; display: inline-flex; width: 14px; height: 14px; align-items: center; justify-content: center; box-shadow: inset 0 0 0 1px var(--line2); }
+.mx-plan-mark.is-done { color: var(--done); box-shadow: inset 0 0 0 1px var(--done); }
+.mx-plan-mark.is-current { box-shadow: inset 0 0 0 1px var(--working); }
+.mx-plan-ring { width: 6px; height: 6px; background: var(--working); }
 
-/* Helper agents: a row each, several in one card. */
-.mx-agents { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.mx-agents.is-carded { padding: 4px; }
-.mx-agents-head { display: flex; min-height: 36px; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid rgba(var(--hl), calc(.07 * var(--hk))); font-size: 12px; color: var(--dim); }
-.mx-agents-head strong { font-size: 13px; font-weight: 600; color: var(--fg); }
-.mx-agents-head .is-working { color: var(--working); }
-.mx-agent-row { display: flex; width: 100%; min-height: 44px; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 9px; text-align: left; }
-.mx-agent-row:not(:disabled):hover { background: rgba(var(--hl), calc(.05 * var(--hk))); }
+/* Helper agents: a 40px row each, several in one card with a hairline between them. */
+.mx-agents { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.mx-agents.is-carded > li + li { border-top: 1px solid var(--line); }
+.mx-agents-counts { font-size: 12px; font-weight: 400; color: var(--muted); }
+.mx-agent-row { display: flex; width: 100%; min-height: 40px; align-items: center; gap: 9px; padding: 4px 12px; text-align: left; outline: none; }
+.mx-agents:not(.is-carded) .mx-agent-row { padding: 4px; }
+.mx-agent-row:not(:disabled):hover { background: var(--m-hover); }
+.mx-agent-row:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
 .mx-agent-tile { position: relative; flex: none; display: flex; }
-.mx-agent-badge { position: absolute; right: -5px; bottom: -5px; display: flex; width: 15px; height: 15px; align-items: center; justify-content: center; border-radius: 50%; background: var(--main); }
+.mx-agent-badge { position: absolute; right: -5px; bottom: -5px; display: flex; width: 15px; height: 15px; align-items: center; justify-content: center; background: var(--card); }
 .mx-agent-badge > .mx-step-glyph { transform: scale(.8); }
 .mx-agent-text { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 1px; }
 .mx-agent-name { display: flex; min-width: 0; align-items: baseline; gap: 7px; white-space: nowrap; }
 .mx-agent-name strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 600; color: var(--fg); }
 .mx-agent-name span { flex: none; font-size: 11.5px; color: var(--dim); }
 .mx-agent-asked { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
-.mx-agent-detail { display: flex; flex-direction: column; gap: 6px; margin: 2px 10px 8px 42px; font-size: 13px; line-height: 1.55; }
-.mx-agent-prompt { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--dim); }
+.mx-agent-detail { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px 43px; font-size: 13px; line-height: 1.5; }
+.mx-agent-prompt { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
 .mx-agent-report { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg2); }
 
 /* A request that was answered, folded into one line. */
-.mx-answered { display: flex; min-width: 0; min-height: 30px; align-items: center; gap: 9px; padding: 0 8px; font-size: 12.5px; color: var(--muted); }
+.mx-answered { display: flex; min-width: 0; min-height: 30px; align-items: center; gap: 9px; padding: 0 4px; font-size: 12.5px; color: var(--muted); }
 .mx-answered strong { flex: none; font-weight: 600; color: var(--fg2); }
 .mx-answered-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; }
 .mx-answered-step { flex: none; font-size: 12px; color: var(--muted); }
 .mx-answered-step:hover { color: var(--fg); text-decoration: underline; }
 
-/* The end of a turn: how it ended, and the files it changed. */
-.mx-divider { display: flex; align-items: center; gap: 12px; }
-.mx-divider-line { flex: 1; height: 1px; background: rgba(var(--hl), calc(.09 * var(--hk))); }
-.mx-divider-text { font-size: 12px; color: var(--dim); }
-.mx-divider.is-failed .mx-divider-text { color: var(--danger); }
-.mx-changed {
-  display: flex; width: 100%; height: 44px; align-items: center; gap: 10px; margin: 0; padding: 0 12px; border-radius: 12px; text-align: left;
-  border: 1px solid rgba(var(--hl), calc(.09 * var(--hk)));
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.045 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.015 * var(--hk) * var(--gk))));
-  transition: border-color .15s;
-}
-button.mx-changed:hover { border-color: var(--accent-line); }
+/* The end of a turn: centred words between hairlines, and the files it changed. */
+.mx-divider { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--dim); }
+.mx-divider-line { flex: 1; height: 1px; background: var(--line); }
+.mx-divider.is-failed { color: var(--err); }
+.mx-changed [data-slot="card-head"] { gap: 8px; font-weight: 400; }
 .mx-changed-said { font-size: 13px; font-weight: 600; color: var(--fg); white-space: nowrap; }
-.mx-changed-counts { display: flex; gap: 6px; font-family: var(--mono); font-size: 12px; }
-.mx-changed-counts .is-add { color: var(--ok); }
-.mx-changed-counts .is-remove { color: var(--danger); }
-.mx-changed-review { font-size: 12px; color: var(--muted); }
+.mx-changed-counts { display: flex; gap: 6px; font-family: var(--mono); font-size: 12px; font-weight: 500; }
+.mx-changed-counts .is-add { color: var(--done); }
+.mx-changed-counts .is-remove { color: var(--err); }
 
-/* A run of steps as one line (`WorkCard`) over a stack of its latest commands and edits. */
-.mx-work { display: flex; min-width: 0; flex-direction: column; }
-.mx-work-head { display: flex; width: 100%; min-width: 0; min-height: 32px; align-items: center; gap: 9px; padding: 0 8px; border-radius: 8px; text-align: left; font-size: 13px; color: var(--fg2); }
-.mx-work-head:hover { background: rgba(var(--hl), calc(.05 * var(--hk))); }
+/* A run of steps (`WorkCard`): a card whose head says what it did, over its latest steps. */
+.mx-work-cardhead { padding: 0; }
+.mx-work-head { display: flex; flex: 1; min-width: 0; min-height: 36px; align-items: center; gap: 8px; padding: 0 10px 0 12px; text-align: left; font-size: 13px; outline: none; }
+.mx-work-head:hover { background: var(--m-hover); }
+.mx-work-head:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
 /* Wraps instead of cutting off: the end of the line is where "a step failed" is said. */
-.mx-work-text { min-width: 0; overflow-wrap: anywhere; font-weight: 500; color: var(--fg); }
-.mx-work-more { flex: none; display: inline-flex; height: 18px; align-items: center; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--muted); background: rgba(var(--hl), calc(.07 * var(--hk))); }
-.mx-work-steps { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 0 15px; padding-left: 10px; border-left: 1px solid rgba(var(--hl), calc(.1 * var(--hk))); animation: v7fade .2s ease-out; }
-.mx-thought-text { gap: 8px; padding-top: 4px; padding-bottom: 4px; font-size: 13px; line-height: 1.5; color: var(--fg2); }
+.mx-work-text { min-width: 0; overflow-wrap: anywhere; font-weight: 600; color: var(--fg); }
+.mx-work-steps { display: flex; flex-direction: column; padding: 2px 0; }
+.mx-work-steps .mx-step-row { padding: 0 12px; }
+.mx-work-steps .mx-step-body { margin: 4px 12px 8px 35px; }
+.mx-work-more { display: block; width: 100%; padding: 6px 12px; border-top: 1px solid var(--line); text-align: left; font-size: 12px; color: var(--muted); outline: none; }
+.mx-work-more:hover { background: var(--m-hover); color: var(--fg); }
+.mx-work-more:focus-visible { box-shadow: inset 0 0 0 2px var(--focus); }
+.mx-work-failed { background: color-mix(in oklab, var(--err) 7%, transparent); }
+
+/* The agent's reasoning: one quiet italic line that opens to the text, ruled on its left. */
+.mx-thought { display: flex; flex-direction: column; gap: 6px; }
+.mx-thought-toggle { align-self: flex-start; display: inline-flex; height: 26px; align-items: center; gap: 7px; padding: 0 4px; font-size: 13px; font-style: italic; color: var(--dim); outline: none; }
+.mx-thought-toggle:hover { color: var(--fg2); }
+.mx-thought-toggle:focus-visible { box-shadow: 0 0 0 2px var(--focus); }
+.mx-thought-text { display: flex; flex-direction: column; gap: 8px; margin-left: 9px; padding: 2px 0 2px 12px; border-left: 1px solid var(--line2); font-size: 13.5px; font-style: italic; line-height: 1.6; color: var(--muted); }
 .mx-thought-text p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.mx-work-failed { padding: 4px 0; border-radius: 10px; background: var(--danger-soft); box-shadow: inset 0 0 0 1px var(--danger-line); }
-/* The stack is as tall as its front card plus 9px for each card showing behind it. */
-.mx-stack { position: relative; display: block; width: calc(100% - 33px); height: 80px; margin: 6px 0 0 33px; text-align: left; }
-.mx-stack.has-2 { height: 89px; }
-.mx-stack.has-3 { height: 98px; }
-.mx-stack-card {
-  position: absolute; top: 0; right: 0; left: 0; z-index: 3; display: flex; height: 80px; flex-direction: column; overflow: hidden; border-radius: 12px;
-  border: 1px solid var(--chat-card-line);
-  /* Opaque under the glass, so the cards behind show only as edges below this one. */
-  background: var(--chat-card-sheen), linear-gradient(var(--m-well), var(--m-well)), var(--main);
-  box-shadow: var(--chat-card-edge);
-  transform-origin: bottom center; transition: transform .3s cubic-bezier(.2, .8, .2, 1), opacity .3s cubic-bezier(.2, .8, .2, 1);
-}
-.mx-stack-card.is-depth-1 { z-index: 2; opacity: .7; transform: translateY(9px) scale(.95); }
-.mx-stack-card.is-depth-2 { z-index: 1; opacity: .45; transform: translateY(18px) scale(.9); }
-.mx-stack-card:not(.is-depth-0) { border-color: rgba(var(--hl), calc(.18 * var(--hk))); }
-.mx-stack-card:not(.is-depth-0) > * { visibility: hidden; }
-.mx-stack-card.is-depth-0.is-running { border-color: color-mix(in srgb, var(--working) 45%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--working) 14%, transparent); }
-.mx-stack-card.is-depth-0.is-failed { border-color: var(--danger-line); }
-.mx-stack-head { flex: none; display: flex; min-width: 0; height: 32px; align-items: center; gap: 8px; padding: 0 10px 0 12px; border-bottom: 1px solid rgba(var(--hl), calc(.07 * var(--hk))); }
-.mx-stack-command { display: flex; min-width: 0; gap: 7px; font-family: var(--mono); font-size: 12px; color: var(--fg); white-space: nowrap; }
-.mx-stack-command > :last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.mx-stack-file { display: flex; min-width: 0; align-items: center; gap: 7px; font-size: 12.5px; color: var(--fg2); }
-.mx-stack-body { display: flex; flex: 1; min-height: 0; flex-direction: column; justify-content: center; padding: 0 12px; overflow: hidden; background: rgba(var(--sd), calc(.1 * var(--sk))); font-family: var(--mono); font-size: 11.5px; line-height: 1.55; }
-.mx-stack-line { display: flex; min-width: 0; gap: 6px; white-space: pre; color: var(--fg2); }
-.mx-stack-line > :last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.mx-stack-line.is-add { color: var(--ok); }
-.mx-stack-line.is-remove { color: var(--danger); }
-.mx-stack-line.is-note { color: var(--dim); font-style: italic; }
-.mx-stack-mark { flex: none; width: 8px; }
-.mx-stack-line.is-plain > .mx-stack-mark:empty, .mx-stack-line.is-note > .mx-stack-mark:empty { display: none; }
 
 /* The bar over text selected in the chat: Copy and Quote, just above where the mouse let go. */
 .mx-select-bar { position: absolute; z-index: 4; display: flex; gap: 2px; padding: 3px; border-radius: 9px; border: 1px solid var(--line2); background: var(--main); box-shadow: 0 10px 28px rgba(0, 0, 0, .4); transform: translate(-50%, calc(-100% - 10px)); animation: v7fade .12s var(--ease-out); }

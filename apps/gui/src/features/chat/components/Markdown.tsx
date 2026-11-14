@@ -1,5 +1,11 @@
 import { memo, useContext, useState, type ReactNode } from 'react'
-import { Copy, Download } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardHead } from '@/components/ui/card'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Fold } from '@/components/ui/fold'
+import { Counter } from '@/components/ui/progress'
+import { CodeChip } from '@/components/ui/tag'
 import { HighlightedLine } from '@/components/HighlightedLine'
 import { fileTag } from '@/features/inspect/fileTag'
 import { extensionForLanguage } from '@/lib/highlight'
@@ -46,7 +52,7 @@ function InlineCode({ text }: { text: string }) {
   const open = useContext(OpenFileContext)
   const named = FILE_NAME.exec(text)
   const path = named?.[1]
-  if (path === undefined || fileTag(path) === null) return <code className="mx-code-chip">{text}</code>
+  if (path === undefined || fileTag(path) === null) return <CodeChip>{text}</CodeChip>
   const line = named?.[2] === undefined ? null : Number(named[2])
   return <FileBadge path={path} line={line} onOpen={open === null ? undefined : () => { open(path, line) }} />
 }
@@ -64,7 +70,7 @@ function Inlines({ nodes }: { nodes: readonly Inline[] }): ReactNode {
         return <em key={index}><Inlines nodes={node.children} /></em>
       case 'link':
         return (
-          <button key={index} type="button" title={`${node.href} (click to open in your browser)`} className="cursor-pointer border-0 bg-transparent p-0 text-left text-[var(--accent-text)] underline underline-offset-2 hover:opacity-80" onClick={() => { followLink(node.href) }}>
+          <button key={index} type="button" title={`${node.href} (click to open in your browser)`} className="cursor-pointer border-0 bg-transparent p-0 text-left text-(--link) underline decoration-[color-mix(in_oklab,var(--link)_45%,transparent)] underline-offset-2 hover:decoration-(--link)" onClick={() => { followLink(node.href) }}>
             <Inlines nodes={node.children} />
           </button>
         )
@@ -75,15 +81,23 @@ function Inlines({ nodes }: { nodes: readonly Inline[] }): ReactNode {
 const ALIGN: Record<'left' | 'center' | 'right', string> = { left: 'text-left', center: 'text-center', right: 'text-right whitespace-nowrap' }
 const alignClass = (align: TableAlign | undefined) => ALIGN[align ?? 'left']
 
-const HEADING_SIZE = ['mt-1.5 text-[20px] tracking-[-.015em]', 'text-[16.5px]', 'text-[14px]', 'text-[14px]', 'text-[14px]', 'text-[14px]'] as const
+/** Headings 1 to 6 as the design sizes them: 22, 18, 16, 14.5, 13 and 12 (the last in capitals, muted). */
+const HEADING_SIZE = [
+  'mt-2 text-[22px] leading-[1.3] font-[650] tracking-[-.01em] text-fg',
+  'mt-2 text-[18px] leading-[1.3] font-[650] tracking-[-.01em] text-fg',
+  'mt-1 text-[16px] leading-[1.3] font-[650] text-fg',
+  'mt-1 text-[14.5px] leading-[1.3] font-[650] text-fg',
+  'mt-1 text-[13px] leading-[1.3] font-semibold text-fg',
+  'mt-1 text-[12px] leading-[1.3] font-semibold uppercase tracking-[.04em] text-(--muted)',
+] as const
 
 const CODE_FOLD_LINES = 24
 /** A block only a few lines past the fold is shown whole: a button that reveals three lines is noise. */
 const CODE_FOLD_SLACK = 6
 
-/** One line of a code block. A reply being typed changes only its last line, so the lines above are not coloured again. */
-const CodeLine = memo(function CodeLine({ line, hint }: { line: string; hint: string }) {
-  return <span className="code-line"><HighlightedLine line={line} path={hint} />{'\n'}</span>
+/** One line of a code block with its number. A reply being typed changes only its last line, so the lines above are not coloured again. */
+const CodeLine = memo(function CodeLine({ line, number, hint }: { line: string; number: number; hint: string }) {
+  return <span className="code-line"><span className="mx-code-num" aria-hidden="true">{number}</span><span className="mx-code-text"><HighlightedLine line={line} path={hint} /></span>{'\n'}</span>
 })
 
 /** A fenced code block: its language, Copy and Save over the code, folded past its first lines when it is long. */
@@ -94,22 +108,68 @@ function CodeBlock({ language, text }: { language: string; text: string }) {
   const shown = folds && !all ? lines.slice(0, CODE_FOLD_LINES) : lines
   const hint = `code.${extensionForLanguage(language)}`
   return (
-    <div className="mx-step-card">
-      <div className="mx-step-head">
+    <Card className="mx-step-card">
+      <CardHead>
         <span className="mx-code-lang">{language === '' ? 'code' : language}</span>
         <span className="mx-spacer" />
-        <button type="button" className="mx-ghost-btn" onClick={() => { copyBlock(text, 'Could not copy the code') }}><Copy className="size-3" aria-hidden="true" />Copy</button>
-        <button type="button" className="mx-ghost-btn" title="Save as a file in your export folder" onClick={() => { saveBlock(language === '' ? 'code' : language, codeExtension(language), text) }}><Download className="size-3" aria-hidden="true" />Save</button>
-      </div>
+        <Button variant="ghost" size="sm" onClick={() => { copyBlock(text, 'Could not copy the code') }}>Copy</Button>
+        <Button variant="ghost" size="sm" title="Save as a file in your export folder" onClick={() => { saveBlock(language === '' ? 'code' : language, codeExtension(language), text) }}>Save</Button>
+      </CardHead>
       <pre className="mx-code-body" aria-label={language === '' ? 'Code' : `Code, ${language}`}>
-        <code>{shown.map((line, index) => <CodeLine key={index} line={line} hint={hint} />)}</code>
+        <code>{shown.map((line, index) => <CodeLine key={index} line={line} number={index + 1} hint={hint} />)}</code>
       </pre>
-      {folds && (
-        <button type="button" aria-expanded={all} className="mx-step-more" onClick={() => { setAll((current) => !current) }}>
-          {all ? 'Show less' : `Show ${String(lines.length - CODE_FOLD_LINES)} more lines`}
-        </button>
-      )}
-    </div>
+      {folds && <Fold open={all} onToggle={() => { setAll((current) => !current) }} more={`Show ${String(lines.length - CODE_FOLD_LINES)} more lines`} less="Show less" />}
+    </Card>
+  )
+}
+
+type TableBlock = Extract<Block, { kind: 'table' }>
+
+/**
+ * A table (`TableCard`): its head says how many rows it has, with Copy and Save as (Markdown, CSV, HTML). Cells never
+ * wrap; a table wider than the card scrolls sideways inside its own region, which the keyboard can reach.
+ */
+function TableCard({ block }: { block: TableBlock }) {
+  const rows = block.rows.length
+  return (
+    <Card className="mx-step-card mx-md-tablecard">
+      <CardHead className="mx-md-tableacts" role="group" aria-label="Copy or save this table">
+        <span className="mx-md-tabletitle">Table</span>
+        <Counter>{rows} {rows === 1 ? 'row' : 'rows'}</Counter>
+        <span className="mx-spacer" />
+        <Button variant="ghost" size="sm" onClick={() => { copyBlock(tableMarkdown(block), 'Could not copy the table') }}>Copy</Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm">Save as<ChevronDown aria-hidden="true" /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" container={document.querySelector<HTMLElement>('.mx-app')} className="text-fg">
+            <DropdownMenuItem title="Save as a Markdown file in your export folder" onSelect={() => { saveBlock('table', 'md', tableMarkdown(block)) }}>Markdown</DropdownMenuItem>
+            <DropdownMenuItem title="Save as a CSV file in your export folder" onSelect={() => { saveBlock('table', 'csv', tableCsv(block)) }}>CSV</DropdownMenuItem>
+            <DropdownMenuItem title="Save as an HTML page in your export folder" onSelect={() => { saveBlock('table', 'html', tableHtml(block)) }}>HTML</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </CardHead>
+      <div role="region" aria-label="Table" tabIndex={0} className="mx-md-table max-w-full overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr>
+              {block.header.map((cell, column) => (
+                <th key={column} scope="col" className={alignClass(block.align[column])}><Inlines nodes={cell} /></th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {block.rows.map((row, at) => (
+              <tr key={at}>
+                {row.map((cell, column) => (
+                  <td key={column} className={alignClass(block.align[column])}><Inlines nodes={cell} /></td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   )
 }
 
@@ -133,62 +193,30 @@ const BlockView = memo(function BlockView({ block }: { block: Block }) {
     case 'paragraph':
       return <p className="m-0 whitespace-pre-wrap"><Inlines nodes={block.inlines} /></p>
     case 'heading':
-      return <p role="heading" aria-level={block.level} className={`m-0 font-semibold text-fg ${HEADING_SIZE[block.level - 1] ?? 'text-[14px]'}`}><Inlines nodes={block.inlines} /></p>
+      return <p role="heading" aria-level={block.level} className={`mb-0 ${HEADING_SIZE[block.level - 1] ?? HEADING_SIZE[3]}`}><Inlines nodes={block.inlines} /></p>
     case 'code':
       return <CodeBlock language={block.language} text={block.text} />
     case 'list': {
       const Tag = block.ordered ? 'ol' : 'ul'
       return (
-        <Tag className={`m-0 flex flex-col gap-1 pl-[22px] ${block.ordered ? 'list-decimal' : 'list-disc'}`}>
+        <Tag className={`m-0 flex flex-col gap-1 ${block.ordered ? 'list-decimal pl-[22px]' : 'list-disc pl-5'}`}>
           {block.items.map((item, index) => <li key={index} className="whitespace-pre-wrap"><Inlines nodes={item} /></li>)}
         </Tag>
       )
     }
     case 'quote':
-      return <blockquote className="m-0 border-l-[3px] border-line2 py-0.5 pl-3.5 whitespace-pre-wrap text-muted"><Inlines nodes={block.inlines} /></blockquote>
+      return <blockquote className="m-0 border-l-2 border-line2 py-0.5 pl-3.5 whitespace-pre-wrap text-muted"><Inlines nodes={block.inlines} /></blockquote>
     case 'rule':
       return <hr className="mx-md-rule" />
     case 'table':
-      // A table wider than the message scrolls inside its own region, which the keyboard can reach; the message never scrolls sideways.
-      return (
-        <div className="mx-step-card mx-md-tablecard">
-        <div className="mx-step-head mx-md-tableacts" role="group" aria-label="Copy or save this table">
-          <span className="mx-code-lang">table</span>
-          <span className="mx-spacer" />
-          <button type="button" className="mx-ghost-btn" onClick={() => { copyBlock(tableMarkdown(block), 'Could not copy the table') }}><Copy className="size-3" aria-hidden="true" />Copy</button>
-          <button type="button" className="mx-ghost-btn" title="Save as a Markdown file in your export folder" onClick={() => { saveBlock('table', 'md', tableMarkdown(block)) }}><Download className="size-3" aria-hidden="true" />Markdown</button>
-          <button type="button" className="mx-ghost-btn" title="Save as a CSV file in your export folder" onClick={() => { saveBlock('table', 'csv', tableCsv(block)) }}><Download className="size-3" aria-hidden="true" />CSV</button>
-          <button type="button" className="mx-ghost-btn" title="Save as an HTML page in your export folder" onClick={() => { saveBlock('table', 'html', tableHtml(block)) }}><Download className="size-3" aria-hidden="true" />HTML</button>
-        </div>
-        <div role="region" aria-label="Table" tabIndex={0} className="mx-md-table max-w-full overflow-x-auto">
-          <table className="w-full border-collapse text-[13px] leading-[1.5]">
-            <thead>
-              <tr>
-                {block.header.map((cell, column) => (
-                  <th key={column} scope="col" className={`px-3 py-2 align-top font-semibold text-fg ${alignClass(block.align[column])}`}><Inlines nodes={cell} /></th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {block.rows.map((row, at) => (
-                <tr key={at}>
-                  {row.map((cell, column) => (
-                    <td key={column} className={`px-3 py-2 align-top text-fg2 ${alignClass(block.align[column])}`}><Inlines nodes={cell} /></td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        </div>
-      )
+      return <TableCard block={block} />
   }
 }, (before, after) => sameParsed(before.block, after.block))
 
 /** A message's text as markdown blocks, spaced like paragraphs. */
 export const Markdown = memo(function Markdown({ text, className = '' }: { text: string; className?: string }) {
   return (
-    <div className={`flex flex-col gap-3 ${className}`}>
+    <div className={`flex flex-col gap-2.5 ${className}`}>
       {parseMarkdown(text).map((block, index) => <BlockView key={index} block={block} />)}
     </div>
   )

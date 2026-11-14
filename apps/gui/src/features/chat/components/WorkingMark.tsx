@@ -1,14 +1,9 @@
-import { AppIcon, StatusBadge } from '@/features/workspace/components/glyphs'
+import { Spinner } from '@/features/workspace/components/glyphs'
 
 /**
- * The mark before "is thinking" in a chat: the agent's own tile with the working spinner at its bottom right corner,
- * the way a session's row marks a working agent, so the line says who is at work and not only that something is.
+ * The mark before "Claude is reading…" in a chat (`WorkingLine`): the working spinner the person picked in Settings, in
+ * the working colour. The line names the agent, so the mark needs no tile.
  */
 export function WorkingMark({ agent }: { agent: string }) {
-  return (
-    <span className="mx-row-icon mx-working-mark" aria-hidden="true">
-      <AppIcon process={agent} size={18} />
-      <StatusBadge status="working" />
-    </span>
-  )
+  return <span className="mx-working-mark" aria-hidden="true" data-agent={agent}><Spinner /></span>
 }

@@ -247,7 +247,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   it in its colour), **Fold** (a 30px row: "Show 12 more lines" or "Hide"), **Progress** (a 4px bar on `--sel`),
   **Counter**, **Divider** and **ToastCard** (`toast-card.tsx`: one line on the card with the pop shadow). The
   chat's step marks, file badges and change tags (`cardParts.tsx`) and the workspace toast are built from them. The
-  gallery shows every primitive in every state on any theme and either corners: open the app or the browser preview
+  gallery shows every primitive in every state, and the chat's cards at 760 and 360px, on any theme and either corners: open the app or the browser preview
   with `#gallery` (`#gallery?theme=Paper&corners=rounded`; `features/gallery/`).
 - **Corners: Square or Rounded, any theme** (Settings › Appearance › Corners, `corners`; the root carries
   `data-corners`, and `data-finish` is always `flat`). Square is the default. Corners are shape only, never colour or
@@ -567,29 +567,35 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Chat session ([ADR 0003](adr/0003-status-and-conversation-trust.md)).** A row and pane like any session, with the
   agent's mark and its branch line. Its pane has no terminal | chat switch; the pane is the chat. The approvals
   (y / a / n), user-input form, Stop and the daemon's queue are the chat's own.
-- **Chat body** (`features/chat/chat.css`). A 760px centred column, 20px in, rows 14px apart, under a 56px fade at its
-  top. The scroller is as wide as the column, so its scrollbar sits at the column's edge and not the pane's, and the jump-to-latest button is centred over the column; the wheel still scrolls the chat from the empty room beside it. A table's cells break between words, never inside one, and its headings stay on one line (a wide table scrolls sideways). Your messages are right-aligned glass bubbles (a `rgba(--hl,.1)` to `.06` gradient, a `rgba(--hl,.1)` ring,
-  radius 16/16/5/16, 14px, 82% wide at most). An agent's reply has no avatar: its first sentence in `--fg` at 15px, the
-  rest in `--fg2` at 14/1.65 as rich text (headings 20 / 16.5 / 14, tables in a rounded scroller, inline code as a chip,
-  a file's name as a **file badge**, a code block as a card with its language, **Copy** and "Show N more lines").
-  **A step** is a 30px row: a 16px mark (the spinner in `--working` while it runs, a green check, a red × tile, a grey
-  square when stopped), a verb at 13/600, what it acted on, and how it ended at the right in 12px; it opens to its
-  detail, indented 33px. A file is a badge (type tag, folder in `--dim`, name in `--fg`, `:line` in the accent). A
-  command opens to a glass card (radius 12) with the command, the last 3 lines of output on a darker well and "Show
-  all N lines"; an edit opens to its diff with the hunk header in `--ansi-blue`, added lines tinted with `--ok` at 13%
-  and removed with `--danger` at 12%, syntax colours (keywords `--ansi-mag`, strings `--ansi-green`, comments
-  `--dim`, numbers `--ansi-blue`), folded past 12 lines. A Markdown file the agent wrote is a **document card** (title,
-  its first lines formatted as Markdown and faded at the cut, **Read** to show the whole document formatted, **Copy**),
-  not a diff. **A run of steps** is one summary row over a **stack** of its latest
-  commands and edits: up to 3 cards 80px tall, each one behind 9px lower, 5% smaller and fainter, showing only its
-  edge; the front card has a `--working` glow while it runs and a `--danger` edge when it failed. A click opens every
-  step on a left rail (0.3s `cubic-bezier(.2,.8,.2,1)`); a failed step sits on a `--danger-soft` ground. **The plan**
-  is a card: "2 of 5 done", a 72px bar, done items struck through, the current one on `--accent-soft`. **Helper
-  agents** are rows (the agent's tile with a status badge, name, type, what it was asked); several share a card, "3
-  agents · 1 working · 2 done". A request answered earlier folds into one line, "Allowed", "Allowed for this session"
-  or "Denied", and the step a pending request is about is the only step in amber, "waiting for you ↓". A turn ends
-  with a divider ("Finished in 3m 40s · 10:46", red when it failed) and, when it edited files, the changed-files
-  card. The working line is the spinner and "claude is working · m:ss". Problems with the history (offline, incomplete, a provider error) and Full access show in one
+- **Chat body** (`features/chat/chat.css`). A 760px centred column, 20px in, rows 16px apart, under a 36px fade at its
+  top. The scroller is as wide as the column, so its scrollbar sits at the column's edge and not the pane's, and the jump-to-latest button is centred over the column; the wheel still scrolls the chat from the empty room beside it. Every card in the feed is the shared **Card** (a hairline, `--card`, no shadow; head 36px, body 10/12, foot 40px), every colour a token. Your messages are right-aligned bubbles (`--bubble`, a `--line` hairline, padding 9/13, 14/1.55, at most `min(560px, 85%)`), attachments above and a meta line under it (the time and the ⋯ menu); one still sending is at 60% with "Sending…".
+  An agent's reply has no avatar: its lead sentence at 600 in `--fg`, the rest in `--fg2` at 14.5/1.65, 10px between
+  blocks, as rich text (headings 22 / 18 / 16 / 14.5 / 13 / 12, lists indented 20 and 22 with 4px between items, a quote
+  with a 2px `--line2` rule, inline code as a **CodeChip**, a link in `--link`, a file's name as a **file badge**). A code
+  block is a card (language, **Copy**, **Save**; numbered lines in a 36px gutter on `--well`, folded past 24 lines). A
+  table is a card (**Table**, "N rows", **Copy**, **Save as** Markdown / CSV / HTML; cells never wrap, numbers right-aligned, a wide table scrolls sideways).
+  **A step** is a 30px row, gap 9: its **StatusMark** (14px), a verb at 13/600, what it acted on in mono 12.5 (cut at
+  the end), how it ended in mono 11.5 `--dim` at the right, and a caret; it opens to its detail. The step a pending
+  request is about is the only one in amber: a 9% `--needs` tint, a 2px left edge and "waiting for you ↓". A file is a
+  badge (type tag, folder in `--dim`, name in `--fg`, cut from the front so the name stays). A **command on its own**
+  is a card: its mark, `$` and the command, an exit tag ("exit 0" in `--done`, "exit 1" in `--err`), the time and
+  **Copy command** in the head, and the last 6 lines of output on `--well` with "Show all N lines"; a failed one has the
+  `--err` edge and starts open. An **edit on its own** is a card: its mark, the file badge, the change tag, +A −R and
+  **Open in side panel** in the head, and the diff below (line numbers in a 36px gutter, a sign column, added lines
+  tinted `--done` at 13%, removed `--err` at 13%, syntax colours from `--code-*`, folded past 12 lines); a secret file,
+  a diff too large to show and a file still being written each say so in the well instead. A Markdown file the agent
+  wrote is a **document card** (a file badge and "wrote N lines", **Read** and **Copy** in the head, its title and first
+  lines formatted, at most 150px with a fade), not a diff. **A run of steps** is a card whose head says what it did
+  ("Read 2 files, edited 3, ran 1 command", 13/600) with its time and a caret, over its latest 3 steps as rows and a
+  "+N more" line; the head opens every step. A failed step sits on a 7% `--err` ground. **The plan** is a card: "Plan",
+  "2 of 5 done", a 120px **Progress** bar, and 26px rows (done struck through in `--muted`, the current one bold with
+  "in progress", each with a 14px box). **Helper agents** are 40px rows (the agent's tile with a status badge, name,
+  type, what it was asked, the time); several share a card, "3 agents · 1 working · 2 done", with hairlines between
+  rows. **Thought** is one quiet italic 26px line in `--dim` that opens to the reasoning, ruled on its left in
+  `--line2`. A helper's report is one line, "↳ summary · time", the summary cut short. A request answered earlier
+  folds into one line, "Allowed", "Allowed for this session" or "Denied". A turn ends with a divider (centred words
+  between hairlines, "Finished in 3m 40s · 10:46"; failed in `--err` and stopped in `--dim`, each with its mark) and,
+  when it edited files, the changed-files card (a head-only card: icon, "N changed files", +A −R, **Review**). card. The working line is the spinner and "claude is working · m:ss". Problems with the history (offline, incomplete, a provider error) and Full access show in one
   slim strip above the list. **A subagent's chat** replaces the list with a bar ("Subagent · name · time", **Back to
   main session**), then what it was asked, what it is doing while it works and its report once done.
 - **Message box** (`features/chat/components/Composer.tsx`), in three layers. **1. The question tray**, only while the
@@ -741,10 +747,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   between them, since each terminal holds a GPU context): the same box, not painted, `inert` and hidden from
   screen readers, their terminals paused and their chats unmounted, so going back builds no terminal and a
   hidden chat reads nothing and answers no key. A paused terminal catches up from the kept screen when shown.
-- **Cards in the chat** (a command and its output, a diff, a code block, the plan, helpers; `.mx-step-card`,
-  `.mx-stack-card`). Each is a well sunk into the pane (`--m-well`, darker than the page), with a hairline at 14% of
-  the theme's light, a faint light along its top edge and a soft drop shadow, and its header is a shade lighter than
-  its body. The point is that a card reads as an object in the conversation, not as more of the page.
+- **Cards in the chat** (a command and its output, a diff, a code block, a table, the plan, helpers). Each is the
+  shared Card: solid `--card`, a 1px `--line` hairline, no shadow, wells (output, diffs, code) on `--well` flush
+  inside it. The point is that a card reads as an object in the conversation, and the feed stays quiet: colour is for
+  state, and amber only for what needs you.
 - **Jump to the latest message.** The round arrow over the chat glides to the newest row instead of cutting to it
   (0.18 to 0.42s by distance, easing in; `glidePlan`). From far up it starts two screens above the bottom, so a long
   chat is not drawn on the way. The reader's own wheel, key or touch ends the glide where it is, and with motion

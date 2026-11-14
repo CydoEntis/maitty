@@ -1,6 +1,8 @@
 import { memo, useContext, useEffect, type ReactNode } from 'react'
 import { FileText } from 'lucide-react'
-import { Icon } from '@/features/workspace/components/glyphs'
+import { Button } from '@/components/ui/button'
+import { Card, CardHead } from '@/components/ui/card'
+import { StatusMark } from '@/components/ui/status-mark'
 import { ElapsedSince } from '@/features/workspace/components/times'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
 import type { TurnSpan } from '@/features/inspect/turnRange'
@@ -127,12 +129,13 @@ function SaidText({ text: sent }: { text: string }) {
   // The note a restore put in front is for the agent; the person sees what they wrote.
   const text = stripRestoreNote(sent)
   const attached = parseAttachmentMessage(text)
-  if (attached === null) return <p>{text}</p>
+  if (attached === null) return <p className="mx-bubble">{text}</p>
+  // Attachments sit above the bubble, as they were added before the text was sent.
   return (
-    <div className="flex max-w-[85%] flex-col items-end">
-      {attached.text !== '' && <p className="mx-bubble">{attached.text}</p>}
+    <>
       <SentAttachments files={attached.files} />
-    </div>
+      {attached.text !== '' && <p className="mx-bubble">{attached.text}</p>}
+    </>
   )
 }
 
@@ -145,19 +148,26 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
       return (
         <Frame>
           <div className="mx-msg-user">
-            {editFromHere !== null && <MessageMenu message={row.event} editFromHere={editFromHere} />}
             <SaidText text={row.event.text} />
-            {sentAt !== null && <time className="mx-msg-time" dateTime={new Date(sentAt).toISOString()}>{clock(sentAt)}</time>}
+            {(sentAt !== null || editFromHere !== null) && (
+              <div className="mx-msg-meta">
+                {sentAt !== null && <time className="mx-msg-time" dateTime={new Date(sentAt).toISOString()}>{clock(sentAt)}</time>}
+                {editFromHere !== null && <MessageMenu message={row.event} editFromHere={editFromHere} />}
+              </div>
+            )}
           </div>
         </Frame>
       )
     }
     case 'report':
-      return <Frame><p className="mx-report"><span aria-hidden="true">↳</span>{row.text}</p></Frame>
+      return <Frame><p className="mx-report" title={row.text}><span className="mx-report-arrow" aria-hidden="true">↳</span><span className="mx-report-text">{row.text}</span></p></Frame>
     case 'echo':
       return (
         <Frame>
-          <div className="mx-msg-user is-echo" aria-label="Sending"><SaidText text={row.text} /></div>
+          <div className="mx-msg-user is-echo" aria-label="Sending">
+            <SaidText text={row.text} />
+            <div className="mx-msg-meta"><WorkingMark agent={agent} />Sending…</div>
+          </div>
         </Frame>
       )
     case 'agent':
@@ -176,24 +186,25 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
       return (
         <div className={`mx-chat-row mx-divider${row.event.outcome === 'failed' ? ' is-failed' : ''}`} role="separator" aria-label={dividerText(row.event, clock)}>
           <span className="mx-divider-line" />
+          {row.event.outcome !== 'completed' && <span aria-hidden="true"><StatusMark state={row.event.outcome === 'failed' ? 'failed' : 'stopped'} /></span>}
           <span className="mx-divider-text">{dividerText(row.event, clock)}</span>
           <span className="mx-divider-line" />
         </div>
       )
     case 'changes': {
       const first = row.files[0]
-      const body = (
-        <>
-          <FileText className="size-[15px] shrink-0 text-muted" aria-hidden="true" />
-          <span className="mx-changed-said">{row.files.length} changed {row.files.length === 1 ? 'file' : 'files'}</span>
-          {row.lines !== null && <span className="mx-changed-counts"><span className="is-add">+{row.lines.added}</span><span className="is-remove">−{row.lines.removed}</span></span>}
-        </>
-      )
+      // A head-only card (`ChangedFilesBar`): Review opens the side panel on what this turn changed.
       return (
         <Frame>
-          {openDiff !== null && first !== undefined
-            ? <button type="button" className="mx-changed" title="Show what this turn changed" onClick={() => { openDiff(first, row.turn) }}>{body}<span className="mx-spacer" /><span className="mx-changed-review">Review</span><span className="mx-caret-wrap"><Icon name="caret" /></span></button>
-            : <p className="mx-changed is-still">{body}</p>}
+          <Card className="mx-changed">
+            <CardHead>
+              <FileText className="size-[13px] shrink-0 text-(--muted)" aria-hidden="true" />
+              <span className="mx-changed-said">{row.files.length} changed {row.files.length === 1 ? 'file' : 'files'}</span>
+              {row.lines !== null && <span className="mx-changed-counts"><span className="is-add">+{row.lines.added}</span><span className="is-remove">−{row.lines.removed}</span></span>}
+              <span className="mx-spacer" />
+              {openDiff !== null && first !== undefined && <Button variant="soft" size="sm" title="Show what this turn changed" onClick={() => { openDiff(first, row.turn) }}>Review</Button>}
+            </CardHead>
+          </Card>
         </Frame>
       )
     }
@@ -203,7 +214,8 @@ export const ChatItem = memo(function ChatItem({ row, agent, workingSince, appro
         <Frame>
           <div className="mx-working">
             <WorkingMark agent={agent} />
-            <span>{agent} is {row.phrase}{workingSince !== null && <> · <ElapsedSince since={workingSince} /></>}</span>
+            <span className="mx-working-text">{agent} is {row.phrase}</span>
+            {workingSince !== null && <span className="mx-working-time"><ElapsedSince since={workingSince} /></span>}
           </div>
         </Frame>
       )

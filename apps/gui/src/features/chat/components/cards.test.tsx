@@ -67,17 +67,28 @@ describe('command step', () => {
     vi.useRealTimers()
   })
 
-  it('shows the last 3 lines and all of them on request', async () => {
-    render(<CommandStep event={finished({ exitCode: 0 })} />)
+  it('shows the last 6 lines and all of them on request', async () => {
+    render(<CommandStep event={finished({ exitCode: 0, output: ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'].join('\n') })} />)
 
     const group = screen.getByRole('group', { name: 'Command pnpm test' })
     await userEvent.click(screen.getByRole('button', { expanded: false }))
-    expect(group).toHaveTextContent('three four five')
+    expect(group).toHaveTextContent('three four five six seven eight')
     expect(within(group).queryByText(/^one/)).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: 'Show all 5 lines' }))
-    expect(group).toHaveTextContent('one two three four five')
+    await userEvent.click(screen.getByRole('button', { name: 'Show all 8 lines' }))
+    expect(group).toHaveTextContent('one two three')
     await userEvent.click(screen.getByRole('button', { name: 'Show less' }))
     expect(within(group).queryByText(/^one/)).toBeNull()
+  })
+
+  it('on its own is a card with the command, how it ended and a copy button in its head', async () => {
+    render(<CommandStep event={finished({ exitCode: 2, status: 'failed' })} alone />)
+
+    const group = screen.getByRole('group', { name: 'Command pnpm test' })
+    expect(within(group).getByText('exit 2')).toBeInTheDocument()
+    expect(within(group).getByRole('button', { name: 'Copy command' })).toBeInTheDocument()
+    expect(group).toHaveTextContent('three four five')
+    await userEvent.click(within(group).getByRole('button', { expanded: true }))
+    expect(group).not.toHaveTextContent('five')
   })
 
   it('has no toggle for output that fits', async () => {
@@ -158,6 +169,25 @@ describe('edit step', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Open in side panel' }))
     expect(onOpen).toHaveBeenCalledWith('/repo/src/a.ts')
+  })
+})
+
+describe('edit step on its own', () => {
+  it('is a card with the file in its head, its diff with line numbers, and the side panel a button', async () => {
+    const onOpen = vi.fn()
+    render(<EditStep event={editEvent('e', { file: '/repo/src/a.ts' })} root="/repo" onOpen={onOpen} alone />)
+
+    const group = screen.getByRole('group', { name: 'Edit src/a.ts' })
+    expect(group.querySelectorAll('.mx-diff-num')[1]?.textContent).toBe('1')
+    expect(within(group).getByText('new')).toBeInTheDocument()
+    await userEvent.click(within(group).getByRole('button', { name: 'Open in side panel' }))
+    expect(onOpen).toHaveBeenCalledWith('/repo/src/a.ts')
+  })
+
+  it('says it is still writing instead of showing a diff while it runs', () => {
+    render(<EditStep event={editEvent('e', { status: 'running' })} root={null} onOpen={null} alone />)
+
+    expect(screen.getByText('Still writing…')).toBeInTheDocument()
   })
 })
 
@@ -345,12 +375,15 @@ describe('markdown view of untrusted agent text', () => {
 })
 
 describe('saving a block of a reply', () => {
-  it('offers Copy and Save on a code block, and Copy and three file types on a table', () => {
+  it('offers Copy and Save on a code block, and Copy and Save as three file types on a table', async () => {
     render(<Markdown text={'```md\n# Plan\n```\n\n| A | B |\n| --- | --- |\n| 1 | 2 |'} />)
 
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
     const table = screen.getByRole('group', { name: 'Copy or save this table' })
-    expect(within(table).getAllByRole('button').map((button) => button.textContent)).toEqual(['Copy', 'Markdown', 'CSV', 'HTML'])
+    expect(table).toHaveTextContent('1 row')
+    expect(within(table).getAllByRole('button').map((button) => button.textContent)).toEqual(['Copy', 'Save as'])
+    await userEvent.click(within(table).getByRole('button', { name: 'Save as' }))
+    expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual(['Markdown', 'CSV', 'HTML'])
   })
 
   it('copies a table as the Markdown it came from', async () => {
