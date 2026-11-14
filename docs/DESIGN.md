@@ -694,7 +694,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   worktrees, and a **New worktree…** row. The dialog also lists the project's other worktrees with where each stands
   ("merged, nothing uncommitted", "3 uncommitted changes", "not merged anywhere"), each with **Merge** (its committed
   work into the main checkout's branch, no fast-forward; refused while either side has uncommitted changes, and a
-  conflict leaves the main checkout as it was) and **Remove** (the daemon closes what runs in it and removes the folder;
+  conflict leaves the main checkout as it was) and **Remove** (removes the folder, but not one something still runs in, so close its sessions first;
   it asks again first when that would lose changes or unmerged commits). This computer's worktrees only
   (`WorktreeManager.tsx`, `src-tauri/src/worktrees.rs`). Worktrees group under their parent repo. A folder's row shows
   only its name: a branch belongs to a session, and a worktree's branch is not the folder's.

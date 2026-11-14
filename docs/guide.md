@@ -912,25 +912,30 @@ Sessions › Keep each pane's recent output) stops saving it and deletes what wa
 
 ## The desktop chat
 
-In the desktop app an agent has a chat view as well as its terminal. It is the same session: the
-Terminal and Chat switch never restarts the agent. This part is about working in the chat and
+In the desktop app an agent has a chat view as well as its terminal. For an agent that runs in a
+terminal it is the same session: the Terminal and Chat switch never restarts the agent. (A chat that
+Maitty's background service runs, see [Worktrees](#worktrees), has no terminal.) This part is about working in the chat and
 checking what the agent did. What the status marks mean is in [What a session's status
 means](#what-a-sessions-status-means).
 
 ### Starting a chat
 
-**New chat** (the top of the sidebar, or **New agent chat** in the command palette) opens a page that asks "What
+**New chat** (the top of the sidebar, or **New agent chat…** in the command palette, Ctrl+Shift+T, ⌘T
+on a Mac) opens a page that asks "What
 should we work on?". Pick a project (or paste a path, or **Browse…**), write the first message and
-press Enter. The agent starts in its own terminal and the chat opens.
+press Enter. The page opens on your most recent project, and shows the project list only when you
+have none. The agent starts in its own terminal and the chat opens. (**New agent chat** without the
+dots, Ctrl+Shift+A, skips the page: it starts a chat at once with the default agent in the start
+folder.)
 
-Under the project there are a few more choices:
+Under the project there are a few more choices. **Branch**, **Own copy** and **Also start with**
+are left out when the folder is not a git repository, and for a session on another machine.
 
-- **Branch.** Pick a branch, or type a new name to create one. It is left out when the folder is not
-  a git repository.
+- **Branch.** Pick a branch, or type a new name to create one.
 - **Own copy** is on by default. The agent works in a worktree of its own, on a new branch named
   from your message, so your checkout stays as it is. A line under it says what it starts from, and
   how far behind its upstream it is. Turn it off and the agent edits the checkout. Then, if the
-  checkout is behind, a **Pull** button runs `git pull --ff-only`. It is refused while you have
+  checkout is behind, a **↓ Pull** button runs `git pull --ff-only`. It is refused while you have
   uncommitted changes.
 - **Model, effort and permission mode** sit on the buttons under the message box. The agent is on
   the model button too. If an agent is not installed, the page says so and offers **set it up**.
@@ -941,10 +946,11 @@ Under the project there are a few more choices:
 **Several agents at once.** Under the message box, **Also start with** lists the other agents
 installed on this computer. Tick one or more and the same message goes to each, every one in its own
 worktree and on its own new branch (`fix-login`, `fix-login-2`, …). That needs Own copy. With it off
-the boxes cannot be ticked, and the page says "Each agent needs a copy of its own." The chat you
+the boxes cannot be ticked, and the page says "Each agent needs a copy of its own. Turn on Own copy
+to start several." The chat you
 see open is the agent on the model button. The others start on their own default model, effort and
 permission mode, and they are listed in the sidebar. They start only when you start a new chat, not
-when you resume a saved one, and the row is not offered for another machine.
+when you resume a saved one,.
 
 **Keep drafting.** Press Ctrl+Enter (⌘Enter on a Mac) instead of Enter. The chat starts and is listed
 in the sidebar, but it is not opened. The page stays, the message box and its files are emptied, and
@@ -961,10 +967,10 @@ message box. The message box is off, and says why, until you have answered.
 - **Wants to run a command** (or "Wants to use <tool>"). For Claude the card has **Yes, once** and
   **No**, and the keys `y` and `n` do the same from anywhere in the chat except a text field. They
   type Claude's own answer into its terminal.
-- **A question Claude asks.** Each choice is a button. A prompt with several questions shows each one
-  with its choices and one **Send answers** button, which stays off until every question has an
-  answer. Nothing is typed to the agent before then, so you can still change an answer. A question
-  that takes several answers, or "Type something", is answered in the terminal.
+- **A question Claude asks.** Each choice is a button. A prompt with several questions (up to 4, each
+  with 2 to 4 choices) shows each one with its choices and one **Send answers** button, which stays
+  off until every question has an answer. Nothing is typed to the agent before then, so you can still
+  change an answer. A question beyond those limits, or "Type something", is answered in the terminal.
 - **Codex, and any menu the chat has no buttons for.** Maitty does not press a button for these,
   because it has not checked that those keys are right. The card shows the question as the terminal
   draws it, with a row of **↑ ↓ ← → Enter Esc** buttons. They press those keys in the agent's terminal,
@@ -996,7 +1002,8 @@ off while Maitty waits for the answer.
 
 ### Naming a file with @
 
-Type `@` at the start of the message, or after a space, then a few letters of a name. A list of the
+Type `@` at the start of the message, or after a space, then a few letters of a name at the end of
+what you have written. A list of the
 session's files that match opens over the box. The arrow keys move, Enter or Tab inserts, Esc closes,
 and a click picks one. The path goes in relative to the session's folder, followed by a space. A path
 with a space in it is put in quotes. At most 50 are listed, so keep typing to narrow them. An `@`
@@ -1009,8 +1016,9 @@ and the side panel opens on **Changes** with only what that turn changed, headed
 changes". **All changes** goes back to the whole working tree.
 
 This works from the snapshots Maitty keeps of the checkout. If none from before the turn (or from
-after it) is kept, or the turn has no times, the panel shows the whole working tree instead, and says
-why: "Whole working tree · no snapshot from before this turn is kept". The turn's diff covers the
+after it) is kept, or the turn has no times, or the snapshots cannot be read, the panel shows the whole working tree
+instead, and says why: "Whole working tree · no snapshot from before this turn is kept" (or "this
+turn has no times to find its snapshots by", or "couldn't read the snapshots"). The turn's diff covers the
 checkout, not the agent, so a file you or another agent in the same checkout edited meanwhile is in
 it. This is for sessions on this computer.
 
@@ -1026,8 +1034,9 @@ The agent's own conversation is not rewound. The next message you send starts wi
 it the files were restored, and a line under the box lets you drop it (**Leave it out**).
 
 It is greyed out, with the reason in the menu, while the agent works, while the service is offline,
-for a session on another machine, and when another open session on this computer works in the same
-checkout, because a restore would undo that session's files too. If no snapshot from before the message
+for a session on another machine, and, with the reason "Another session is using this folder", when
+another open session on this computer, other than a plain shell, is in the same checkout, even if it
+is idle. A restore would undo that session's files too. If no snapshot from before the message
 is kept, a notice says so and nothing is restored.
 
 ### The worktree manager
@@ -1039,9 +1048,11 @@ uncommitted changes", and has:
 
 - **Merge**, which merges its branch into the main checkout's branch (never a fast-forward). It is off,
   with the reason, when the worktree has uncommitted changes, has no branch, or its work is already on
-  another branch.
-- **Remove**, which closes what runs in the worktree and removes its folder. The branch stays unless it
-  is merged. When that would lose uncommitted changes, or commits that are on no other branch, the
+  another branch. After you click, it can still be refused because the main checkout has uncommitted
+  changes, or because of a conflict; a conflict aborts the merge and leaves the main checkout as it
+  was. Merge leaves the worktree and its sessions in place (the terminal app's `m` removes them).
+- **Remove**, which removes the worktree's folder. It does not remove one something still runs in, so
+  close its sessions first. The branch stays unless it is merged. When that would lose uncommitted changes, or commits that are on no other branch, the
   button first becomes "Lose … ? Remove" and you press it again.
 - **Recreate**, for a worktree whose folder is gone, which makes it again from its branch.
 

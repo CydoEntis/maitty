@@ -59,7 +59,7 @@ function WorktreeRow({ entry, main, machine, onChanged }: RowProps) {
         <button type="button" className="mx-text-button" disabled={busy || blocked !== null} title={blocked ?? `Merge ${entry.branch} into the main checkout's branch (no fast-forward)`} onClick={() => { run(() => mergeWorktree(entry.path, machine)) }}>Merge</button>
         {sure
           ? <button type="button" className="mx-text-button is-danger" disabled={busy} onClick={remove}>{`Lose ${loss ?? 'nothing'}? Remove`}</button>
-          : <button type="button" className="mx-text-button" disabled={busy} title="Closes what runs in it and removes the folder; the branch stays unless it is merged" onClick={() => { if (loss === null) remove(); else setSure(true) }}>Remove</button>}
+          : <button type="button" className="mx-text-button" disabled={busy} title="Removes the folder; the branch stays unless it is merged. Close what runs in it first" onClick={() => { if (loss === null) remove(); else setSure(true) }}>Remove</button>}
       </span>
       {note !== null && <small role="status">{note}</small>}
     </li>
