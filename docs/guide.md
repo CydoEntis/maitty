@@ -239,6 +239,60 @@ Maitty no longer stops idle agents automatically; they keep running until you cl
 their own agent process exits. Sessions saved while sleeping by an older version recover when you open them. Maitty does not
 show a separate sleep screen or wake animation.
 
+## What a session's status means
+
+Every agent session has one status. Maitty works it out from the agent's own reports, its screen and its process, in that
+order of trust; how to connect an agent so it reports for itself is in [agent-status](agent-status.md).
+
+| Status | What it means | Desktop app | Terminal app |
+| --- | --- | --- | --- |
+| Working | The agent is busy on a turn. | Spinner; listed under **Working**. | Spinner in the accent colour. |
+| Needs you | It asks a question, wants permission, asks for a secret or wants to start helpers. | Amber mark; under **Needs you**. | Amber `●`, and it is in the Inbox. |
+| Done | A turn finished and you have not looked yet. | Green check; under **Finished**. | Green mark. |
+| Idle | Nothing to do: you looked at a finished turn, or the agent has not been given work. | Under **Idle**. | A muted `●` (`○` with Unicode status glyphs on). |
+| Limited | It hit its plan limit and is waiting for it to reset (see below). | Under **Needs you**. | Amber `limited 16:30`. |
+| Failed | The last command in the session failed (in the terminal app, a failed check too). | A shell reads `exited`, an agent `stopped`; listed under **Needs you**. | Red mark. |
+
+A finished turn stays **done** until you look at it: open the session in the desktop app, or focus its pane in the
+terminal app. Then it becomes **idle**. In the desktop app a finished session's menu also has **Mark as done**, which files it
+under Idle without opening it. A session you cannot reach (its machine is down) is shown as not known, with its last status,
+until the machine is back.
+
+### Why a session has its status
+
+Every status change records a short reason, in the daemon's own words. Typical ones:
+
+- `hook: Stop`: the agent reported the event itself (here, the end of a turn).
+- `screen: matched …` or `screen: it's printing`: Maitty read it off the agent's terminal.
+- `process: an agent started`: Maitty saw an agent start in the pane.
+- `you looked at it`: you opened a finished session, so it went from done to idle.
+- `you answered it`: you answered a question the agent asked through Maitty.
+
+**In the desktop app**, rest the pointer on a session's row for about half a second. A card opens beside it with the
+agent, its changes and, under **Set by**, the reason and how long ago it happened (`hook: Stop, 3 s ago`). The line is left
+out where it would be about some other status: when the status is not known, for a stopped or a limited session, and
+for one waiting for you to allow helpers.
+
+**In the terminal app** there is no such card. The reason goes to `daemon.log` in the data folder, one line per change
+(`pane 4 (claude): Working -> Done: hook: Stop`), and `maitty ls --json` carries it as `status_why`.
+
+### Limited
+
+When an agent stops at a plan limit (the screen says things like "usage limit reached", "you've hit your weekly limit" or
+"out of extra usage"), Maitty works out when it can go on. That time is the reset of a limit its usage tracking shows as
+95% used or more; with none, it tries again in half an hour. Exactly one minute after that time Maitty types `continue`
+into the agent and says so in a notice. This needs auto-continue, which is on by default; with it off, nothing is typed
+and the session is not marked limited.
+
+Until then the session is **limited**: its row says when, in your computer's time (`limited until 14:05` in the desktop app,
+`limited 16:30` in the terminal app; with the weekday when that is not today). It goes back to its normal status when the
+time comes. If you continue the agent yourself, the limit is forgotten.
+
+Only a session that was done or idle becomes limited; one that is working, asking or failed keeps that status. In the
+desktop app a limited session is listed under **Needs you**, but it waits on the limit and not on you, so it is left out of
+the count of sessions elsewhere that need you, the jump to the next session that needs you, the tray and the notices. (A
+failed session is counted in the jump and the tray.) A limited session cannot be put away; you can [snooze](#snooze) it.
+
 ## Session visibility
 
 Sessions stay visible in the sidebar until you close them. By default, idle, completed, and merged-worktree sessions are
@@ -257,6 +311,30 @@ The TUI does the same from a session's row menu (`.` or right-click): **Put away
 then Ctrl+Z). The row leaves the sidebar while the session keeps running. The sidebar's **Menu** chip → **Put away…** (or
 **Sessions put away** in Search commands) lists them; pick one to bring it back. Putting away in either app puts the
 session away in both.
+
+A session that needs you is not hidden. In the terminal app it stays in the sidebar while it needs you, and in the desktop
+app it moves to **Needs you**; either way it keeps its put-away mark and goes back out of the way once it no longer needs you.
+A session whose last command failed, or a limited one, cannot be put away; an agent that fails or becomes limited after being put away is listed again until that passes.
+
+### Snooze
+
+Snooze puts a session away until a time, then brings it back by itself. It is in the desktop app only; the terminal app
+has no snooze. Right-click a done, idle or limited session (an agent in a terminal, or a shell; not a chat) and choose one of:
+
+- **Snooze 1 hour**;
+- **Snooze until tomorrow 9:00**, by your computer's clock;
+- **Snooze until the limit resets**, offered only for a limited session whose reset is less than a week away.
+
+A toast offers **Undo** for 6 seconds. A snoozed session waits in the **Put away** section with `until 14:05` (`until Thu 09:00`
+on another day) beside it, and **Unsnooze** on hover and in its menu. **Bring back** ends the snooze too. A snooze ends by
+itself when its time comes, and at once when the session needs you: you cannot snooze one that needs you now. A snooze
+lasts at most a week and is kept by the daemon, so every window sees it.
+
+### Undo close
+
+A closed session is not gone at once. It leaves the list but keeps running for 6 seconds, and **Undo** brings it back. In the desktop app, click **Undo** in the toast, or press
+`Cmd+Z` on macOS and `Ctrl+Shift+Z` elsewhere. In the terminal app, press the leader (`Ctrl+Space`), then `Ctrl+Z`, while the banner
+shows. After 6 seconds the process ends. Putting away has the same 6-second Undo; it ends nothing, so Undo only lists it again.
 
 ## Follow-ups and snapshots
 
@@ -951,5 +1029,4 @@ Hook authority ends when a recognized agent's process exits. Maitty recognizes
 Herdr's 24 agent identities plus its five additional existing agents.
 See [status setup and its limits](agent-status.md).
 Terminal bells do not replace the status icon or add musical-note history entries.
-Click a status icon/tag (or `<leader> y`) for a plain-language explanation and the ages of
-hook, screen and process evidence; a status without confirmation is shown as uncertain.
+The reason for each status is described under *What a session's status means* above.
