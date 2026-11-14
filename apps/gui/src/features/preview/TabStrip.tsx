@@ -1,5 +1,5 @@
-import type { KeyboardEvent } from 'react'
-import { Plus, X } from 'lucide-react'
+import { useState, type KeyboardEvent } from 'react'
+import { Pencil, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusMark } from '@/components/StatusMark'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
@@ -7,6 +7,8 @@ import { DiffStat } from '@/components/DiffStat'
 import { useReviewStat } from '@/features/review/useReviewStat'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { Conversation } from '@/data/preview'
+import { InlineName } from '@/features/workspace/components/InlineName'
+import { MAX_SESSION_NAME_LENGTH } from '@/features/workspace/model/session'
 import { type PanelTab, statusText } from './shared'
 
 export function ConversationTabStrip({
@@ -14,6 +16,7 @@ export function ConversationTabStrip({
   selectedId,
   onSelect,
   onClose,
+  onRename,
   onNewTab,
   conversation,
   panel,
@@ -29,6 +32,7 @@ export function ConversationTabStrip({
   selectedId: string
   onSelect: (id: string) => void
   onClose: (id: string) => void
+  onRename: (id: string, title: string) => void
   onNewTab: () => void
   conversation: Conversation
   panel: PanelTab | null
@@ -41,6 +45,7 @@ export function ConversationTabStrip({
   attentionCount: number
 }) {
   const reviewStat = useReviewStat(conversation)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
 
   function handleTabKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
@@ -93,6 +98,25 @@ export function ConversationTabStrip({
                   if (event.button === 1 && tabs.length > 1) onClose(tab.id)
                 }}
               >
+                {renamingId === tab.id ? (
+                  <div className="conversation-tab-rename">
+                    <StatusMark status={tab.status} />
+                    <InlineName
+                      value={tab.title}
+                      placeholder={tab.title}
+                      label="Tab name"
+                      maxLength={MAX_SESSION_NAME_LENGTH}
+                      onCommit={(name) => {
+                        setRenamingId(null)
+                        // An empty name keeps the title: a conversation always has one.
+                        if (name !== '' && name !== tab.title) onRename(tab.id, name)
+                      }}
+                      onCancel={() => {
+                        setRenamingId(null)
+                      }}
+                    />
+                  </div>
+                ) : (
                 <button
                   type="button"
                   role="tab"
@@ -114,6 +138,7 @@ export function ConversationTabStrip({
                     />
                   )}
                 </button>
+                )}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -134,7 +159,20 @@ export function ConversationTabStrip({
                 </Tooltip>
               </div>
             </ContextMenuTrigger>
-            <ContextMenuContent>
+            <ContextMenuContent
+              onCloseAutoFocus={(event) => {
+                // The name field has taken focus; handing it back to the tab would end the rename at once.
+                if (renamingId !== null) event.preventDefault()
+              }}
+            >
+              <ContextMenuItem
+                onSelect={() => {
+                  setRenamingId(tab.id)
+                }}
+              >
+                <Pencil size={14} />
+                Rename
+              </ContextMenuItem>
               <ContextMenuItem
                 disabled={tabs.length <= 1}
                 onSelect={() => {

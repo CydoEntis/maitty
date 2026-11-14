@@ -116,6 +116,7 @@ export function PreviewWorkspace() {
                   selectedId={selected.id}
                   onSelect={selectInCurrentView}
                   onClose={closeConversation}
+                  onRename={renameConversation}
                   onNewTab={() => {
                     openNewSession()
                   }}

@@ -746,6 +746,7 @@ kbd { align-items: center; background: var(--secondary); border: 1px solid var(-
 .conversation-tab.is-active { background: var(--background); border-color: var(--border); color: var(--foreground); }
 .conversation-tab > button:first-child { align-items: center; background: transparent; border: 0; color: inherit; display: flex; flex: 1; font: inherit; gap: 7px; min-width: 0; overflow: hidden; padding: 0 7px; text-align: left; }
 .conversation-tab > button:first-child span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-tab-rename { align-items: center; display: flex; flex: 1; gap: 7px; min-width: 0; padding: 0 4px 0 7px; }
 .conversation-tab-close { align-items: center; background: transparent; border: 0; border-radius: 4px; color: var(--muted-foreground); display: flex; height: 23px; justify-content: center; margin-right: 3px; opacity: 0; padding: 0; width: 23px; }
 .conversation-tab:hover .conversation-tab-close, .conversation-tab:focus-within .conversation-tab-close, .conversation-tab.is-active .conversation-tab-close { opacity: 1; }
 .conversation-tab-close:disabled { cursor: default; opacity: .25; }
