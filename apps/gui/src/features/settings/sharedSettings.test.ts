@@ -22,7 +22,7 @@ describe('the settings shared with the terminal app', () => {
     const next = applyShared({ ...readSettingsPreferences(), themeMode: 'dark' }, SHARED)
     expect(next).toMatchObject({
       defaultAgent: 'codex', newSessionView: 'terminal', sidebarSide: 'right', darkTheme: 'Tokyo Night', lightTheme: 'Maitty Day',
-      themeMode: 'light', spinner: 'snake', startFolder: '/srv', reduceMotion: true, style: 'glass',
+      themeMode: 'light', spinner: 'snake', startFolder: '/srv', reduceMotion: true,
     })
   })
 
@@ -44,7 +44,7 @@ describe('the settings shared with the terminal app', () => {
     expect(changesToSend(before, before, SHARED)).toEqual([])
     expect(changesToSend(before, { ...before, sidebarSide: 'left', reduceMotion: false }, SHARED)).toEqual([['sidebar_side', 'left'], ['reduce_motion', false]])
     // A change the daemon already reported (it came from the other app) is not sent back.
-    expect(changesToSend(before, { ...before, sidebarSide: 'right', style: 'glass' }, SHARED)).toEqual([])
+    expect(changesToSend(before, { ...before, sidebarSide: 'right' }, SHARED)).toEqual([])
     // A stand-in for the shared "last used" is not an edit, so it never overwrites it.
     expect(changesToSend(before, { ...before }, { ...SHARED, default_agent: 'last used' })).toEqual([])
   })

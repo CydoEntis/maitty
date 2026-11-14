@@ -27,7 +27,7 @@ const DEFAULTS: SettingsPreferences = {
   
   
   defaultAgent: 'claude', newSessionView: 'chat',
-  density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', sidebarOrder: 'creation', sidebarGroup: 'status', terminalDock: 'panel', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: false, chatViewDefault: { claude: 'chat', codex: 'chat', gemini: 'chat' }, chatFullAccessDefault: false, hideSuccessfulTools: false, yoloClaude: false, yoloCodex: false, yoloGemini: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, style: 'glass', chatWidth: 'auto', chatTextSize: 100,
+  density: 'comfortable', sidebarTextSize: 13.5, tabTextSize: 13.5, sidebarWidth: 264, sidebarSide: 'left', sidebarOrder: 'creation', sidebarGroup: 'status', terminalDock: 'panel', terminalScreenReader: false, autoDownloadUpdates: true, restartWhenIdle: true, monthlyBudget: null, iconSize: 'medium', iconColor: 'color', statusBar: false, chatViewDefault: { claude: 'chat', codex: 'chat', gemini: 'chat' }, chatFullAccessDefault: false, hideSuccessfulTools: false, yoloClaude: false, yoloCodex: false, yoloGemini: false, perfOverlay: false, terminalPlainDrawing: false, terminalSeeThrough: false, backgroundGlow: false, cursorBlink: false, corners: 'square', chatWidth: 'auto', chatTextSize: 100,
 }
 
 describe('settings preferences', () => {
@@ -43,15 +43,15 @@ describe('settings preferences', () => {
 
   it('starts with a flat ground and a steady cursor, and keeps a stored choice', () => {
     expect(readSettingsPreferences()).toMatchObject({ backgroundGlow: false, cursorBlink: false })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass', backgroundGlow: true, cursorBlink: true }))
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ backgroundGlow: true, cursorBlink: true }))
     expect(readSettingsPreferences()).toMatchObject({ backgroundGlow: true, cursorBlink: true })
   })
 
   it('installs updates when idle by default, and a stored off stays off', () => {
     expect(readSettingsPreferences().restartWhenIdle).toBe(true)
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass' }))
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({}))
     expect(readSettingsPreferences().restartWhenIdle).toBe(true)
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass', restartWhenIdle: false }))
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ restartWhenIdle: false }))
     expect(readSettingsPreferences().restartWhenIdle).toBe(false)
   })
 
@@ -103,21 +103,23 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences().restoreLayout).toBe(true)
   })
 
-  it('starts a fresh install in Glass and keeps any saved window style', () => {
-    expect(readSettingsPreferences()).toMatchObject({ style: 'glass' })
-    for (const style of ['glass', 'mono', 'console', 'pixel']) {
-      localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style }))
-      expect(readSettingsPreferences()).toMatchObject({ style })
+  it('starts a fresh install with square corners and keeps saved corners', () => {
+    expect(readSettingsPreferences()).toMatchObject({ corners: 'square' })
+    for (const corners of ['square', 'rounded']) {
+      localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ corners }))
+      expect(readSettingsPreferences()).toMatchObject({ corners })
     }
   })
 
-  it('reads the old style names, and a saved Flat or Tiled, as Console, and falls back from nonsense', () => {
-    const style = (value: string) => {
+  it('carries a window style saved before the corner switch over to its corners, and falls back from nonsense', () => {
+    const corners = (value: string) => {
       localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: value }))
-      return readSettingsPreferences().style
+      return readSettingsPreferences().corners
     }
-    expect([style('minimal'), style('expressive'), style('tiled'), style('flat'), style('glass'), style('frosted')]).toEqual(['console', 'glass', 'console', 'console', 'glass', 'glass'])
-    expect(style('neon')).toBe('glass')
+    expect(['glass', 'console', 'flat', 'tiled', 'minimal', 'expressive', 'frosted'].map(corners)).toEqual(Array(7).fill('rounded'))
+    expect([corners('mono'), corners('pixel'), corners('neon')]).toEqual(['square', 'square', 'square'])
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass', corners: 'square' }))
+    expect(readSettingsPreferences().corners).toBe('square')
   })
 
   it('hides the status bar unless it was turned on', () => {
@@ -153,11 +155,11 @@ describe('settings preferences', () => {
     expect(readSettingsPreferences().chatViewDefault).toEqual({ claude: 'chat', codex: 'chat', gemini: 'chat' })
   })
 
-  it('keeps icons in colour unless grayscale was chosen, in any style', () => {
+  it('keeps icons in colour unless grayscale was chosen', () => {
     expect(readSettingsPreferences().iconColor).toBe('color')
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'mono', iconColor: 'grayscale' }))
-    expect(readSettingsPreferences()).toMatchObject({ style: 'mono', iconColor: 'grayscale' })
-    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'mono', iconColor: 'sepia' }))
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ iconColor: 'grayscale' }))
+    expect(readSettingsPreferences()).toMatchObject({ iconColor: 'grayscale' })
+    localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ iconColor: 'sepia' }))
     expect(readSettingsPreferences().iconColor).toBe('color')
   })
 
@@ -216,7 +218,7 @@ describe('settings preferences', () => {
   it('has no monthly budget by default and keeps only a positive amount in range', () => {
     expect(readSettingsPreferences().monthlyBudget).toBeNull()
     for (const [stored, expected] of [[50, 50], [12.5, 12.5], [0, null], [-5, null], ['50', null], [2_000_000, null], [null, null]] as const) {
-      localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ style: 'glass', monthlyBudget: stored }))
+      localStorage.setItem('maitty.gui.settings.v1', JSON.stringify({ monthlyBudget: stored }))
       expect(readSettingsPreferences().monthlyBudget).toBe(expected)
     }
   })

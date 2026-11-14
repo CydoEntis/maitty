@@ -40,7 +40,7 @@ function groupOf(label: string, spinners: ReadonlyArray<readonly [SpinnerStyle, 
   return { label, items: spinners.map(([id, name]) => ({ value: id, label: name, sub: source, tile: <Tile spinner={id} reduced={reduced} size="size-7 text-[15px]" /> })) }
 }
 
-/** The working spinner, picked as the themes and the window style are: the TUI's three and five web icons, each live in its row. */
+/** The working spinner, picked as the themes are: the TUI's three and five web icons, each live in its row. */
 export function SpinnerPicker({ value, reduced, onPick }: { value: SpinnerStyle; reduced: boolean; onPick: (spinner: SpinnerStyle) => void }) {
   return (
     <PickerSelect

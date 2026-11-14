@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 const SHEETS = import.meta.glob<string>('./**/*.css', { query: '?raw', import: 'default', eager: true })
 
 /** The stylesheets that are not the material itself or the theme tokens it reads. */
-const surfaces = Object.entries(SHEETS).filter(([path]) => !path.endsWith('material.css') && !path.endsWith('index.css'))
+const surfaces = Object.entries(SHEETS).filter(([path]) => !path.endsWith('material.css') && !path.endsWith('index.css') && !path.endsWith('/tokens.css'))
 
 describe('the window material', () => {
   // The theme's solid colours are what Flat shows. Glass swaps them for tints, so a stylesheet reads the

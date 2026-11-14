@@ -1,5 +1,5 @@
 import { isSpinnerStyle, type SpinnerStyle } from '@/lib/spinner-clock'
-import { DEFAULT_WINDOW_STYLE, isWindowStyle, type WindowStyle } from '@/features/workspace/theme/windowStyles'
+import { cornersOfWindowStyle, DEFAULT_CORNERS, isCorners, type Corners } from '@/features/workspace/theme/corners'
 import { DEFAULT_FONT_WEIGHT, DEFAULT_FONT_WEIGHT_BOLD, isFontFamily, isFontWeight, type TerminalFontWeight } from '@/lib/terminalFont'
 import { readThemePreference, type ThemePreference } from '@/data/themePreference'
 import { DEFAULT_LIGHT_THEME, DEFAULT_THEME, THEMES, type ThemeMode } from '@/features/workspace/theme/themes'
@@ -30,8 +30,8 @@ export type SidebarOrder = 'creation' | 'priority'
 export type SidebarGroup = 'status' | 'project' | 'machine'
 /** Where an agent's own terminals show: a tab of the side panel, or a drawer under its chat. */
 export type TerminalDock = 'panel' | 'under'
-/** The window style: one of four looks that share one layout (`theme/windowStyles.ts`). Kept by this window alone. */
-export type StyleChoice = WindowStyle
+/** Square or rounded corners, the one shape choice of the desktop's look (`theme/corners.ts`). Kept by this window alone. */
+export type CornersChoice = Corners
 /** App and folder icons keep their colours, or drop to neutral gray tiles. Independent of the style. */
 export type IconColor = 'color' | 'grayscale'
 
@@ -96,7 +96,7 @@ export type SettingsPreferences = {
   sidebarGroup: SidebarGroup
   terminalDock: TerminalDock
   iconSize: IconSize
-  style: StyleChoice
+  corners: CornersChoice
   iconColor: IconColor
   /** How wide the chat's messages run; `auto` grows with the pane, so a large screen is used. */
   chatWidth: ChatWidth
@@ -191,7 +191,7 @@ function defaults(): SettingsPreferences {
     scrollback: SCROLLBACK_DEFAULT,
     scrollSpeed: SCROLL_NORMAL,
     terminalScreenReader: false,
-    style: DEFAULT_WINDOW_STYLE,
+    corners: DEFAULT_CORNERS,
     density: 'comfortable',
     sidebarTextSize: UI_TEXT_SIZE_DEFAULT,
     tabTextSize: UI_TEXT_SIZE_DEFAULT,
@@ -283,7 +283,8 @@ export function readSettingsPreferences(): SettingsPreferences {
       sidebarGroup: preferences.sidebarGroup === 'status' || preferences.sidebarGroup === 'project' || preferences.sidebarGroup === 'machine' ? preferences.sidebarGroup : fallback.sidebarGroup,
       terminalDock: preferences.terminalDock === 'panel' || preferences.terminalDock === 'under' ? preferences.terminalDock : fallback.terminalDock,
       iconSize: preferences.iconSize === 'small' || preferences.iconSize === 'medium' || preferences.iconSize === 'large' ? preferences.iconSize : fallback.iconSize,
-      style: styleOf(preferences.style) ?? fallback.style,
+      // Before the corner switch a window style was saved under `style`; its corners carry over.
+      corners: (isCorners(preferences.corners) ? preferences.corners : null) ?? cornersOfWindowStyle((value as { style?: unknown }).style) ?? fallback.corners,
       chatWidth: CHAT_WIDTHS.find((width) => width === preferences.chatWidth) ?? fallback.chatWidth,
       chatTextSize: CHAT_TEXT_SIZES.find((size) => size === preferences.chatTextSize) ?? fallback.chatTextSize,
       chatViewDefault: chatViewDefault(preferences.chatViewDefault, fallback.chatViewDefault),
@@ -338,15 +339,6 @@ function isAccent(value: unknown): value is SettingsPreferences['accent'] {
   return value === 'teal' || value === 'blue' || value === 'violet'
 }
 
-/**
- * "minimal" and "expressive" were the names before the window styles; they read as Flat and Glass, and
- * Flat (like the retired Tiled) reads as the Flat style, id `console`: the solid-panel look.
- */
-function styleOf(value: unknown): StyleChoice | null {
-  if (value === 'flat' || value === 'tiled' || value === 'minimal') return 'console'
-  if (value === 'expressive' || value === 'frosted') return 'glass'
-  return isWindowStyle(value) ? value : null
-}
 
 const isThemeMode = (value: unknown): value is ThemeMode => value === 'system' || value === 'dark' || value === 'light'
 

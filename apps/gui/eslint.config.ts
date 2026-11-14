@@ -12,7 +12,7 @@ const HARD_CODED_COLOR = [
 ]
 
 // A control that Radix already builds (docs/stack/shadcn-tailwind.md) is not built again by hand: it comes from
-// `src/components/ui/`, where it is written once and reads the theme tokens, so every window style and theme
+// `src/components/ui/`, where it is written once and reads the theme tokens, so every theme and corner setting
 // reaches every instance of it. These are the roles such a control carries.
 const HAND_BUILT_ROLES = String.raw`/^(radiogroup|radio|switch|dialog|alertdialog|menu|menuitem|menuitemradio|listbox|option)$/`
 const HAND_BUILT_CONTROL_MESSAGE =

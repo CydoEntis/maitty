@@ -3,7 +3,7 @@ import { DropdownMenu } from 'radix-ui'
 import { Keycaps } from '@/features/shortcuts/Keycaps'
 import { type Chord } from '../model/shortcuts'
 import { THEMES, type ThemeMode } from '../theme/themes'
-import { WINDOW_STYLES, type WindowStyle } from '../theme/windowStyles'
+import { CORNERS, CORNER_NAMES, isCorners, type Corners } from '../theme/corners'
 import { Icon } from './glyphs'
 
 const THEME_MODES: readonly { id: ThemeMode; label: string }[] = [
@@ -25,7 +25,7 @@ type Props = {
   /** Whether the theme in use is a light one: the quick list shows the themes of that kind. */
   lightInUse: boolean
   activeTheme: string
-  style: WindowStyle
+  corners: Corners
   textSize: number
   minTextSize: number
   maxTextSize: number
@@ -34,7 +34,7 @@ type Props = {
   onThemeMode: (mode: ThemeMode) => void
   onPickTheme: (name: string) => void
   onAllThemes: () => void
-  onStyle: (style: WindowStyle) => void
+  onCorners: (corners: Corners) => void
   onTextSize: (size: number) => void
   onResetTextSize: () => void
   onOpenShortcuts: () => void
@@ -85,15 +85,15 @@ export const StatusBar = memo(function StatusBar(props: Props) {
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
       <DropdownMenu.Root>
-        <DropdownMenu.Trigger className="mx-sb-item mx-sb-button" aria-label={`Layout style: ${props.style}`}>
-          <Icon name="layout" />{WINDOW_STYLES.find((item) => item.id === props.style)?.name}
+        <DropdownMenu.Trigger className="mx-sb-item mx-sb-button" aria-label={`Corners: ${CORNER_NAMES[props.corners]}`}>
+          <Icon name="layout" />{CORNER_NAMES[props.corners]}
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal container={props.portalContainer}>
           <DropdownMenu.Content {...content('mx-menu mx-sb-menu')}>
-            <DropdownMenu.RadioGroup value={props.style} onValueChange={(value) => { props.onStyle(value as WindowStyle) }}>
-              {WINDOW_STYLES.map((item) => (
-                <DropdownMenu.RadioItem key={item.id} value={item.id} className="mx-menu-item">
-                  <span className="mx-sb-check" aria-hidden="true"><DropdownMenu.ItemIndicator><Icon name="check" size={12} /></DropdownMenu.ItemIndicator></span>{item.name}
+            <DropdownMenu.RadioGroup value={props.corners} onValueChange={(value) => { if (isCorners(value)) props.onCorners(value) }}>
+              {CORNERS.map((id) => (
+                <DropdownMenu.RadioItem key={id} value={id} className="mx-menu-item">
+                  <span className="mx-sb-check" aria-hidden="true"><DropdownMenu.ItemIndicator><Icon name="check" size={12} /></DropdownMenu.ItemIndicator></span>{CORNER_NAMES[id]}
                 </DropdownMenu.RadioItem>
               ))}
             </DropdownMenu.RadioGroup>

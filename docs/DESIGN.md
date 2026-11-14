@@ -193,64 +193,60 @@ every other agent and every plain shell stays terminal-only. The prototype is th
 and timings; the feature stylesheets beside their components carry them (`sidebar.css`, `pane.css`, `menu.css`,
 `dialogs.css`, `features/chat/chat.css`), and `workspace.css` the rest.
 
-- **Glass cards on a flat ground** (the redesign handoff, `design_handoff_maitty_redesign`). The window is the theme's
+- **Flat cards on the window ground** (the chat handoff, `design_handoff_maitty_chat`). The window is the theme's
   `--bg`, with two cards on it: the **sidebar** (264px, 12px from the window's edges) and the **workspace**, 12px
-  beside it. Each is `--main` under a faint top-down highlight (`rgba(--hl, .035)` to `.012` over 120px), a 1px
-  `rgba(--hl, .09)` border, radius 14, a 1px inner top highlight and a soft drop shadow (`0 10px 30px -12px`).
-  `--hl`/`--hk` (the highlight colour and strength) and `--sd`/`--sk` (the shadow) are theme tokens: white and black at
-  full strength on dark themes, the theme's own ink, fainter, on light ones (`themeStyle` in `theme/themes.ts`).
-  Popovers, the palette, Settings and dialogs blur what is behind them and cast `--sh-pop`. **Background glow**
-  (Settings › Appearance, `backgroundGlow`, `data-glow`) is off by default. A terminal sits on the card's own ground:
-  xterm's background and ANSI black are `--main`, so a program that paints with black leaves no box. On a web view
-  without WebGL 2 (`data-gpu="software"`) the same rules use cheaper values: no blur, a 1px ring for the popover
-  shadow ([PERFORMANCE](PERFORMANCE.md)).
-- **The notification card (`features/notifications/NotificationCard.tsx`).** 340px wide, radius 14 (18 in Glass), padding
+  beside it. Each is a solid `--main` with a 1px `--line` hairline, no highlight and no shadow. Only what opens over
+  them casts a shadow (`--sh-pop`); a waiting card rising from the message box casts `--sh-rise`. `--hl`/`--hk` (the
+  highlight colour and strength) and `--sd`/`--sk` (the shadow) are theme tokens; the design's nine themes set their
+  own strengths (`hk`/`sk` in their palette), and the rest take dark .7/.6 or light 1/.35 (`theme/corners.ts`).
+  **Background glow** (Settings › Appearance, `backgroundGlow`, `data-glow`) is off by default and is the only tint
+  behind the cards. A terminal sits on the card's own ground: xterm's background and ANSI black are `--main`, so a
+  program that paints with black leaves no box. On a web view without WebGL 2 (`data-gpu="software"`) the same rules
+  use cheaper values: a 1px ring for the popover shadow ([PERFORMANCE](PERFORMANCE.md)). The window ground is opaque
+  on every platform (no Mica), and nothing blurs.
+- **The notification card (`features/notifications/NotificationCard.tsx`).** 340px wide, radius 14, padding
   12/12/12/14. A 26px app icon with its 11px status badge, the session's name (13px, 600) with what happened beside it
   ("needs you" amber, "finished" green, "failed" red; 12px, 500), a 22px close, the body (12.5px, `--fg2`, code in 12px
-  mono), then 28px buttons (the answer filled in the card's colour) and "just now" (11.5px, `--dim`). In Glass it has its
-  own heavier glass: `.09` to `.035` highlight over `--main` at 88%, a `.13` hairline, a 22px blur and a
-  `0 18px 48px -12px` shadow. Toasts sit 96px below the top edge and 36px in from the side, clear of the title bar's
-  controls. The window ground is opaque on every platform (no Mica), as in the redesign.
-- **One material, three roles (`apps/gui/src/material.css`).** The two finishes and the four styles are told apart in
-  that file and nowhere else. Every surface is a *panel* (sidebar, main card, inspector), a *float* (menus,
-  popovers, dialogs, the palette, find, toasts) or a *field* (the message box and its tray), and takes its fill,
-  hairline, highlight, shadow and blur from that role's `--m-*` tokens. The `glass` finish is the base for **Glass**, which
-  then lays its own translucent panels on top (below); the finish's own recipe is opaque `--main` cards on the window ground. A panel
-  has a faint top highlight (`rgba(--hl, .035)` fading to `.012` over 120px on the sidebar, a flat `.018` on the
-  workspace card), a `rgba(--hl, .09)` hairline, an inner top edge and a `0 10px 30px -12px` shadow; a float has a
-  stronger highlight (`.07` to `.03`), a `.12` hairline and a `0 18px 44px -12px` shadow, with a 14px blur behind it; a
-  field sits between (`.075` to `.035`). The **flat finish** (the Squared, Flat and Retro Pixel styles; not to be mixed up with the Flat style): solid fills, a hairline, no blur, no
-  highlight (`--gk` is 0, which turns off every gradient and lift that multiplies by it; hover tints stay), one plain
-  shadow on floats. A new surface is added to a role's list in `material.css`; it does not set a background of its
-  own. A popover opens through `PopupContent` (`components/ui/popup.tsx`) or carries `mx-pop`, so it is portalled into
-  the window root and takes the float role. **Inside a surface**, nothing reads the theme's solid colours directly: a
-  sunken control is `--m-well`, a raised or current row `--m-raise`, a picked row `--m-sel`, a hovered one
-  `--m-hover`, a dialog's own ground `--m-pane`. The flat finish maps them to the theme's `--well`/`--raise`/`--sel`/`--hover`/
-  `--pane`; Glass maps them to tints of the light (`--hl`) and shade (`--sd`). Tints are written
-  `rgba(var(--hl), calc(.06 * var(--hk)))`, never a fixed white. The hairline uses `--hl` (ink on a light theme).
-  `src/material.test.ts` fails when a stylesheet reads a solid surface colour or a fixed white. Left on purpose:
+  mono), then 28px buttons (the answer filled in the card's colour) and "just now" (11.5px, `--dim`). Toasts sit 96px
+  below the top edge and 36px in from the side, clear of the title bar's controls.
+- **One material, three roles (`apps/gui/src/material.css`).** Every surface is a *panel* (sidebar, main card,
+  inspector), a *float* (menus, popovers, dialogs, the palette, find, toasts) or a *field* (the message box and its
+  tray), and takes its fill, hairline and shadow from that role's `--m-*` tokens: solid fills, a hairline, no
+  highlight (`--gk` is 0, which turns off every gradient and lift that multiplies by it; hover tints stay). A new
+  surface is added to a role's list in `material.css`; it does not set a background of its own. A popover opens
+  through `PopupContent` (`components/ui/popup.tsx`) or carries `mx-pop`, so it is portalled into the window root and
+  takes the float role. **Inside a surface**, nothing reads the theme's solid colours directly: a sunken control is
+  `--m-well`, a raised or current row `--m-raise`, a picked row `--m-sel`, a hovered one `--m-hover`, a dialog's own
+  ground `--m-pane`, each mapped to the theme's `--well`/`--raise`/`--sel`/`--hover`/`--pane`. Tints are written
+  `rgba(var(--hl), calc(.06 * var(--hk)))`, never a fixed white. `src/material.test.ts` fails when a stylesheet other
+  than `material.css`, `index.css` and `tokens.css` reads a solid surface colour or a fixed white. Left on purpose:
   terminal grounds (`--term`, `--main` under a terminal), scrims, brand and status colours, the switch knob, and the
-  legacy `App.css` shell outside the window root. **Background glow** (Settings › Appearance, `backgroundGlow`) is the
-  only tint behind the cards, and Glass always has it, painted on the whole window so no seam shows under the title bar.
-- **Window style: four shapes, any theme** (Settings › Appearance › Look › Window style, `style`; the root carries
-  `data-style` and `data-finish`). A style is shape and type, never colour: whatever theme is in use is what every style
-  wears. **Glass** (the default: frosted panels with 22px corners — mostly opaque, a milky sheen, a strong blur (28px, saturate 140%) and a bright edge, so what is behind them is only a soft wash of colour — over an atmosphere of three blobs (the theme's accent, blue and magenta) drawn from the theme; the terminal is see-through by default so its text sits on the frost,
-  Inter and JetBrains Mono; a saved `frosted` reads as Glass), **Squared** (id `mono`: Space Mono everywhere, square corners),
-  **Flat** (id `console`: IBM Plex Sans and JetBrains Mono, hairline borders, a marker on the selected row) and **Retro Pixel**
-  (Pixelify Sans, square corners, 3px borders, hard offset shadows, scanlines). Layout and features never change. A style is data
-  in `theme/windowStyles.ts` (fonts and the glass dials `--hk`/`--sk`, per dark and light side); `withWindowStyle` lays it over the
-  theme in use and touches no colour. **Components are built once and read tokens, never the style.** Besides the
-  base tokens, the shared pieces read the component tokens declared in `material.css`: `--c-sel-*` (every selected
-  state: a sidebar row, a settings nav item, a chosen segment, a palette row), `--c-field-*` (dropdown buttons, pickers,
-  the new-session segments, inputs), `--c-track-*` (the tray behind a segmented control), `--c-sw-*` and `--c-knob-*`
-  (the switch), `--c-tile-ring` (agent and shell tiles) and `--c-head-bg` (sticky headers). Glass uses the
-  defaults; Squared, Flat and Pixel override them. What tokens cannot say (square corners, Pixel's borders and
-  scanlines, Glass's panels, no blur outside Glass) is the one `[data-style]` block at the end of
-  `material.css`. `data-finish` is derived (`finishOf`): Glass is `glass`, the others `flat`. The style is
-  the desktop app's own: it is not in the shared `window_style` setting, which stays Flat or Glass for the config file. A
-  saved Flat or Tiled reads as the Flat style. A new control gets tokens first and is checked in all four styles and both
-  themes (Settings › Appearance shows each style live). **Icons** (Settings › Appearance › Icons, `iconColor`,
-  `data-icons`): `color` keeps app icons in their own colours; `grayscale` makes them neutral `--raise` tiles.
+  legacy `App.css` shell outside the window root.
+- **Design tokens (`apps/gui/src/tokens.css`).** The handoff's role names over the theme's colours, so a component
+  never reads a theme colour or a raw value: `--bubble` (a user message), `--needs`/`--on-needs` (the theme's `--warn`,
+  meaning needs you and nothing else), `--err`, `--focus`/`--link` (the theme's blue), code colours (`--code-kw`,
+  `-str`, `-fn`, `-num`, `-com`), file-type tag tones (`--tag-ts`, `-tsx`, `-data`, `-sql`, `-env`, `-text`, never the
+  needs colour), spacing `--s1`..`--s9` (2, 4, 6, 8, 12, 16, 20, 24, 32px), the type scale (`--text-h1` 22px down to
+  `--text-tag` 10.5px mono, `--text-reply` 14.5/1.65, `--text-code` 12.5/1.65), the corner radii (`--r-control`,
+  `--r-panel`, `--r-badge`) and motion (`--t-fast` 120ms, `--t-base` 180ms, `--t-slow` 260ms, `--t-spin` 900ms, one
+  `--ease` of `cubic-bezier(.2,.8,.2,1)`; Reduce motion zeroes the three durations). The usage meters read `--m-ok`,
+  `--m-mid`, `--m-or` and `--m-hi`, which every theme sets. `--card`, `--done` and `--sh-pop` are set in `index.css`
+  and `workspace.css`.
+- **Corners: Square or Rounded, any theme** (Settings › Appearance › Corners, `corners`; the root carries
+  `data-corners`, and `data-finish` is always `flat`). Square is the default. Corners are shape only, never colour or
+  type: every theme wears either, in Inter and JetBrains Mono (`withLook` in `theme/corners.ts` sets `--ui`, `--mono`
+  and the shading). Square is the one rule at the end of `material.css`, which zeroes every radius inside the window;
+  Rounded sets `--r-control` 6px, `--r-panel` 10px and `--r-badge` 3px. Until a component moves onto those tokens
+  (the shared primitives, MAITTY-375) it keeps its own radius under Rounded. The corners are the desktop app's own: the
+  shared `window_style` setting is not read by the desktop. A window style saved before the switch carries over: Glass,
+  Flat and the older names to Rounded, Squared and Retro Pixel to Square (`cornersOfWindowStyle`). **Components are
+  built once and read tokens, never the corners.** Besides the base tokens, the shared pieces read the component
+  tokens declared in `material.css`: `--c-sel-*` (every selected state: a sidebar row, a settings nav item, a chosen
+  segment, a palette row), `--c-field-*` (dropdown buttons, pickers, the new-session segments, inputs), `--c-track-*`
+  (the tray behind a segmented control), `--c-sw-*` and `--c-knob-*` (the switch), `--c-tile-ring` (agent and shell
+  tiles) and `--c-head-bg` (sticky headers). A new control gets tokens first and is checked in both corners and both
+  kinds of theme. **Icons** (Settings › Appearance › Icons, `iconColor`, `data-icons`): `color` keeps app icons in
+  their own colours; `grayscale` makes them neutral `--raise` tiles.
 - **Title bar.** 32px with no background of its own, so it sits on the window ground (`--tbar` is `transparent`): the
   18px logo, "Maitty" in 12px `--muted`, and the platform's window buttons (46px captions on Windows).
   There is no activity bar, no middle column and no tab bar: the window is the sidebar and the workspace.
@@ -269,7 +265,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   small 22px keycaps. The window's rows come from the same table Settings › Hotkeys reads (`hotkeyRows`), so the two
   never differ. Other shortcuts are ignored while it is open; ⌘/ and Esc close it.
 - **Menus** (`components/MenuPopup.tsx`, `menu.css`). One look for every right-click and ⋯ menu: 228px or wider,
-  5px inside, radius 12, glass like the cards, a dim 11px heading that names what it is for, 30px rows of 13px text with
+  5px inside, radius 12, a float like the cards, a dim 11px heading that names what it is for, 30px rows of 13px text with
   their key at the right in mono, separators between groups. A danger row is red; one that stops something running
   is handled by the app, which asks in a dialog first (see Close ends the session). Arrow keys, Home and End move, Esc or a click outside closes and
   gives focus back. **Session**: Open, Open in split right, Open in split down (not for the one in front), Open
@@ -285,7 +281,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
 - **Status bar.** A 28px line at the bottom of the main area under a hairline, 11.5px muted, one line.
   The left is empty, except "Reconnecting to maittyd…" in amber with a dashed dot when the daemon is
   unreachable (the sidebar foot says "Service stopped" or "Restart needed" beside a red dot). The right holds quick controls: a **theme** menu (Dark, Light or System, a few themes of
-  the kind in use, and "All themes in Settings…"), the **window style** (the four styles), the terminal
+  the kind in use, and "All themes in Settings…"), the **corners** (Square or Rounded), the terminal
   **text size** (−, the size which resets it to 14px, +; Ctrl+= and Ctrl+− do the same) and the shortcuts
   keycaps, which open the shortcut overlay. Hidden in Focus mode and by Settings › General › Window ›
   Status bar (off by default).
@@ -826,7 +822,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   hold still under Reduce motion and pause while the window is in the background. Text-only places (a hover
   card) show the Braille frames while a web spinner is picked.
 - **Process icons** are generic tiles, never a product's mark: `>_` shell, `✻` codex, `rs` cargo.
-- **Themes**: fifty, twenty-five dark and twenty-five light, the same in the GUI and the TUI (`crates/maitty-settings/themes.json` lists them; a TUI test holds its ground and text equal to it). Six are Maitty's own. Four are built from `crates/maitty-settings/maitty-tokens.json` (the TUI reads it too): **Maitty Night** and **Maitty Day** (sea-glass and brass, the defaults) and **Maitty Dark** and **Maitty Light** (a standard black and white ground, same accents); **Maitty Retro Dark** and **Maitty Retro Light** carry the Retro Pixel style's colours (navy ground, mint text and a lime accent by night; white, ink and a darker green by day) and are generated like the families below, so they work with any window style. In Maitty's first four, brass is the accent (`--accent` as a fill, `--accent-text` as text, darker by day), teal is only ever `--working`, coral is only ever needs-you (`--warn`). The other forty-four are twenty-two families, each with a dark and a light (GitHub, One, Catppuccin, Solarized, Gruvbox, Tokyo Night, Dracula, Nord, Ayu, Everforest, Rosé Pine, Kanagawa, Nightfox, Flexoki, Gruvbox Material, One Half, PaperColor, Tomorrow, Melange, Cyberdream, Doom One, Zenbones), generated from six inputs (`bg fg accent mag blue green` and a light flag) by Oklab mixing. A saved theme that is gone falls back to Maitty Night or Maitty Day (the TUI maps each removed id to its nearest survivor). The theme is stored as its id (`night`, `github-dark`, ...) in the shared settings. Every theme's `--pane` is its opaque
+- **Themes**: fifty-five, twenty-nine dark and twenty-six light, the same list in the GUI and the TUI (`crates/maitty-settings/themes.json` lists them; a TUI test holds its ground and text equal to it). Eleven are Maitty's own. Nine are the chat handoff's, each with a `palette` that the desktop draws exactly as written (every surface, text, accent, status, meter and shading role; `paletteTheme` in `theme/themes.ts`): **Maitty Night** and **Maitty Day** (sea-glass and brass, the defaults), **Maitty Dark** and **Maitty Light** (a standard black and white ground, same accents), and **Abyss**, **Ember**, **Moss**, **Dusk** (dark) and **Paper** (light), each with its own accent and its own needs-you colour (`--warn`). The TUI still builds Night, Day, Dark and Light from `crates/maitty-settings/maitty-tokens.json`, so those four differ slightly between the two apps until it reads the palettes too. **Maitty Retro Dark** and **Maitty Retro Light** (navy ground, mint text and a lime accent by night; white, ink and a darker green by day) are generated like the families below. In Maitty's first four, brass is the accent (`--accent` as a fill, `--accent-text` as text, darker by day), teal is only ever `--working`, coral is only ever needs-you (`--warn`). The other forty-four are twenty-two families, each with a dark and a light (GitHub, One, Catppuccin, Solarized, Gruvbox, Tokyo Night, Dracula, Nord, Ayu, Everforest, Rosé Pine, Kanagawa, Nightfox, Flexoki, Gruvbox Material, One Half, PaperColor, Tomorrow, Melange, Cyberdream, Doom One, Zenbones), generated from six inputs (`bg fg accent mag blue green` and a light flag) by Oklab mixing. A saved theme that is gone falls back to Maitty Night or Maitty Day (the TUI maps each removed id to its nearest survivor). The theme is stored as its id (`night`, `github-dark`, ...) in the shared settings. Every theme's `--pane` is its opaque
   `--main`. The foreground, terminal text (`--fg2`), muted and dim text keep 4.5:1 on both `--term` and the
   window `--bg`, and Maitty Night and Maitty Day also hold it for the accent text, working, needs-you, red, done and the ANSI blue,
   magenta and green; the theme tests check this. Every light theme holds it too, for accent, amber, red,

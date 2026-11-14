@@ -6,7 +6,7 @@ import { DownloadProgress } from '@/features/updates/DownloadProgress'
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { THEMES } from '@/features/workspace/theme/themes'
 import { ThemePicker } from './ThemePicker'
-import { WINDOW_STYLES, isWindowStyle, type WindowStyleEntry } from '@/features/workspace/theme/windowStyles'
+import { CORNERS, CORNER_NAMES } from '@/features/workspace/theme/corners'
 import { Panel } from '@/components/ui/panel'
 import { PickerSelect, type PickerGroup, type PickerItem } from './PickerSelect'
 import { Segmented, SegmentedItem } from '@/components/ui/radio-group'
@@ -554,16 +554,7 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
 
 const MODE_OPTIONS = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']] as const
 
-/** A window style as the picker shows it: a small window in the style's own shape and the theme in use, then its name and line. */
-function windowStyleItem(style: WindowStyleEntry): PickerItem {
-  return {
-    value: style.id,
-    label: style.name,
-    sub: style.blurb,
-    tile: <span className="mx-style-tile" data-shape={style.id} aria-hidden="true"><i /></span>,
-    labelStyle: { fontFamily: style.font },
-  }
-}
+const CORNER_OPTIONS = CORNERS.map((id) => [id, CORNER_NAMES[id]] as const)
 
 function AppearanceSection({ preferences, update, systemReducedMotion, systemDark, onPreviewTheme }: { preferences: SettingsPreferences; update: Update; systemReducedMotion: boolean; systemDark: boolean; onPreviewTheme: (name: string | null) => void }) {
   const reduced = preferences.reduceMotion || systemReducedMotion
@@ -574,8 +565,8 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
       <Card title="Look" color="var(--accent)" iconPath={<><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M4 10h16" /></>} meta={<span className="mx-scard-meta">{THEMES.length} themes installed</span>}
         foot="Amber and red keep their meaning in every theme."
       >
-        <Row label="Window style" detail="Same features, different finish.">
-          <PickerSelect label="Window style" value={preferences.style} groups={[{ items: WINDOW_STYLES.map((style) => windowStyleItem(style)) }]} onPick={(style) => { if (isWindowStyle(style)) update('style', style) }} />
+        <Row label="Corners" detail="Square edges, or softly rounded ones.">
+          <SegmentedChoice label="Corners" value={preferences.corners} options={CORNER_OPTIONS} onChange={(value) => { update('corners', value) }} />
         </Row>
         <Row label="Appearance" detail={modeNote}>
           <SegmentedChoice label="Appearance" value={preferences.themeMode} options={MODE_OPTIONS} onChange={(value) => { update('themeMode', value) }} />

@@ -208,7 +208,8 @@ Rules for `apps/gui/`. Owner-approved 2026-11-04.
    and every feature uses it ([shadcn-tailwind](stack/shadcn-tailwind.md#primitives),
    "One component per control").
 3. New components use Tailwind utilities on those tokens. Heavy animation and
-   per-style rules (the four window styles, `data-gpu`) stay in `material.css` and `workspace.css`.
+   per-look rules (the Square corners rule, `data-gpu`) stay in `material.css` and `workspace.css`; the design's
+   role, spacing, type, radius and motion tokens are in `tokens.css` ([DESIGN](DESIGN.md#desktop-app)).
 4. Old CSS moves to these rules only when a ticket touches that area. There is
    no big-bang rewrite.
 
@@ -403,7 +404,7 @@ theme is on is read from its background (`theme::is_light`), not from a list. Th
 shows palette swatches, an applied marker for that slot, a result count, and a preview.
 Themes are listed alphabetically by display name, ignoring case (`BUILTIN` in
 `theme.rs` is kept in that order, and every list of themes follows it); there are
-no user-defined themes, only overrides of a built-in's colours. **Fifty themes are built in**, twenty-five dark and twenty-five light: Maitty's six (Night, Day, Dark, Light, and Retro Dark and Retro Light, which carry the Retro Pixel design's colours as a theme for any window style) and a dark and a light of each of GitHub, One, Catppuccin (Mocha, Latte), Solarized, Gruvbox, Tokyo Night, Dracula (with Alucard), Nord, Ayu, Everforest, Rosé Pine, Kanagawa, Nightfox (with Dayfox), Flexoki, Gruvbox Material, One Half, PaperColor, Tomorrow, Melange, Cyberdream, Doom One and Zenbones. The list is `crates/maitty-settings/themes.json`, the same file the desktop app reads, and a test holds `BUILTIN`, the display names, each theme's side and each family's ground and text equal to it. A theme id from an older build, one of the 160 or so removed in the cut, still loads: `ALIASES` in `theme.rs` maps it to the nearest survivor on the same side (by the colour of its ground), so a config that says `dracula` shows One Dark.
+no user-defined themes, only overrides of a built-in's colours. **Fifty-five themes are built in**, twenty-nine dark and twenty-six light: Maitty's eleven (Night, Day, Dark, Light, the chat handoff's Abyss, Ember, Moss, Dusk and Paper, and Retro Dark and Retro Light) and a dark and a light of each of GitHub, One, Catppuccin (Mocha, Latte), Solarized, Gruvbox, Tokyo Night, Dracula (with Alucard), Nord, Ayu, Everforest, Rosé Pine, Kanagawa, Nightfox (with Dayfox), Flexoki, Gruvbox Material, One Half, PaperColor, Tomorrow, Melange, Cyberdream, Doom One and Zenbones. The list is `crates/maitty-settings/themes.json`, the same file the desktop app reads, and a test holds `BUILTIN`, the display names, each theme's side and each family's ground and text equal to it. A theme id from an older build, one of the 160 or so removed in the cut, still loads: `ALIASES` in `theme.rs` maps it to the nearest survivor on the same side (by the colour of its ground), so a config that says `dracula` shows One Dark.
 On a theme row in Settings, Left and Right step through that slot's themes and apply each at
 once (`themes.rs` `step_theme`), so the whole screen shows the change; Enter or Space opens the
 browser below for searching.

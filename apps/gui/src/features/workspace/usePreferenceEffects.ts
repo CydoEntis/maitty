@@ -5,7 +5,6 @@ import { errorMessage } from '@/lib/error-message'
 import { markGpu } from '@/lib/gpu'
 import { isWindowShown, subscribeWindowActivity } from '@/lib/window-activity'
 import { setSpinnerStyle } from '@/lib/spinner-clock'
-import { finishOf } from './theme/windowStyles'
 
 /** Saves the settings and marks them on the page, where the stylesheet reads them. */
 export function usePreferenceEffects({ preferences, reducedMotion }: {
@@ -36,9 +35,10 @@ export function usePreferenceEffects({ preferences, reducedMotion }: {
   }, [])
 
   useEffect(() => {
-    document.documentElement.dataset.style = preferences.style
-    document.documentElement.dataset.finish = finishOf(preferences.style)
-  }, [preferences.style])
+    // One flat look; the corners are the only shape choice (`tokens.css` reads `data-corners`).
+    document.documentElement.dataset.corners = preferences.corners
+    document.documentElement.dataset.finish = 'flat'
+  }, [preferences.corners])
 
   useEffect(() => {
     document.documentElement.dataset.glow = preferences.backgroundGlow ? 'on' : 'off'
