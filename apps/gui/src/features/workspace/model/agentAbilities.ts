@@ -47,6 +47,12 @@ export type AgentAbilities = {
   readonly hookedAsks: boolean
   /** Slash commands (names, no slash) the agent runs at once beside a working turn, so the chat types them in instead of queueing them. */
   readonly midTurnCommands: readonly string[]
+  /** The models the host reads from the agent are only its extras, so they are added to the fixed ones instead of replacing them. */
+  readonly readModelsAreExtras: boolean
+  /** Max effort is offered for a model only where the agent lists it; where the agent lists nothing, Max is withheld. */
+  readonly maxEffortNeedsListing: boolean
+  /** The agent's yolo flag cannot be combined with a permission mode, so a chat started under it takes no mode. */
+  readonly yoloExcludesMode: boolean
 }
 
 const LETTERS: Readonly<Record<SidebarAnswer, string>> = { y: 'y', a: 'a', n: 'n' }
@@ -64,6 +70,9 @@ const NONE: AgentAbilities = {
   discoversModels: false,
   hookedAsks: false,
   midTurnCommands: [],
+  readModelsAreExtras: false,
+  maxEffortNeedsListing: false,
+  yoloExcludesMode: false,
 }
 
 const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
@@ -80,6 +89,9 @@ const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
     discoversModels: true,
     hookedAsks: true,
     midTurnCommands: ['btw'],
+    readModelsAreExtras: true,
+    maxEffortNeedsListing: false,
+    yoloExcludesMode: false,
   },
   codex: {
     slashCommands: { list: 'window', skillsAfterDollar: true, enterAfterPause: true },
@@ -94,6 +106,9 @@ const AGENT_ABILITIES: Readonly<Record<ChatAgent, AgentAbilities>> = {
     discoversModels: true,
     hookedAsks: false,
     midTurnCommands: [],
+    readModelsAreExtras: false,
+    maxEffortNeedsListing: true,
+    yoloExcludesMode: true,
   },
   gemini: { ...NONE, bangToTerminal: true },
 }

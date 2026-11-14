@@ -23,6 +23,9 @@ describe('abilitiesOf', () => {
       discoversModels: true,
       hookedAsks: true,
       midTurnCommands: ['btw'],
+      readModelsAreExtras: true,
+      maxEffortNeedsListing: false,
+      yoloExcludesMode: false,
     })
   })
 
@@ -42,6 +45,9 @@ describe('abilitiesOf', () => {
       discoversModels: true,
       hookedAsks: false,
       midTurnCommands: [],
+      readModelsAreExtras: false,
+      maxEffortNeedsListing: true,
+      yoloExcludesMode: true,
     })
   })
 
@@ -59,6 +65,9 @@ describe('abilitiesOf', () => {
       discoversModels: false,
       hookedAsks: false,
       midTurnCommands: [],
+      readModelsAreExtras: false,
+      maxEffortNeedsListing: false,
+      yoloExcludesMode: false,
     })
   })
 
