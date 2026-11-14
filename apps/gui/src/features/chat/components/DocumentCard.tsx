@@ -1,8 +1,12 @@
-import { TypeTag } from '@/components/ui/tag'
 import { useState } from 'react'
+import { FileText } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardBody, CardHead } from '@/components/ui/card'
+import { copyText as writeClipboard } from '@/lib/clipboard'
 import { toast } from '@/lib/toast'
 import type { WrittenDocument } from '../writtenDocument'
-import { copyText as writeClipboard } from '@/lib/clipboard'
+import { FileBadge } from './cardParts'
+import { Markdown } from './Markdown'
 
 function copyText(text: string): void {
   writeClipboard(text).then(
@@ -23,20 +27,19 @@ export function DocumentCard({ path, document }: DocumentCardProps) {
   const [open, setOpen] = useState(false)
   const name = path.slice(path.lastIndexOf('/') + 1)
   return (
-    <div role="group" aria-label={`Write ${path}`} className="mx-step-card mx-doc">
-      <div className="mx-doc-file">
-        <TypeTag tag="MD" />
-        <span className="mx-doc-path">{path} · wrote {document.lineCount} {document.lineCount === 1 ? 'line' : 'lines'}</span>
-      </div>
-      <div className="mx-doc-text">
+    <Card role="group" aria-label={`Write ${path}`} className="mx-doc">
+      <CardHead>
+        <FileText className="size-3.5 shrink-0 text-(--muted)" aria-hidden="true" />
+        <FileBadge path={path} />
+        <span className="mx-doc-lines">· wrote {document.lineCount} {document.lineCount === 1 ? 'line' : 'lines'}</span>
+        <span className="mx-spacer" />
+        <Button variant="soft" size="sm" aria-expanded={open} onClick={() => { setOpen((current) => !current) }}>{open ? 'Close' : 'Read'}</Button>
+        <Button variant="ghost" size="sm" onClick={() => { copyText(document.text) }}>Copy</Button>
+      </CardHead>
+      <CardBody>
         <span className="mx-doc-title">{document.title ?? name}</span>
-        {!open && document.excerpt !== '' && <span className="mx-doc-excerpt">{document.excerpt}</span>}
-      </div>
-      {open && <pre className="mx-doc-body">{document.text}</pre>}
-      <div className="mx-doc-actions">
-        <button type="button" className="mx-soft-btn" aria-expanded={open} onClick={() => { setOpen((current) => !current) }}>{open ? 'Close' : 'Read'}</button>
-        <button type="button" className="mx-quiet-btn" onClick={() => { copyText(document.text) }}>Copy</button>
-      </div>
-    </div>
+        {open ? <Markdown className="mx-doc-body" text={document.text} /> : document.excerpt !== '' && <Markdown className="mx-doc-excerpt" text={document.excerpt} />}
+      </CardBody>
+    </Card>
   )
 }

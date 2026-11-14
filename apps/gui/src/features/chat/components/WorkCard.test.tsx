@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { DiffLine } from '../chatEvents'
@@ -12,13 +12,20 @@ afterEach(cleanup)
 const card = (steps: Parameters<typeof WorkCard>[0]['steps'], waitingStep: string | null = null) => <WorkCard steps={steps} root={null} openDiff={null} waitingStep={waitingStep} />
 
 describe('a run of steps', () => {
-  it('is one line until opened, then every step', async () => {
-    render(card([toolEvent('1', { target: 'a.ts' }), commandEvent('2', { command: 'pnpm test', exitCode: 0 })]))
+  it('shows its latest 3 steps under its summary until opened, then every step', async () => {
+    render(card([commandEvent('1', { command: 'pnpm lint' }), toolEvent('2', { target: 'a.ts' }), toolEvent('3'), commandEvent('4', { command: 'pnpm test', exitCode: 0 })]))
 
-    const row = screen.getByRole('button', { expanded: false })
-    expect(screen.queryByRole('group', { name: 'Command pnpm test' })).toBeNull()
-    await userEvent.click(row)
     expect(screen.getByRole('group', { name: 'Command pnpm test' })).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Command pnpm lint' })).toBeNull()
+    await userEvent.click(screen.getByTitle('Show every step'))
+    expect(screen.getByRole('group', { name: 'Command pnpm lint' })).toBeInTheDocument()
+    expect(screen.queryByText('+1 more')).toBeNull()
+  })
+
+  it('opens by itself when a request waits on a step the fold hides', () => {
+    render(card([commandEvent('1', { command: 'rm -rf build', status: 'running' }), toolEvent('2'), toolEvent('3'), toolEvent('4')], '1'))
+
+    expect(screen.getByText('waiting for you ↓')).toBeInTheDocument()
   })
 
   it('opens by itself when a step failed', () => {
@@ -27,16 +34,15 @@ describe('a run of steps', () => {
     expect(screen.getByRole('group', { name: 'Command pnpm test' })).toHaveTextContent('boom')
   })
 
-  it('says how many steps the stack leaves out', () => {
+  it('says how many steps the fold leaves out', () => {
     render(card([commandEvent('1'), toolEvent('2'), editEvent('3'), commandEvent('4'), editEvent('5')]))
 
     expect(screen.getByText('+2 more')).toBeInTheDocument()
   })
 
-  it('marks the step a request is waiting on', async () => {
+  it('marks the step a request is waiting on', () => {
     render(card([commandEvent('1', { command: 'rm -rf build', status: 'running' })], '1'))
 
-    await userEvent.click(screen.getByRole('button', { expanded: false }))
     expect(screen.getByText('waiting for you ↓')).toBeInTheDocument()
   })
 })
@@ -48,7 +54,7 @@ describe('a Markdown document the agent wrote', () => {
   it('is read as a title and its first lines', () => {
     expect(documentOf(written('docs/plan.md', added('# Refunds plan', '', 'First we add the endpoint.', '## Steps', 'Then the tests.')))).toEqual({
       title: 'Refunds plan',
-      excerpt: 'First we add the endpoint. Then the tests.',
+      excerpt: 'First we add the endpoint.\nThen the tests.',
       lineCount: 5,
       text: '# Refunds plan\n\nFirst we add the endpoint.\n## Steps\nThen the tests.',
     })
@@ -67,7 +73,8 @@ describe('a Markdown document the agent wrote', () => {
     render(<EditStep event={written('docs/plan.md', added('# Refunds plan', 'First we add the endpoint.'))} root={null} onOpen={null} />)
 
     const group = screen.getByRole('group', { name: 'Write docs/plan.md' })
-    expect(group).toHaveTextContent('docs/plan.md · wrote 2 lines')
+    expect(within(group).getByTitle('docs/plan.md')).toBeInTheDocument()
+    expect(group).toHaveTextContent('wrote 2 lines')
     expect(group).toHaveTextContent('Refunds plan')
     expect(screen.getByRole('button', { name: 'Copy' })).toBeInTheDocument()
   })

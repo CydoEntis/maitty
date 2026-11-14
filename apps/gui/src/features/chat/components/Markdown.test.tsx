@@ -70,6 +70,16 @@ describe('a table in a message', () => {
     expect(within(region).getByRole('table')).toBeInTheDocument()
   })
 
+  it('keeps its Copy and Save in a head above the table, inside the same card, never loose under it', () => {
+    render(<Markdown text={TABLE + '\n\nAfter.'} />)
+
+    const actions = screen.getByRole('group', { name: 'Copy or save this table' })
+    const region = screen.getByRole('region', { name: 'Table' })
+    expect(actions.parentElement).toBe(region.parentElement)
+    expect(actions.compareDocumentPosition(region) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(actions).getByRole('button', { name: 'Copy' })).toBeInTheDocument()
+  })
+
   it('shows markup in a cell as text', () => {
     const { container } = render(<Markdown text={'| h |\n|---|\n| <img src=x onerror=alert(1)> |'} />)
 

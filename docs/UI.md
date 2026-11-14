@@ -943,9 +943,10 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
   two messages keeps their order), user bubbles, step cards, approvals, turn dividers, and the working line last.
   Two or more steps that follow each other (edits, commands, tools; never the to-do list) fold into one **work row**
   (`workSummary.ts`, `WorkCard`): a line such as "Read 2 files, edited 3, ran 1 command" with the daemon's own time for
-  the run, which opens to the steps. Under the line is a stack of the run's latest commands and edits, three at most
-  (`workStack.ts`), with "+N more" on the line when it leaves steps out; reads and searches get no card. The stack is a
-  second place to click, not a second Tab stop. A run with a failed step starts open.
+  the run, as a card head that opens every step. Under it are the run's latest 3 steps as rows, each openable on its
+  own, and a "+N more" line when it leaves steps out. A run with a failed step starts open, and so does one whose
+  pending request is about a step the fold hides. A command or an edit that stands alone is a card with its facts in
+  the head (`StepView` with `alone`); inside a run it stays a row.
   The agent's reasoning (the daemon's `Reasoning` history items, Claude's thinking and Codex's reasoning summary) is one
   folded **Thought** row (`ThoughtRow`, a `thought` row of `buildRows`): reasoning that follows each other in a turn merge
   into one row, a Thought between two steps ends the run of steps before it, and a click or Enter opens its text. The text is
@@ -1020,7 +1021,8 @@ The desktop app's chat view is a second view of a Claude Code or Codex session, 
     never navigates the webview: a click hands the address to the host (`open_link`), which opens it in the person's
     default browser, and the toast that says so offers **Copy link**. Outside the desktop app a click copies it.
   - *Saving a block* (`exportBlock.ts`, `saveBlock.ts`): a code block has **Copy** and **Save**; a table has **Copy**
-    (as Markdown) and **Markdown**, **CSV** and **HTML**. A save goes to the export folder of Settings › General
+    (as Markdown) and **Markdown**, **CSV** and **HTML**. Both are cards whose buttons sit in the head above the content,
+    so nothing hangs loose under a table where it reads as part of the next paragraph. A save goes to the export folder of Settings › General
     (Downloads until one is picked with the system's folder picker) under "what date time.ext", and a toast says where.
     A code block saves as `.md`, `.html`, `.csv` or `.json` when that is its language and as `.txt` otherwise. A CSV
     cell that a spreadsheet would run as a formula is written with a leading `'`; an HTML table's cells are escaped text.

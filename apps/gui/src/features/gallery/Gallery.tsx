@@ -9,6 +9,7 @@ import { ToastCard } from '@/components/ui/toast-card'
 import { CORNERS, withLook, type Corners } from '@/features/workspace/theme/corners'
 import { findTheme, themeStyle, THEMES } from '@/features/workspace/theme/themes'
 import { Copy, X } from 'lucide-react'
+import { ChatFeed } from './ChatFeed'
 import { galleryParams, galleryHash } from './galleryParams'
 
 /*
@@ -144,7 +145,7 @@ function useHashParams() {
   return params
 }
 
-/** The gallery page: a theme and corner switcher over the primitives. */
+/** The gallery page: a theme and corner switcher over the primitives and the chat's cards. */
 export function Gallery() {
   const { theme: themeName, corners } = useHashParams()
   const theme = withLook(findTheme(themeName))
@@ -174,6 +175,11 @@ export function Gallery() {
           </nav>
         </header>
         <Primitives />
+        <h2 className="m-0 mt-4 text-[18px] font-[650]">Chat feed</h2>
+        <div className="flex flex-wrap items-start gap-6">
+          <div className="w-[800px] max-w-full"><ChatFeed /></div>
+          <div className="w-[400px] max-w-full"><ChatFeed /></div>
+        </div>
       </div>
     </div>
   )

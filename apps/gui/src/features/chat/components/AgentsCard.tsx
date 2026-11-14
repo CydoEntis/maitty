@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Card, CardHead } from '@/components/ui/card'
 import { AppIcon } from '@/features/workspace/components/glyphs'
 import { ElapsedSince } from '@/features/workspace/components/times'
 import type { SubagentEvent } from '../chatEvents'
@@ -62,13 +63,12 @@ export function AgentsCard({ agents, process }: AgentsCardProps) {
   const working = agents.filter((agent) => agent.status === 'running').length
   const done = agents.filter((agent) => agent.status === 'completed').length
   return (
-    <div role="group" aria-label={agentsSummary(agents)} className="mx-step-card">
-      <div className="mx-agents-head">
-        <strong>{agents.length} agents</strong>
-        {working > 0 && <span className="is-working">{working} working</span>}
-        {done > 0 && <span>{working > 0 && '· '}{done} done</span>}
-      </div>
+    <Card role="group" aria-label={agentsSummary(agents)}>
+      <CardHead>
+        <span>{agents.length} agents</span>
+        <span className="mx-agents-counts">{[working > 0 ? `${String(working)} working` : null, done > 0 ? `${String(done)} done` : null].filter((part) => part !== null).join(' · ')}</span>
+      </CardHead>
       <ul className="mx-agents is-carded">{rows}</ul>
-    </div>
+    </Card>
   )
 }
