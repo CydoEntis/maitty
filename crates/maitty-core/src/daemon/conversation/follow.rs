@@ -426,6 +426,18 @@ impl Daemon {
     }
 }
 
+/// How many reasoning entries `history` holds and what they take of the reasoning budget.
+fn reasoning_totals(history: &History) -> (usize, usize) {
+    history
+        .entries
+        .iter()
+        .filter_map(|entry| match &entry.content {
+            Content::Reasoning { text } => Some(text.len() + REASONING_ENTRY_OVERHEAD),
+            _ => None,
+        })
+        .fold((0, 0), |(count, bytes), cost| (count + 1, bytes + cost))
+}
+
 /// What a reasoning note will take of the reasoning budget, `None` for any other note. The text is
 /// measured before masking and the cut, so the cost is never below what is kept.
 fn reasoning_cost(note: &Note) -> Option<usize> {
@@ -449,27 +461,21 @@ fn apply_notes(follower: &mut Followed, notes: Vec<Note>, start_missing: bool) {
     let id = follower.id;
     let session = follower.session.clone();
     let history = &mut follower.history;
-    let mut reasoning_entries = 0usize;
-    let mut reasoning_bytes = 0usize;
-    for entry in &history.entries {
-        if let Content::Reasoning { text } = &entry.content {
-            reasoning_entries += 1;
-            reasoning_bytes += text.len() + REASONING_ENTRY_OVERHEAD;
-        }
-    }
+    let (mut reasoning_entries, mut reasoning_bytes) = reasoning_totals(history);
     for note in notes {
-        if let Some(cost) = reasoning_cost(&note) {
-            // Past its own budget a thought is dropped; it never takes a message's place.
+        let cost = reasoning_cost(&note);
+        if let Some(cost) = cost {
+            // Past its own budget a thought is dropped; it never takes a message's place. A later,
+            // smaller one may still fit.
             if reasoning_bytes + cost > MAX_REASONING_BYTES {
                 continue;
             }
-            reasoning_entries += 1;
-            reasoning_bytes += cost;
-        } else if history.entries.len() - reasoning_entries >= MAX_ENTRIES {
+        } else if history.entries.len().saturating_sub(reasoning_entries) >= MAX_ENTRIES {
             let _ =
                 history.set_completeness(Completeness::Incomplete(IncompleteReason::MissingPages));
             return;
         }
+        let before = history.entries.len();
         match super::history_provider::notification(id, &session, note.method, &note.params) {
             Ok(Some(update)) => {
                 if history.apply(update).is_err() {
@@ -479,6 +485,16 @@ fn apply_notes(follower: &mut Followed, notes: Vec<Note>, start_missing: bool) {
             Ok(None) => {}
             Err(reason) => {
                 let _ = history.set_completeness(Completeness::Incomplete(reason));
+            }
+        }
+        if let Some(cost) = cost {
+            if history.entries.len() > before {
+                reasoning_entries += 1;
+                reasoning_bytes += cost;
+            } else {
+                // Nothing was added: the note failed or replaced an entry in place, so read the
+                // totals from the history rather than guess.
+                (reasoning_entries, reasoning_bytes) = reasoning_totals(history);
             }
         }
     }

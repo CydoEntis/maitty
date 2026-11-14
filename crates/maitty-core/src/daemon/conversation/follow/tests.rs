@@ -752,9 +752,46 @@ fn a_long_session_of_thinking_keeps_its_newest_messages_and_a_bounded_reasoning(
         })
         .fold((0, 0), |(c, b), n| (c + 1, b + n));
     assert!(bytes <= MAX_REASONING_BYTES, "{bytes} bytes of reasoning");
-    assert!(count > 0 && count < pairs, "the oldest are kept, the rest dropped: {count}");
+    assert_eq!(count, MAX_REASONING_BYTES / (1024 + REASONING_ENTRY_OVERHEAD));
     let first = entries
         .iter()
         .find_map(|e| matches!(e.content, Content::Reasoning { .. }).then_some(&e.source.item));
     assert_eq!(first.map(String::as_str), Some("t-0:0"));
+}
+
+#[test]
+fn a_reasoning_note_that_replaces_or_fails_never_breaks_the_counts() {
+    let mut follower = Followed::new(ConversationId(9), 1, 1, None, SESSION, Provider::Claude);
+    let mut transcript = fresh();
+    let mut notes = Vec::new();
+    for (offset, line) in [claude_thought(0, "first"), claude_thought(0, "second")]
+        .iter()
+        .enumerate()
+    {
+        notes.extend(transcript.feed(offset as u64, line.trim_end()));
+    }
+    // Reads as a reasoning note but has no item id, so the projection refuses it.
+    notes.push(Note {
+        method: "item/completed",
+        params: json!({ "turnId": "t", "item": { "type": "reasoning", "summary": ["x"] } }),
+    });
+    notes.extend(transcript.feed(9, claude_reply("after").trim_end()));
+
+    apply_notes(&mut follower, notes, false);
+
+    let entries = &follower.history.entries;
+    let thoughts: Vec<_> = entries
+        .iter()
+        .filter_map(|e| match &e.content {
+            Content::Reasoning { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(thoughts, ["second"]);
+    assert!(
+        entries
+            .iter()
+            .any(|e| matches!(&e.content, Content::Message { text, .. } if text == "after"))
+    );
+    assert_eq!(reasoning_totals(&follower.history), (1, "second".len() + REASONING_ENTRY_OVERHEAD));
 }
