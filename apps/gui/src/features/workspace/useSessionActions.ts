@@ -12,7 +12,7 @@ import type { InspectView } from '@/features/inspect/InspectPanel'
 import { repoLocate } from '@/features/inspect/api'
 import type { LookAt } from '@/features/inspect/FilesTab'
 import { usePaneViews } from './usePaneViews'
-import type { OpenSubagent } from './components/Sidebar'
+import type { OpenSubagent } from './model/subagents'
 import { activeArrangement, type Layout, MAX_PANES, showSession, splitPane } from './model/layout'
 import { displayName, type SessionView } from './model/session'
 import { makeId } from './makeId'
@@ -86,12 +86,6 @@ export function useSessionActions({ setRenameId, queryClient, setOpenSubagent, s
     setOpenSubagent({ sessionId, subagentId })
   }, [paneViews, setLayout, setOpenSubagent])
 
-  const splitSubagent = useCallback((sessionId: string, subagentId: string) => {
-    openInSplit(sessionId, 'right')
-    paneViews.choose(sessionId, 'chat')
-    setOpenSubagent({ sessionId, subagentId })
-  }, [openInSplit, paneViews, setOpenSubagent])
-
   // The usage report names panes of this computer's daemon by number; only a pane this window has can be opened.
   const sessionForUsageTerm = useCallback((term: number) => {
     const found = sessions.find((member) => member.machine === LOCAL_MACHINE && member.pane === term)
@@ -122,5 +116,5 @@ export function useSessionActions({ setRenameId, queryClient, setOpenSubagent, s
       })
       .catch((error: unknown) => { toast.error(errorMessage(error, 'Could not open that file')) })
   }, [setInspectOpen, setInspectView, setLookAt, showSessionById])
-  return { showSessionById, openPath, copyPathOf, showSubagent, saveName, openInSplit, splitSubagent, copyText, usageInfo }
+  return { showSessionById, openPath, copyPathOf, showSubagent, saveName, openInSplit, copyText, usageInfo }
 }

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 're
 import { machineTitle, UPDATE_WORDS, type MachineHead, type UpdateAction } from '../model/machines'
 import { STATUS_WORD, type SessionView } from '../model/session'
 import { canPutAway, canSnooze, inProject, isShell, machineGroups, projectChoices, projectGroups, projectSections, rowTitle, SIDEBAR_GROUPINGS, splitPutAway, statusSections, terminalSessions, type MachineGroup, type SidebarGrouping, type SidebarOrder } from '../model/sidebar'
-import type { SubagentView } from '../model/subagents'
 import { useTipWithKeys, useShortcutText } from '@/features/shortcuts/platform'
 import { SidebarResizer } from './SidebarResizer'
 import { AppIcon, Icon, StatusBadge } from './glyphs'
@@ -15,10 +14,7 @@ import { MenuPopup, type MenuEntry } from './MenuPopup'
 import { SessionRow } from './SessionRow'
 import { RowHoverCard } from './RowHoverCard'
 import { HOVER_CARD_DELAY_MS, type Box } from '../model/hoverCard'
-import { SubagentList, SubagentPeek } from './SubagentRows'
 
-/** A subagent whose own chat a pane shows. */
-export type OpenSubagent = { sessionId: string; subagentId: string }
 
 export type SidebarProps = {
   /** Every session of every machine. Each machine lists its own, in `order`. */
@@ -32,7 +28,6 @@ export type SidebarProps = {
   /** Opens the search over every session, project and action. */
   onSearch: () => void
   focusedId: string | null
-  openSubagent: OpenSubagent | null
   mode: 'docked' | 'rail'
   online: boolean
   canStart: boolean
@@ -56,12 +51,10 @@ export type SidebarProps = {
   /** Installs or updates the app on a machine that needs it; the window asks first. */
   onUpdateMachine: (name: string, action: UpdateAction) => void
   onShowSession: (id: string) => void
-  onShowSubagent: (sessionId: string, subagentId: string) => void
   onRenameSession: (id: string | null) => void
   onSetName: (id: string, name: string) => void
   /** Shows a session beside the pane that has focus. */
   onSplitSession: (id: string, direction: 'right' | 'down') => void
-  onSplitSubagent: (sessionId: string, subagentId: string) => void
   /** Opens a shell in an agent's folder, beside it. */
   onCopyPath: (id: string) => void
   onCopyText: (text: string, what: string) => void
@@ -234,14 +227,6 @@ function Expanded(props: SidebarProps) {
     ]
   }
 
-  const subagentMenu = (session: SessionView, subagent: SubagentView): MenuEntry[] => [
-    { label: 'Open', run: () => { props.onShowSubagent(session.id, subagent.id) } },
-    { label: 'Open in split right', run: () => { props.onSplitSubagent(session.id, subagent.id) } },
-    'separator',
-    { label: 'Copy summary', disabled: (subagent.result ?? subagent.latest ?? subagent.task) === null, run: () => { props.onCopyText(subagent.result ?? subagent.latest ?? subagent.task ?? '', 'Summary') } },
-    { label: 'Stop subagent', danger: true, disabled: true, why: `${session.process} stops its own subagents; stop the session to stop them all` },
-  ]
-
   const machineMenu = (head: MachineHead): MenuEntry[] => {
     const open = views.isOpen(head.key)
     const grouped = views.isByProject(head.key)
@@ -262,7 +247,6 @@ function Expanded(props: SidebarProps) {
 
   const renderRow = (session: SessionView, showProject: boolean, showMachine = false) => {
     const selected = session.id === props.focusedId
-    const subagents = session.subagents
     return (
       <div key={session.id} className="mx-row-wrap" role="listitem" data-flip={session.id} onMouseEnter={(event) => { beginHover(session.id, event.currentTarget) }} onMouseLeave={endHover} onMouseDown={endHover}>
         <SessionRow
@@ -279,22 +263,6 @@ function Expanded(props: SidebarProps) {
         />
         {/* A sibling of the row, not inside it (a button cannot hold a button): it shows on hover and focus. */}
         <RowButton session={session} online={props.online} onBringBack={props.onBringBack} onUnsnooze={props.onUnsnooze} onEnd={props.onEndSession} />
-        {/* Both are kept, each folded while the other shows, so choosing another session eases the rows shut and
-            the next session's open, instead of the list under it jumping by their height. */}
-        {subagents.length > 0 && (
-          <>
-            <Collapse open={!selected}><SubagentPeek process={session.process} subagents={subagents} /></Collapse>
-            <Collapse open={selected}>
-              <SubagentList
-                process={session.process}
-                subagents={subagents}
-                openId={props.openSubagent?.sessionId === session.id ? props.openSubagent.subagentId : null}
-                onOpen={(id) => { props.onShowSubagent(session.id, id) }}
-                onContextMenu={(subagent, event) => { openMenu(event, subagent.name, subagentMenu(session, subagent)) }}
-              />
-            </Collapse>
-          </>
-        )}
       </div>
     )
   }

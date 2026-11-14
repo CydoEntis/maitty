@@ -25,10 +25,10 @@ const child = (id: string, task: string, state: SubagentActivity['state']): Suba
 function show(sessions: SessionView[], more: Partial<SidebarProps> = {}) {
   const none = vi.fn()
   const props: SidebarProps = {
-    sessions, machines: [LOCAL_HEAD], order: 'creation', focusedId: null, openSubagent: null, mode: 'docked', online: true, canStart: true, renamingId: null, portalContainer: null,
+    sessions, machines: [LOCAL_HEAD], order: 'creation', focusedId: null, mode: 'docked', online: true, canStart: true, renamingId: null, portalContainer: null,
     onToggleRail: none, side: 'left', width: 264, onResize: none, onResizeEnd: none, grouping: 'machine', onGrouping: none, onSearch: none,
-    onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onRenameMachine: none, onUpdateMachine: none, onShowSession: none, onShowSubagent: none, onRenameSession: none,
-    onSetName: none, onSplitSession: none, onSplitSubagent: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onMarkDone: none, onPutAway: none, onBringBack: none, onSnooze: none, onUnsnooze: none, onGetFile: none,
+    onNewAgentChat: none, onNewShell: none, onAddMachine: none, onMachineSettings: none, onRenameMachine: none, onUpdateMachine: none, onShowSession: none, onRenameSession: none,
+    onSetName: none, onSplitSession: none, onCopyPath: none, onCopyText: none, onShowChanges: none, onMarkDone: none, onPutAway: none, onBringBack: none, onSnooze: none, onUnsnooze: none, onGetFile: none,
     onEndSession: none, onOpenSettings: none, onRecentSessions: none, updateSlot: null, railUpdateSlot: null,
     ...more,
   }
@@ -184,68 +184,13 @@ describe('a machine that needs maitty installed or updated', () => {
 })
 
 describe('subagents', () => {
-  const parent = (extra: Partial<Conversation> = {}) => session(1, { agent: 'claude', named: true, title: 'Growth', status: 'working', details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, subagents: [child('a', 'Check migration order', 'Completed'), child('b', 'Write drafts tests', 'Working'), child('c', 'Load test', 'AwaitingApproval')] }, ...extra })
-
-  it('keeps every row in place when the selection moves to and from a session with subagents: nothing is built again, only the folds turn', () => {
-    const other = session(2, { agent: 'claude', named: true, title: 'Other' })
-    const view = show([parent(), other], { focusedId: 't2' })
-    const wraps = () => Array.from(document.querySelectorAll<HTMLElement>('[data-flip]'))
-    const before = wraps()
-    const fold = (selector: string) => document.querySelector(selector)?.closest('.mx-collapse-grid')
-    const peek = fold('.mx-sub-peek')
-    const rows = fold('.mx-sub-list')
-    expect([peek?.getAttribute('data-open'), rows?.getAttribute('data-open')]).toEqual(['true', 'false'])
-
-    // To the session with subagents, and away again, the way a click does.
-    view.again({ focusedId: 't1' })
-    expect([peek?.getAttribute('data-open'), rows?.getAttribute('data-open')]).toEqual(['false', 'true'])
-    view.again({ focusedId: 't2' })
-    expect([peek?.getAttribute('data-open'), rows?.getAttribute('data-open')]).toEqual(['true', 'false'])
-
-    // The same elements throughout, in the same order: a row that was built again would snap, not fold.
-    const after = wraps()
-    expect(after).toHaveLength(before.length)
-    expect(after.every((wrap, at) => wrap === before[at])).toBe(true)
-    expect(fold('.mx-sub-peek')).toBe(peek)
-    expect(fold('.mx-sub-list')).toBe(rows)
-  })
-
-  it('shows small icons under a session that is not selected, saying each one’s state; a finished one has reported back and is gone', () => {
-    show([parent()])
-    expect(screen.getByRole('img', { name: 'Subagents: Write drafts tests working, Load test needs you' })).toBeTruthy()
+  it('lists none under a session: its running subagents float over its pane instead', () => {
+    show([session(1, { agent: 'claude', named: true, title: 'Growth', status: 'working', details: { asking: '', interrupted: null, timeline: [], usage: { context: null, cost: null, tokens: null }, subagents: [child('b', 'Write drafts tests', 'Working')] } })], { focusedId: 't1' })
     expect(screen.queryByRole('group', { name: 'Subagents' })).toBeNull()
-    // The rows are there, folded shut and out of reach, so choosing the session eases them open instead of jumping.
-    const rows = document.querySelector('.mx-sub-list')?.closest('.mx-collapse-grid')
-    expect(rows).toHaveAttribute('data-open', 'false')
-    expect(rows?.querySelector('.mx-collapse-inner')).toHaveAttribute('inert')
-    expect(document.querySelector('.mx-sub-peek')?.closest('.mx-collapse-grid')).toHaveAttribute('data-open', 'true')
-  })
-
-  it('lists them under the selected session, and opening one asks for its own chat', async () => {
-    const user = userEvent.setup()
-    const onShowSubagent = vi.fn()
-    show([parent()], { focusedId: 't1', onShowSubagent })
-    const list = screen.getByRole('group', { name: 'Subagents' })
-    await user.click(within(list).getByRole('button', { name: 'Write drafts tests, working' }))
-    expect(onShowSubagent).toHaveBeenCalledWith('t1', 'b')
-  })
-
-  it('marks the subagent whose chat is open', () => {
-    show([parent()], { focusedId: 't1', openSubagent: { sessionId: 't1', subagentId: 'b' } })
-    expect(screen.getByRole('button', { name: 'Write drafts tests, working' })).toHaveAttribute('aria-current', 'page')
-  })
-
-  it('offers Open, Open in split right, Copy summary and a Stop it cannot do yet on right-click', async () => {
-    const user = userEvent.setup()
-    const onSplitSubagent = vi.fn()
-    show([parent()], { focusedId: 't1', onSplitSubagent })
-    fireEvent.contextMenu(screen.getByRole('button', { name: 'Write drafts tests, working' }))
-    const menu = screen.getByRole('menu', { name: 'Write drafts tests' })
-    expect(within(menu).getByRole('menuitem', { name: 'Stop subagent' })).toHaveAttribute('aria-disabled', 'true')
-    await user.click(within(menu).getByRole('menuitem', { name: 'Open in split right' }))
-    expect(onSplitSubagent).toHaveBeenCalledWith('t1', 'b')
+    expect(screen.queryByText('Write drafts tests')).toBeNull()
   })
 })
+
 
 describe('a session row', () => {
   it('says how long an agent has been in its state, and nothing for a shell or when the daemon did not say', () => {

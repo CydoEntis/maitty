@@ -288,7 +288,6 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   gives focus back. **Session**: Open, Open in split right, Open in split down (not for the one in front), Open
   terminal here (agents), Rename… (F2), Copy folder path, Get a file… (another machine's sessions), Show changes
   (agents), Stop session or Close shell.
-  **Subagent**: Open, Open in split right, Copy summary, Stop subagent (disabled: the agent stops its own subagents).
   **Machine**: Install Maitty or Update Maitty first (a machine that needs it), New agent chat here, New shell here, Collapse or Expand, Group by project or Show as one list, Machine
   settings…. **Pane** (⋯ or a right-click in the pane): Split right, Split down, Changes and files, Pin terminals
   under chat or Move terminals to side panel (agents); then Rename…, Maximize pane, Show chat or Show terminal, and New
@@ -347,9 +346,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   is named by the name you gave it, else a shell's folder, else its agent. **Rename**: double-click, F2 or the menu
   turns the name into a field; Enter or leaving saves, Esc cancels, empty clears. Project colours are five tokens
   (`--proj-1` to `--proj-5`: teal, blue, pink, violet, green), chosen from the project's name, never amber or red.
-  **Subagents** (the daemon's `subagent_activity`, `model/subagents.ts`): under a session that is not selected, an
-  elbow line and one 14px tile per subagent with a corner mark (teal spinner working, amber square needs you, green
-  check done), no text; under the selected session, a 28px row each on a guide line. Clicking one opens its own chat.
+  The sidebar lists no subagents: an agent's running subagents float over its pane (`RunningSubagents`, below).
   The foot holds the update slot (or "Reconnecting to maittyd…"), the Recent sessions clock and the Settings gear; the rail's foot has the same two buttons. The edge drags (208 to 440px;
   double-click resets). The **rail** of a narrow window is the starters, then one tile per session.
 - **Replies are typed in.** An agent's reply types toward the text that came in (`useTypedText`), so a chunk eases in instead
@@ -357,10 +354,15 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   long reply that arrives whole takes a few seconds and a short one a moment (`nextShown`). A reply that arrives after the history has loaded types from its first letter even when it arrives whole; what
   the history already held shows at once (`knownRows.ts`), and Reduce motion shows everything at once. A helper agent reporting back (the harness's `<task-notification>` block, which the history keeps as a
   user message) is one quiet line, "Agent "name" finished · 11s · 50.5k tokens", never the markup; once it has reported,
-  its row leaves the sidebar. One that still needs something stays; one that stopped without finishing stays while the
-  agent works, for up to two minutes after its last report, and goes when its turn is over (`listedSubagents`). Under a session that is not selected they are a row of
-  small icons; under the selected one, a row each. Both are kept mounted and folded with `Collapse`, so selecting
-  another session eases one shut and the other open (0.2s) instead of the sidebar jumping by their height. The daemon
+  it clears from the running-subagents bar. One that still needs you stays.
+- **Running subagents** (`RunningSubagents`, the daemon's `subagent_activity`, `model/subagents.ts`). A 34px bar floats
+  under the pane's header, as wide as the chat's column, on the menu surface (`--card`, a `--line2` edge, `--sh-pop`),
+  over the chat and the terminal alike, only while one or more subagents run: the spinner, "N subagents running", the
+  first one's task and what it is doing (mono, `--dim`), "+N more" and **Show** / **Hide**. Opening extends it
+  downward over the feed (at most `min(440px, 60vh)`, scrolling past that) without moving it; the feed fades behind it
+  (22px closed, 44px open, a slight blur). Each row is its mark, its task and kind, what it is doing and its time; a
+  click unfolds **Asked to** and **Ran**, with **Open its chat**. The runtime reports no model or effort for a
+  subagent, so the rows show none. A finished one clears itself, and the bar goes with the last. The daemon
   takes a helper's own report that it finished as final, whatever second its other reports were stamped with, and only
   a start of its own brings a finished helper back, so one whose last news arrives late is not listed as running again
   and then as stopped (`apply_hook`).
@@ -596,8 +598,8 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   folds into one line, "Allowed", "Allowed for this session" or "Denied". A turn ends with a divider (centred words
   between hairlines, "Finished in 3m 40s · 10:46"; failed in `--err` and stopped in `--dim`, each with its mark) and,
   when it edited files, the changed-files card (a head-only card: icon, "N changed files", +A −R, **Review**). card. The working line is the spinner and "claude is working · m:ss". Problems with the history (offline, incomplete, a provider error) and Full access show in one
-  slim strip above the list. **A subagent's chat** replaces the list with a bar ("Subagent · name · time", **Back to
-  main session**), then what it was asked, what it is doing while it works and its report once done.
+  slim strip above the list. **A subagent's chat** replaces the list with a 36px bar on `--well` (**‹ Main session**,
+  "· Subagent", its name, its time in mono and a **read-only** tag), then what it was asked, what it is doing while it works and its report once done.
 - **Message box** (`features/chat/components/Composer.tsx`), in three layers. **1. The waiting card** (`WaitingCard`), only while the
   agent waits on you, one at a time and the oldest first: a card 24px narrower than the box, open at its bottom so it
   rises out of the box's top (10px over 0.2s; it simply appears with motion reduced), with the needs edge. Its head is the needs

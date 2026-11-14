@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Tag } from '@/components/ui/tag'
 import { WorkingMark } from './WorkingMark'
 import { subagentWord, type SubagentView } from '@/features/workspace/model/subagents'
 import { splitLead, paragraphsOf } from '../chatRows'
@@ -22,11 +24,13 @@ export function SubagentBar({ subagent, onBack }: { subagent: SubagentView; onBa
   const now = useNowSeconds(subagent.status === 'working')
   return (
     <div className="mx-sub-bar" role="status">
-      <span className="mx-sub-bar-dim">Subagent</span>
-      <strong>{subagent.name}</strong>
-      <span className="mx-sub-bar-dim">· {subagentWord(subagent, now)}</span>
+      <Button variant="ghost" size="sm" aria-label="Back to main session" onClick={onBack}>‹ Main session</Button>
+      <span className="mx-sub-bar-dim" aria-hidden="true">·</span>
+      <span className="mx-sub-bar-kind">Subagent</span>
+      <strong className="mx-sub-bar-name">{subagent.name}</strong>
       <span className="mx-spacer" />
-      <button type="button" className="mx-sub-back" onClick={onBack}>Back to main session</button>
+      <span className="mx-sub-bar-time">{subagentWord(subagent, now)}</span>
+      <Tag>read-only</Tag>
     </div>
   )
 }
@@ -40,7 +44,7 @@ export function SubagentChat({ subagent, agent }: { subagent: SubagentView; agen
   return (
     <div className="mx-chat-scroll" role="log" aria-label={`Subagent ${subagent.name}`}>
       <div className="mx-chat-column">
-        {subagent.task !== null && <div className="mx-msg-user"><p>{subagent.task}</p></div>}
+        {subagent.task !== null && <div className="mx-msg-user"><p className="mx-bubble">{subagent.task}</p></div>}
         {lead !== '' && (
           <div className="mx-msg-agent">
             <p className="mx-msg-lead"><InlineMarkdown text={lead} /></p>
