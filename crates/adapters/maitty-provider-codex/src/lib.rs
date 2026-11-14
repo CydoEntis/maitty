@@ -232,6 +232,9 @@ const CLIENT_METHODS: &[(&str, &str)] = &[
     ("turn/start", "TurnStartParams"),
     ("turn/interrupt", "TurnInterruptParams"),
 ];
+/// Methods some verified Codex versions lack. A connection that lacks one still passes
+/// [`check_compatibility`]; the caller asks before using it.
+const TURN_STEER: (&str, &str) = ("turn/steer", "TurnSteerParams");
 const SERVER_METHODS: &[(&str, &str)] = &[
     (
         "item/commandExecution/requestApproval",
@@ -294,17 +297,61 @@ pub fn check_compatibility(version: &str, schema: &str) -> Result<(), Compatibil
             .as_array()
             .ok_or_else(|| unsupported(section))?;
         for (method, params) in requirements {
-            let reference = format!("#/definitions/{params}");
-            let found = variants.iter().any(|variant| {
-                variant["properties"]["method"]["enum"] == serde_json::json!([method])
-                    && variant["properties"]["params"]["$ref"].as_str() == Some(reference.as_str())
-            });
-            if !found {
+            if !declares(variants, method, params) {
                 return Err(unsupported(method));
             }
         }
     }
     Ok(())
+}
+
+fn declares(variants: &[Value], method: &str, params: &str) -> bool {
+    let reference = format!("#/definitions/{params}");
+    variants.iter().any(|variant| {
+        variant["properties"]["method"]["enum"] == serde_json::json!([method])
+            && variant["properties"]["params"]["$ref"].as_str() == Some(reference.as_str())
+    })
+}
+
+/// Whether the connected Codex's own generated schema declares `turn/steer`.
+///
+/// Reads the same schema inventory as [`check_compatibility`], not the version string, so a
+/// Codex that gains or lacks the method is reported as it is. Any unreadable schema is "no".
+/// Not used by the daemon yet; it is `pub` so the next change can call it.
+pub fn supports_turn_steer(schema: &str) -> bool {
+    let (method, params) = TURN_STEER;
+    serde_json::from_str::<Value>(schema)
+        .ok()
+        .and_then(|schema| schema["clientRequests"]["oneOf"].as_array().cloned())
+        .is_some_and(|variants| declares(&variants, method, params))
+}
+
+/// A `turn/steer` JSON-RPC request: adds text to the turn that is running now.
+///
+/// `expected_turn_id` is Codex's own precondition: it fails the request when another turn is
+/// active, so a steer never lands on the wrong turn.
+pub fn turn_steer_request(id: u64, thread_id: &str, expected_turn_id: &str, text: &str) -> Value {
+    serde_json::json!({
+        "id": id,
+        "method": TURN_STEER.0,
+        "params": {
+            "threadId": thread_id,
+            "expectedTurnId": expected_turn_id,
+            "input": [{"type": "text", "text": text, "text_elements": []}],
+        }
+    })
+}
+
+/// The turn id from a `turn/steer` response, or why the response is not an acknowledgement.
+pub fn parse_turn_steer_ack(response: &Value) -> Result<String, String> {
+    if let Some(error) = response.get("error") {
+        let message = error["message"].as_str().unwrap_or("no message");
+        return Err(format!("Codex refused the steer: {message}"));
+    }
+    response["result"]["turnId"]
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| "Codex's steer response has no turnId".to_owned())
 }
 
 #[cfg(test)]
@@ -451,6 +498,71 @@ mod tests {
         assert_eq!(
             result.unwrap_err().to_string(),
             "Unsupported Codex app-server: turn/interrupt. Select a verified Codex 0.164.0, 0.165.0, 0.166.0-alpha.5.1 or 0.166.0 executable; no session was started or resumed."
+        );
+    }
+
+    #[test]
+    fn steering_is_reported_per_connected_codex() {
+        assert!(supports_turn_steer(STABLE_SCHEMA));
+        assert!(!supports_turn_steer(SUPPORTED_SCHEMA));
+        assert!(!supports_turn_steer(CURRENT_SCHEMA));
+        assert!(!supports_turn_steer("{"));
+        assert!(!supports_turn_steer("{}"));
+        assert_eq!(check_compatibility("0.166.0", STABLE_SCHEMA), Ok(()));
+    }
+
+    #[test]
+    fn steering_needs_the_params_contract_not_just_the_method_name() {
+        let mut schema: Value = serde_json::from_str(STABLE_SCHEMA).unwrap();
+        let steer = schema["clientRequests"]["oneOf"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|request| {
+                request["properties"]["method"]["enum"] == serde_json::json!(["turn/steer"])
+            })
+            .unwrap();
+        steer["properties"]["params"]["$ref"] =
+            serde_json::json!("#/definitions/DifferentSteerParams");
+        assert!(!supports_turn_steer(&schema.to_string()));
+    }
+
+    #[test]
+    fn a_steer_is_sent_and_its_acknowledgement_read_from_the_fixture() {
+        let request = turn_steer_request(7, "thread-1", "turn-active", "use the other file");
+        assert_eq!(
+            request,
+            serde_json::json!({
+                "id": 7,
+                "method": "turn/steer",
+                "params": {
+                    "threadId": "thread-1",
+                    "expectedTurnId": "turn-active",
+                    "input": [{"type": "text", "text": "use the other file", "text_elements": []}],
+                }
+            })
+        );
+        let ack: Value =
+            serde_json::from_str(include_str!("fixtures/turn-steer-ack.json")).unwrap();
+        assert_eq!(ack["id"], request["id"]);
+        assert_eq!(parse_turn_steer_ack(&ack), Ok("turn-active".to_owned()));
+    }
+
+    #[test]
+    fn a_steer_codex_refuses_says_why() {
+        let error =
+            serde_json::json!({"id": 7, "error": {"code": -32600, "message": "no active turn"}});
+        assert_eq!(
+            parse_turn_steer_ack(&error),
+            Err("Codex refused the steer: no active turn".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_steer_acknowledgement_without_a_turn_id_is_refused() {
+        assert_eq!(
+            parse_turn_steer_ack(&serde_json::json!({"id": 7, "result": {}})),
+            Err("Codex's steer response has no turnId".to_owned())
         );
     }
 }

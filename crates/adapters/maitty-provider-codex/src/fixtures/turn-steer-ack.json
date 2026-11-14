@@ -1,0 +1,5 @@
+{
+  "description": "Synthetic JSON-RPC response to turn/steer, shaped by TurnSteerResponse in codex-cli 0.166.0.",
+  "id": 7,
+  "result": { "turnId": "turn-active" }
+}

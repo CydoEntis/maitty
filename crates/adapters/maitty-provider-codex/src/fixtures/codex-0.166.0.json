@@ -10,6 +10,7 @@
       { "properties": { "method": { "enum": ["thread/turns/list"] }, "params": { "$ref": "#/definitions/ThreadTurnsListParams" } } },
       { "properties": { "method": { "enum": ["thread/items/list"] }, "params": { "$ref": "#/definitions/ThreadItemsListParams" } } },
       { "properties": { "method": { "enum": ["turn/start"] }, "params": { "$ref": "#/definitions/TurnStartParams" } } },
+      { "properties": { "method": { "enum": ["turn/steer"] }, "params": { "$ref": "#/definitions/TurnSteerParams" } } },
       { "properties": { "method": { "enum": ["turn/interrupt"] }, "params": { "$ref": "#/definitions/TurnInterruptParams" } } }
     ]
   },
