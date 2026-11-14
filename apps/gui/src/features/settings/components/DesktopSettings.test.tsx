@@ -39,7 +39,7 @@ describe('the agents page', () => {
       ? { installed: true, signedIn: true, account: 'me@example.com', plan: 'max' }
       : { installed: true, signedIn: false, account: '', plan: '' }))
     accounts.signOutAgent.mockReset().mockResolvedValue(undefined)
-    renderSettings('agents')
+    renderSettings('permissions')
 
     expect(await screen.findByText('Signed in: me@example.com · max')).toBeInTheDocument()
     expect(screen.getByText('Not signed in.')).toBeInTheDocument()
@@ -57,7 +57,7 @@ describe('the agents page', () => {
     accounts.loadAgentAuth.mockReset().mockImplementation((agent) => Promise.resolve(agent === 'claude'
       ? { installed: false, signedIn: null, account: '', plan: '' }
       : { installed: true, signedIn: false, account: '', plan: '' }))
-    renderSettings('agents', { onSignInAgent })
+    renderSettings('permissions', { onSignInAgent })
 
     expect(await screen.findByText('Not installed on this computer.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Sign in to Claude' })).not.toBeInTheDocument()
@@ -68,7 +68,7 @@ describe('the agents page', () => {
 
   it('says when an agent could not be asked', async () => {
     accounts.loadAgentAuth.mockReset().mockRejectedValue(new Error('The agent did not answer in time'))
-    renderSettings('agents')
+    renderSettings('permissions')
 
     expect((await screen.findAllByText('Could not check: The agent did not answer in time')).length).toBe(2)
   })
@@ -78,7 +78,7 @@ describe('desktop settings', () => {
   it('groups the sections the way the design does', () => {
     renderSettings('general')
     const nav = screen.getByRole('navigation', { name: 'Settings sections' })
-    expect(nav).toHaveTextContent('ESSENTIALSGeneralGChatCAgentsETERMINALTerminalTAppearanceASidebarSWORKSPACEUsage & costUNotificationsNMachinesMHotkeys?ADVANCEDDaemonDPerformanceP')
+    expect(nav).toHaveTextContent('APPGeneralGAppearanceANotificationsNHotkeys?AGENTSChatCPermissionsETerminalTMACHINESMachinesM')
     expect(within(nav).getByRole('button', { name: /General/ })).toHaveAttribute('aria-current', 'page')
   })
 
@@ -389,12 +389,13 @@ describe('desktop settings', () => {
     expect(screen.queryByRole('switch', { name: 'Needs you' })).toBeNull()
   })
 
-  it('shows only what maittyd reports about itself', () => {
-    renderSettings('daemon', { daemon: { online: false, sessionCount: 3 } })
-    expect(screen.getByRole('status')).toHaveTextContent('Disconnected')
-    expect(screen.getByText('Sessions').parentElement?.parentElement).toHaveTextContent('3')
-    expect(screen.queryByText('Version')).not.toBeInTheDocument()
-    expect(screen.queryByText('Socket')).not.toBeInTheDocument()
+  it('shows only what maittyd reports about itself, first on the Machines page as This computer', () => {
+    renderSettings('machines', { daemon: { online: false, sessionCount: 3 } })
+    const here = screen.getByRole('region', { name: 'This computer' })
+    expect(within(here).getByRole('status')).toHaveTextContent('Disconnected')
+    expect(within(here).getByText('Sessions').parentElement?.parentElement).toHaveTextContent('3')
+    expect(within(here).queryByText('Version')).not.toBeInTheDocument()
+    expect(within(here).queryByText('Socket')).not.toBeInTheDocument()
   })
 
   it('picks the terminal font from a list that starts with the bundled one, and keeps a saved family that is not installed', async () => {
@@ -420,9 +421,9 @@ describe('desktop settings', () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ terminalFontWeightBold: 800 }))
   })
 
-  it('sets how big the sidebar icons are', async () => {
+  it('sets how big the sidebar icons are, from the Appearance page', async () => {
     const user = userEvent.setup()
-    const { onChange } = renderSettings('sidebar')
+    const { onChange } = renderSettings('appearance')
 
     await user.click(within(screen.getByRole('radiogroup', { name: 'Sidebar icon size' })).getByRole('radio', { name: 'Small' }))
 
@@ -506,7 +507,7 @@ describe('the Machines page', () => {
 
   it('says it is loading until the host has answered', () => {
     renderSettings('machines', { machines: info({ known: false }) })
-    expect(screen.getByRole('status')).toHaveTextContent('Loading machines')
+    expect(within(screen.getByRole('region', { name: 'Machines' })).getByRole('status')).toHaveTextContent('Loading machines')
   })
 
   it('says where machines come from when there are none', () => {
@@ -723,7 +724,7 @@ describe('adding a machine', () => {
     const onAdd = vi.fn().mockReturnValue(new Promise(() => undefined))
     renderSettings('machines', { machines: info({ add: { ...info().add, onAdd, onCancel } }) })
     await user.type(screen.getByRole('textbox', { name: 'Host or user@host' }), 'slow.example{Enter}')
-    expect(screen.getByRole('status')).toHaveTextContent('Checking slow.example')
+    expect(within(screen.getByRole('region', { name: 'Add a machine' })).getByRole('status')).toHaveTextContent('Checking slow.example')
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(onCancel).toHaveBeenCalled()
   })

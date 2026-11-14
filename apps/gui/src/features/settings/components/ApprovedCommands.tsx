@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { forgetAllowedCommand, loadAllowedCommands, type AllowedCommand } from '@/api/daemon'
 import { errorMessage } from '@/lib/error-message'
+import { Card } from './DesktopSettings'
 
 const QUERY_KEY = ['allowed-commands']
 const MS_PER_SECOND = 1000
@@ -27,21 +28,19 @@ export function ApprovedCommands() {
       .catch((error: unknown) => { setFailure(errorMessage(error, 'Could not take that back')) })
   }
   return (
-    <section className="mx-approved" aria-label="Approved commands">
-      <h3 className="mx-menu-caps">Commands approved for a project</h3>
-      <p className="mx-inspect-note">Forgetting one takes effect at once. Another Maitty service running on this computer (a separate socket) only drops it when it next starts.</p>
-      {list.isError && <p className="mx-inspect-note">{errorMessage(list.error, 'Could not read them')}</p>}
-      {list.data?.length === 0 && <p className="mx-inspect-note">None. A chat's command offers “Always in this project”; what you choose appears here.</p>}
-      <ul>
-        {(list.data ?? []).map((item) => (
-          <li key={`${item.project}\n${item.command_sha256}`} className="mx-approved-row">
+    <Card title="Commands approved for a project" foot="Forgetting one takes effect at once. Another Maitty service running on this computer (a separate socket) only drops it when it next starts.">
+      {list.isError && <p className="mx-scard-note">{errorMessage(list.error, 'Could not read them')}</p>}
+      {list.data?.length === 0 && <p className="mx-scard-note">None. A chat's command offers “Always in this project”; what you choose appears here.</p>}
+      {(list.data ?? []).map((item) => (
+        <div key={`${item.project}\n${item.command_sha256}`} className="mx-scard-row mx-approved-row">
+          <div className="mx-scard-text">
             <code title={item.command}>{item.command}</code>
-            <small title={item.project}>{projectName(item.project)} · {new Date(item.at * MS_PER_SECOND).toLocaleDateString()}</small>
-            <button type="button" className="mx-text-button" onClick={() => { forget(item) }}>Forget</button>
-          </li>
-        ))}
-      </ul>
+            <span title={item.project}>{projectName(item.project)} · {new Date(item.at * MS_PER_SECOND).toLocaleDateString()}</span>
+          </div>
+          <button type="button" className="mx-text-button" aria-label={`Forget ${item.command}`} onClick={() => { forget(item) }}>Forget</button>
+        </div>
+      ))}
       {failure !== null && <p className="mx-commit-error" role="alert">{failure}</p>}
-    </section>
+    </Card>
   )
 }

@@ -25,10 +25,9 @@ import { DisconnectedSince } from '@/features/workspace/components/times'
 import { installNote, UPDATE_WORDS, updateVerb, updateWarning, type MachineHead, type UpdateAction } from '@/features/workspace/model/machines'
 import { UsagePage } from '@/features/usage/UsagePage'
 import type { OpenSession } from '@/features/usage/UsageTable'
-import { FOLDER_PATH } from '@/features/workspace/components/paths'
 import { CHAT_TEXT_SIZES, SCROLL_SPEED_CHOICES, SCROLLBACK_CHOICES, SIDEBAR_WIDTH_DEFAULT, TERMINAL_FONT_SIZE_MAX, TERMINAL_FONT_SIZE_MIN, UI_TEXT_SIZE_DEFAULT, UI_TEXT_SIZE_LARGE, UI_TEXT_SIZE_SMALL, type CursorStyle, type ScrollbackLines, type SidebarOrder, type ScrollSpeed, type SettingsPreferences } from '../preferences'
 
-export type DesktopSettingsSection = 'general' | 'chat' | 'agents' | 'terminal' | 'appearance' | 'sidebar' | 'usage' | 'notifications' | 'machines' | 'keys' | 'daemon' | 'performance'
+export type DesktopSettingsSection = 'general' | 'appearance' | 'notifications' | 'keys' | 'chat' | 'permissions' | 'terminal' | 'machines' | 'usage' | 'performance'
 
 /** The other machines, for the Machines page: what the window knows of each, and what it can ask of the host. */
 export type MachinesInfo = {
@@ -108,57 +107,48 @@ type DesktopSettingsProps = {
 
 type NavItem = { id: DesktopSettingsSection; label: string; key: string; tint: string; path: string }
 
+/** The nav (the whole-app mock): what the window does, how agents run, and which computers. Usage & cost and Performance
+    have no item: they open from their own keys, the palette and the usage meters, and leave the nav with none current. */
 const NAV: Array<{ label: string; items: NavItem[] }> = [
   {
-    label: 'ESSENTIALS',
+    label: 'APP',
     items: [
       { id: 'general', label: 'General', key: 'G', tint: 'var(--accent)', path: 'M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4' },
-      { id: 'chat', label: 'Chat', key: 'C', tint: 'var(--ansi-green)', path: 'M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z' },
-      { id: 'agents', label: 'Agents', key: 'E', tint: 'var(--ansi-mag)', path: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 20a8 8 0 0 1 16 0' },
-    ],
-  },
-  {
-    label: 'TERMINAL',
-    items: [
-      { id: 'terminal', label: 'Terminal', key: 'T', tint: 'var(--ansi-blue)', path: 'M4 7V4h16v3M9 20h6M12 4v16' },
       { id: 'appearance', label: 'Appearance', key: 'A', tint: 'var(--ansi-mag)', path: 'M12 3a9 9 0 1 0 0 18c1 0 1.5-.8 1.5-1.6 0-.9-.8-1.3-.8-2.2 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.4-4-7.6-9-7.6zM7.5 11.5h.01M10.5 7.5h.01M15.5 8.5h.01' },
-      { id: 'sidebar', label: 'Sidebar', key: 'S', tint: 'var(--accent)', path: 'M3 4h18v16H3zM9 4v16' },
-    ],
-  },
-  {
-    label: 'WORKSPACE',
-    items: [
-      { id: 'usage', label: 'Usage & cost', key: 'U', tint: 'var(--ansi-mag)', path: 'M4 20V10M10 20V4M16 20v-7M22 20H2' },
       { id: 'notifications', label: 'Notifications', key: 'N', tint: 'var(--warn)', path: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0' },
-      { id: 'machines', label: 'Machines', key: 'M', tint: 'var(--ansi-green)', path: 'M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01M17 7h.01M17 17h.01' },
       { id: 'keys', label: 'Hotkeys', key: '?', tint: 'var(--ansi-blue)', path: 'M2 6h20v12H2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8' },
     ],
   },
   {
-    label: 'ADVANCED',
+    label: 'AGENTS',
     items: [
-      { id: 'daemon', label: 'Daemon', key: 'D', tint: 'var(--accent)', path: 'M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01' },
-      { id: 'performance', label: 'Performance', key: 'P', tint: 'var(--ansi-green)', path: 'M3 17l5-6 4 4 5-8 4 5' },
+      { id: 'chat', label: 'Chat', key: 'C', tint: 'var(--ok)', path: 'M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z' },
+      { id: 'permissions', label: 'Permissions', key: 'E', tint: 'var(--ansi-mag)', path: 'M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6z' },
+      { id: 'terminal', label: 'Terminal', key: 'T', tint: 'var(--ansi-blue)', path: 'M4 7V4h16v3M9 20h6M12 4v16' },
+    ],
+  },
+  {
+    label: 'MACHINES',
+    items: [
+      { id: 'machines', label: 'Machines', key: 'M', tint: 'var(--ok)', path: 'M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01M17 7h.01M17 17h.01' },
     ],
   },
 ]
 
 const PAGE: Record<DesktopSettingsSection, [string, string]> = {
   general: ['General', 'Where sessions start and what happens to them.'],
-  chat: ['Chat', 'How a chat starts, and how wide and large it is drawn.'],
-  agents: ['Agents', 'The accounts your agents are signed in to.'],
-  terminal: ['Terminal', 'How every pane renders. Changes apply instantly.'],
-  appearance: ['Appearance', 'Colours, spinner and motion for the whole window.'],
-  sidebar: ['Sidebar', 'What the sidebar lists, in what order, where and how large.'],
-  usage: ['Usage & cost', 'What the agents reported using, by session. Never estimated.'],
+  appearance: ['Appearance', 'Colours, layout, spinner and motion for the whole window.'],
   notifications: ['Notifications', 'When the system should tell you a session needs you.'],
-  machines: ['Machines', 'Other computers whose sessions show up beside this one.'],
   keys: ['Hotkeys', 'Everything the window handles before the shell does.'],
-  daemon: ['Daemon', 'The local maittyd that owns every session.'],
+  chat: ['Chat', 'How a chat starts, and how wide and large it is drawn.'],
+  permissions: ['Permissions', 'Who your agents are signed in as, and what they may run without asking.'],
+  terminal: ['Terminal', 'How every pane renders. Changes apply instantly.'],
+  machines: ['Machines', 'This computer and the others whose sessions show up beside it.'],
+  usage: ['Usage & cost', 'What the agents reported using, by session. Never estimated.'],
   performance: ['Performance', 'What the window is spending its time on, measured live.'],
 }
 
-const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', c: 'chat', e: 'agents', t: 'terminal', a: 'appearance', s: 'sidebar', u: 'usage', n: 'notifications', m: 'machines', '?': 'keys', d: 'daemon', p: 'performance' }
+const KEY_TO_SECTION: Record<string, DesktopSettingsSection> = { g: 'general', a: 'appearance', n: 'notifications', '?': 'keys', c: 'chat', e: 'permissions', t: 'terminal', m: 'machines' }
 
 /** Esc ends an open theme list, or a running add-machine, first; Settings stays. A part that handles Esc itself is marked `data-owns-escape`. */
 const keepForOpenList = (event: globalThis.KeyboardEvent) => {
@@ -224,15 +214,13 @@ export function DesktopSettings(props: DesktopSettingsProps) {
             <div className="mx-settings-sections" key={section}>
               {section === 'general' && <GeneralSection preferences={preferences} update={update} validateFolder={props.validateFolder} onChooseFolder={props.onChooseFolder} onShowWelcome={props.onShowWelcome} updates={props.updates} />}
               {section === 'chat' && <ChatSection preferences={preferences} update={update} />}
-              {section === 'agents' && <><AgentsSection onSignIn={props.onSignInAgent} /><ApprovedCommands /></>}
-              {section === 'sidebar' && <SidebarSection preferences={preferences} update={update} />}
+              {section === 'permissions' && <><AgentsSection onSignIn={props.onSignInAgent} /><ApprovedCommands /></>}
               {section === 'terminal' && <TerminalSection preferences={preferences} update={update} />}
-              {section === 'appearance' && <AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} />}
+              {section === 'appearance' && <><AppearanceSection preferences={preferences} update={update} systemReducedMotion={props.systemReducedMotion} systemDark={props.systemDark} onPreviewTheme={props.onPreviewTheme} /><SidebarSection preferences={preferences} update={update} /></>}
               {section === 'usage' && <UsageSection usage={props.usage} />}
               {section === 'notifications' && <NotificationsSection preferences={preferences} update={update} onTestNotice={props.onTestNotice} />}
-              {section === 'machines' && <MachinesSection machines={props.machines} />}
+              {section === 'machines' && <><DaemonSection daemon={props.daemon} /><MachinesSection machines={props.machines} /></>}
               {section === 'keys' && <HotkeysSection platform={props.platform} />}
-              {section === 'daemon' && <DaemonSection daemon={props.daemon} />}
               {section === 'performance' && <PerformanceSection preferences={preferences} update={update} appVersion={props.appVersion} />}
             </div>
           </div>
@@ -244,13 +232,11 @@ export function DesktopSettings(props: DesktopSettingsProps) {
 
 type Update = <K extends keyof SettingsPreferences>(key: K, value: SettingsPreferences[K]) => void
 
-export function Card({ title, color, iconPath, meta, children, foot, footRow = false }: { title: string; color: string; iconPath: ReactNode; meta?: ReactNode; children?: ReactNode; foot?: ReactNode; footRow?: boolean }) {
+/** A titled group of rows: an uppercase heading with an optional note at its right, then rows divided by hairlines. */
+export function Card({ title, meta, children, foot, footRow = false }: { title: string; meta?: ReactNode; children?: ReactNode; foot?: ReactNode; footRow?: boolean }) {
   return (
     <section className="mx-scard" aria-label={title}>
       <div className="mx-scard-head">
-        <span className="mx-scard-icon" style={tint(color)}>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{iconPath}</svg>
-        </span>
         <span className="mx-scard-title">{title}</span>
         {meta}
       </div>
@@ -326,8 +312,6 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
     <>
       <Card
         title="Start folder"
-        color="var(--accent)"
-        iconPath={<path d={FOLDER_PATH} />}
         meta={<span className="mx-scard-meta" style={{ fontSize: 11.5, color: missing ? 'var(--danger)' : 'var(--dim)' }} role="status">{missing ? 'Folder not found' : check === 'checking' ? 'Checking…' : 'Saved'}</span>}
         foot="Every new session opens a shell here. Leave it empty for your home folder. Projects appear in the sidebar when a session cds into a git repo."
       >
@@ -345,8 +329,6 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
       </Card>
       <Card
         title="Export folder"
-        color="var(--ansi-green)"
-        iconPath={<path d={FOLDER_PATH} />}
         foot="Code blocks and tables you save from a chat go here. An existing file is never replaced; the new one gets a number."
       >
         <div style={{ padding: '0 16px 14px' }}>
@@ -361,13 +343,13 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
           </div>
         </div>
       </Card>
-      <Card title="Window" color="var(--ansi-blue)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M3 16h18" /></>}>
+      <Card title="Window">
         <Row label="Status bar" detail="A line at the bottom with quick controls for theme, layout, text size and shortcuts.">
           <Switch aria-label="Status bar" checked={preferences.statusBar} onCheckedChange={(value) => { update('statusBar', value) }} />
         </Row>
       </Card>
       {updates && (
-        <Card title="Updates" color="var(--ansi-green)" iconPath={<path d="M12 4v10m0 0l-4-4m4 4l4-4M5 19h14" />}>
+        <Card title="Updates">
           <Row label="Maitty updates" detail={updates.summary}>
             <UpdateControl updates={updates} />
           </Row>
@@ -384,7 +366,7 @@ function GeneralSection({ preferences, update, validateFolder, onChooseFolder, o
           </Row>
         </Card>
       )}
-      <Card title="Sessions" color="var(--ansi-mag)" iconPath={<><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>}>
+      <Card title="Sessions">
         <Row label="Reopen layout on launch" detail="Restore the panes and splits you had last time.">
           <Switch aria-label="Reopen layout on launch" checked={preferences.restoreLayout} onCheckedChange={(value) => { update('restoreLayout', value) }} />
         </Row>
@@ -494,7 +476,7 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
   const family = preferences.terminalFontFamily === '' ? BUNDLED_FONT_NAME : preferences.terminalFontFamily
   return (
     <>
-      <Card title="Text" color="var(--ansi-blue)" iconPath={<path d="M5 6h14M12 6v12" />} meta={<span className="mono" style={{ fontSize: 12, color: 'var(--fg2)' }}>{family} · {preferences.terminalFontSize}px</span>}
+      <Card title="Text" meta={<span className="mono" style={{ fontSize: 12, color: 'var(--fg2)' }}>{family} · {preferences.terminalFontSize}px</span>}
         foot="Leave the font empty for Geist Mono, or name any monospace font installed on this computer; if it is missing, Geist Mono is used. Regular at 400 can look thin on Linux: try Medium.">
         <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -528,7 +510,7 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
           </div>
         </div>
       </Card>
-      <Card title="Scrollback" color="var(--ansi-green)" iconPath={<path d="m5 8 4 4-4 4M12 17h7" />}>
+      <Card title="Scrollback">
         <Row label="Lines kept per pane" detail="Older output is dropped from the GUI. maittyd keeps the full history.">
           <SegmentedChoice label="Lines kept per pane" value={preferences.scrollback} options={SCROLLBACKS} onChange={(value) => { update('scrollback', value) }} />
         </Row>
@@ -539,7 +521,7 @@ function TerminalSection({ preferences, update }: { preferences: SettingsPrefere
           <Switch aria-label="Screen reader support" checked={preferences.terminalScreenReader} onCheckedChange={(value) => { update('terminalScreenReader', value) }} />
         </Row>
       </Card>
-      <Card title="Panes" color="var(--ansi-mag)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M3 14h18M9 4v10" /></>}>
+      <Card title="Panes">
         <Row label="Terminals open in" detail="An agent's own terminals: a tab of the side panel, or a drawer pinned under its chat.">
           <SegmentedChoice label="Terminals open in" value={preferences.terminalDock} options={DOCK_OPTIONS} onChange={(value) => { update('terminalDock', value) }} />
         </Row>
@@ -562,7 +544,7 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
   const modeNote = preferences.themeMode === 'system' ? `Follows your OS. Right now: ${systemDark ? 'dark' : 'light'}.` : `Always uses your ${preferences.themeMode} theme.`
   return (
     <>
-      <Card title="Look" color="var(--accent)" iconPath={<><rect x="4" y="5" width="16" height="14" rx="3" /><path d="M4 10h16" /></>} meta={<span className="mx-scard-meta">{THEMES.length} themes installed</span>}
+      <Card title="Look" meta={<span className="mx-scard-meta">{THEMES.length} themes installed</span>}
         foot="Amber and red keep their meaning in every theme."
       >
         <Row label="Corners" detail="Square edges, or softly rounded ones.">
@@ -581,7 +563,7 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
           <SpinnerPicker value={preferences.spinner} reduced={reduced} onPick={(spinner) => { update('spinner', spinner) }} />
         </Row>
       </Card>
-      <Card title="Surfaces" color="var(--ansi-mag)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>}>
+      <Card title="Surfaces">
         <Row label="Icons" detail="Agent and folder icons in their own colours, or neutral gray tiles.">
           <SegmentedChoice label="Icons" value={preferences.iconColor} options={ICON_COLOR_OPTIONS} onChange={(value) => { update('iconColor', value) }} />
         </Row>
@@ -589,7 +571,7 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
           <Switch aria-label="Background glow" checked={preferences.backgroundGlow} onCheckedChange={(value) => { update('backgroundGlow', value) }} />
         </Row>
       </Card>
-      <Card title="Interface size" color="var(--ansi-green)" iconPath={<path d="M4 7h16M4 12h10M4 17h13" />}>
+      <Card title="Interface size">
         <Row label="Density" detail="How much room the sidebar rows, pane headers and gaps get.">
           <SegmentedChoice label="Density" value={preferences.density} options={DENSITY_OPTIONS} onChange={(value) => { update('density', value) }} />
         </Row>
@@ -597,7 +579,7 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
           <SegmentedChoice label="Pane title text size" value={preferences.tabTextSize} options={UI_TEXT_OPTIONS} onChange={(value) => { update('tabTextSize', value) }} />
         </Row>
       </Card>
-      <Card title="Motion" color="var(--ansi-blue)" iconPath={<><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 0 0 16" /></>}>
+      <Card title="Motion">
         <Row label="Reduce motion" detail="Turns off pulses, slide-ins and size animations, and holds spinners still. Your system setting is always respected.">
           <Switch aria-label="Reduce motion" checked={preferences.reduceMotion} onCheckedChange={(value) => { update('reduceMotion', value) }} />
         </Row>
@@ -610,7 +592,7 @@ function AppearanceSection({ preferences, update, systemReducedMotion, systemDar
 function ChatSection({ preferences, update }: { preferences: SettingsPreferences; update: Update }) {
   return (
     <>
-      <Card title="Chat view" color="var(--accent)" iconPath={<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />}>
+      <Card title="Chat view">
         <Row label="Default agent" detail="The agent a new session starts. A plain terminal is always one click away.">
           <SegmentedChoice label="Default agent" value={preferences.defaultAgent} options={AGENT_OPTIONS} onChange={(value) => { update('defaultAgent', value) }} />
         </Row>
@@ -637,8 +619,6 @@ function ChatSection({ preferences, update }: { preferences: SettingsPreferences
       </Card>
       <Card
         title="Yolo mode"
-        color="var(--danger)"
-        iconPath={<path d="M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6z" />}
         foot="Off for every agent by default. Only sessions started after you turn one on get it. Every session already running has to be closed and started again."
       >
         {YOLO_AGENTS.map(({ key, label, detail }) => (
@@ -695,7 +675,7 @@ function AgentsSection({ onSignIn }: { onSignIn: ((agent: AccountAgent) => void)
     )
   }
   return (
-    <Card title="Accounts" color="var(--ansi-mag)" iconPath={<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 20a8 8 0 0 1 16 0" />}
+    <Card title="Accounts"
       meta={<button type="button" className="mx-text-button" onClick={again}>Check again</button>}
       foot="Sign in opens the agent's own sign-in in a terminal: finish it there, then check again. Maitty keeps no passwords or keys."
     >
@@ -719,9 +699,7 @@ function AgentsSection({ onSignIn }: { onSignIn: ((agent: AccountAgent) => void)
 function SidebarSection({ preferences, update }: { preferences: SettingsPreferences; update: Update }) {
   return (
     <>
-      <Card title="Sessions" color="var(--accent)" iconPath={<><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M9 4v16" /></>}
-        foot="Session order applies when the sidebar is grouped by machine."
-      >
+      <Card title="Sidebar" foot="Session order applies when the sidebar is grouped by machine.">
         <Row label="Group sessions by" detail="Status lists what needs you first, then what is working, finished and idle. Project and Machine put each under its own heading.">
           <SegmentedChoice label="Group sessions by" value={preferences.sidebarGroup} options={GROUP_OPTIONS} onChange={(value) => { update('sidebarGroup', value) }} />
         </Row>
@@ -732,7 +710,7 @@ function SidebarSection({ preferences, update }: { preferences: SettingsPreferen
           <SegmentedChoice label="Sidebar position" value={preferences.sidebarSide} options={SIDE_OPTIONS} onChange={(value) => { update('sidebarSide', value) }} />
         </Row>
       </Card>
-      <Card title="Size" color="var(--ansi-green)" iconPath={<path d="M4 7h16M4 12h10M4 17h13" />}>
+      <Card title="Sidebar size">
         <Row label="Sidebar icons" detail="The project tiles, session icons and the collapsed rail.">
           <SegmentedChoice label="Sidebar icon size" value={preferences.iconSize} options={ICON_OPTIONS} onChange={(value) => { update('iconSize', value) }} />
         </Row>
@@ -750,7 +728,7 @@ function SidebarSection({ preferences, update }: { preferences: SettingsPreferen
 
 function HotkeysSection({ platform }: { platform: Platform }) {
   return (
-    <Card title="Hotkeys" color="var(--ansi-blue)" iconPath={<><rect x="3" y="7" width="18" height="10" rx="2" /><path d="M7 11h.01M11 11h.01M15 11h.01M8 14h8" /></>} meta={<span className="mx-scard-meta">{platform === 'mac' ? '⌘ here, Ctrl+Shift on Windows and Linux' : 'Ctrl+Shift here, ⌘ on macOS'}</span>} foot="In a focused pane, every other key goes straight to the shell.">
+    <Card title="Hotkeys" meta={<span className="mx-scard-meta">{platform === 'mac' ? '⌘ here, Ctrl+Shift on Windows and Linux' : 'Ctrl+Shift here, ⌘ on macOS'}</span>} foot="In a focused pane, every other key goes straight to the shell.">
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {hotkeyRows(platform).map((row) => (
           <div key={row.action} className="mx-hotkey-row">
@@ -784,8 +762,6 @@ function NotificationsSection({ preferences, update, onTestNotice }: { preferenc
   return (
     <Card
       title="System notifications"
-      color="var(--warn)"
-      iconPath={<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0" />}
       foot="Clicking a notification brings the window forward and shows that session. A notification names the session and where it is; it never shows what the agent asked, so nothing private appears on a locked screen. The system asks once whether Maitty may send them."
     >
       <Row label="Needs you" detail="An agent stopped for an answer or an approval.">
@@ -819,7 +795,7 @@ function DaemonSection({ daemon }: { daemon: DaemonInfo }) {
   }
   const showLog = () => { openDaemonLog().catch((error: unknown) => { toast.error(errorMessage(error, 'Could not open the log')) }) }
   return (
-    <Card title="maittyd" color="var(--ansi-green)" iconPath={<><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>}
+    <Card title="This computer"
       meta={<span role="status" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: color }} />{daemon.online ? 'Connected' : 'Disconnected'}</span>}
     >
       {daemon.version && <Row label="Version" detail="Shared by the GUI and the Maitty TUI."><span className="mx-scard-value">{daemon.version}</span></Row>}
@@ -901,9 +877,8 @@ function AddMachineCard({ add }: { add: MachinesInfo['add'] }) {
 
   const typed = text.trim()
   const shown = hosts.status === 'ready' ? hosts.hosts.filter((host) => `${host.alias} ${host.detail}`.toLowerCase().includes(typed.toLowerCase())) : []
-  const icon = <><circle cx="12" cy="12" r="9" /><path d="M12 8v8M8 12h8" /></>
   return (
-    <Card title="Add a machine" color="var(--accent)" iconPath={icon}>
+    <Card title="Add a machine">
       {add.windows && <p className="mx-scard-note">Windows: use ssh keys or an agent. Password prompts work in the session but are not remembered.</p>}
       {checking !== null
         ? (
@@ -976,19 +951,18 @@ function MachineList({ machines }: { machines: MachinesInfo }) {
     setUpdating(name)
     void machines.onUpdate(name, action, whenIdle).finally(() => { setUpdating(null) })
   }
-  const icon = <><rect x="4" y="4" width="16" height="7" rx="2" /><rect x="4" y="13" width="16" height="7" rx="2" /><path d="M8 7.5h.01M8 16.5h.01" /></>
   if (!machines.known) {
-    return <Card title="Machines" color="var(--ansi-green)" iconPath={icon}><p className="mx-scard-note" role="status">Loading machines…</p></Card>
+    return <Card title="Machines"><p className="mx-scard-note" role="status">Loading machines…</p></Card>
   }
   if (machines.list.length === 0) {
     return (
-      <Card title="Machines" color="var(--ansi-green)" iconPath={icon}>
+      <Card title="Machines">
         <p className="mx-scard-note">No other machines. List them as [[machines]] in config.local.toml and restart the app.</p>
       </Card>
     )
   }
   return (
-    <Card title="Machines" color="var(--ansi-green)" iconPath={icon} meta={<span className="mx-scard-meta">{machines.list.length}</span>}>
+    <Card title="Machines" meta={<span className="mx-scard-meta">{machines.list.length}</span>}>
       {machines.list.map((head) => {
         const name = head.label
         const chip = head.chip

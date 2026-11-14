@@ -283,11 +283,19 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   60px rail, and its expand button opens the full sidebar as an overlay from the sidebar's side, over a scrim;
   picking a session, a click on the scrim or Esc closes it. Under **800px** the panes stack in one column. The
   widths are `COMPACT_WIDTH_PX` and `NARROW_WIDTH_PX` in `model/windowSize.ts`.
-- **Settings dialog** (⌘,). A section list at the left and, at the right, a fixed header (the page title,
-  a one-line description and a 30x30 **×** icon button, tooltip "Close (Esc)", no label) above a body that scrolls; the page
-  itself never scrolls. The title and description slide with the page. Under Advanced, **Performance** shows live
-  frame, drawing, output and process figures with a **Copy report** button, and a switch for a corner readout over
-  the window ([PERFORMANCE](PERFORMANCE.md#measuring-in-the-app)).
+- **Settings dialog** (⌘,). A nav on `--m-well` at the left, in three groups under dim caps: **APP** (General,
+  Appearance, Notifications, Hotkeys), **AGENTS** (Chat, Permissions, Terminal) and **MACHINES** (Machines). Each item
+  is 32px with a plain 15px glyph tinted by section and its jump key at the right; the current one is on `--m-raise`
+  with an inset `--line`. At the right, a fixed header (the page title, a one-line description and a 30x30 **×** icon
+  button, tooltip "Close (Esc)", no label) above a body that scrolls; the page itself never scrolls. The title and
+  description slide with the page. A page is groups (`Card`) of up to 640px: an uppercase 11px `--dim` title over
+  rows of 14px padding, each with a `--line` above it, and a dim foot note. A group has no box of its own. The
+  sidebar settings sit in Appearance, the daemon's in Machines ("This computer") and the approved commands in
+  Permissions. **Usage** and **Performance** have no nav item: Ctrl+Shift+U and Ctrl+Shift+P or the palette open them.
+  Performance shows live frame, drawing, output and process figures with a **Copy report** button, and a switch for a
+  corner readout over the window ([PERFORMANCE](PERFORMANCE.md#measuring-in-the-app)). The **switch** is 32×18 with a
+  12px knob (`--c-sw-off` is the well, on is the accent, the knob `--muted` off and `--on-accent` on); a
+  **segmented** control sits on `--c-track-*` with its chosen segment on `--m-raise`.
 - **Keyboard shortcuts** (⌘/ or Ctrl+/, also in the palette). An 860px dialog over a dimmed scrim: "Keyboard
   shortcuts", "Change them in Settings › Hotkeys" and a close ×, then an auto-fit grid (240px minimum) of the groups
   (Sessions, Panes, Find & jump, Window, and In chat: Enter, Shift+Enter, Y, A, N, Esc), each row 32px with its keys as
@@ -318,7 +326,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   (12px 600 `--muted`) with three 26px buttons: **Search** (the command palette; there is no filter field), **Filter
   and group** (one menu: Group by status, project or machine with a check on the one in use, then All projects and each
   project with its count) and **New chat** `+` (an agent chat on this computer; a right-click offers New agent chat,
-  New shell and Add a remote machine…). The grouping is `sidebarGroup`, also Settings › Sidebar › Group sessions by.
+  New shell and Add a remote machine…). The grouping is `sidebarGroup`, also Settings › Appearance › Group sessions by.
   **By status** (`statusSections`): **Needs you** (in `--needs`; an agent that stopped is here too, and so is one held
   by its plan limit), **Working**, **Finished** and **Idle** (a session the daemon cannot read is here), each a heading
   with its count that folds it on a click; a section with nothing in it is not listed, and rows keep creation order within one. **Terminals** (`terminalSessions`) is pinned over the sidebar's foot in the status and the project list, outside the agents' scrolling list (a third of the sidebar's height at most, then it scrolls on its own): every session with no agent in it (a shell, or a program running in one), as created, each row saying its project, so agents are never sorted among dev servers. A terminal that needs you is listed under Needs you until it no longer does; the machine list keeps terminals under their machine. A row
@@ -644,7 +652,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   edge) or the agent's own menu in mono with its selected line tinted; its foot the answers: **Yes once** `y` in the
   needs colour, **This session** `a` and **No** `n` soft, and for a command request **Always in this project** as a
   ghost at the right (the daemon then approves that exact command in that project without asking; see ADR 0005).
-  Settings → Agents lists these under "Commands approved for a project" (`ApprovedCommands.tsx`), each with **Forget**.
+  Settings → Permissions lists these under "Commands approved for a project" (`ApprovedCommands.tsx`), each with **Forget**.
   A plan has **Approve** `y` and **Keep planning** `n`; a form **Send answer(s)** `⏎`; a menu its keys. y, a and n
   answer from anywhere in the chat but a field, a choice's number picks it, and Enter on the card gives its main
   answer. Answering removes it, the box unlocks and the agent is working again (its row and the badge follow the
@@ -823,7 +831,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   for 5 minutes, and the window unfocused or minimized. After the relaunch a pill toast at bottom centre reads
   "Updated to X · What's new" for 9 s (dismissable), and What's new opens a 460 px dialog with the release's
   notes and "No session was interrupted."
-- **Sidebar position.** Settings › Sidebar › Sidebar position, or the palette, puts the sidebar
+- **Sidebar position.** Settings › Appearance › Sidebar position, or the palette, puts the sidebar
   on the left or right. On the right the window mirrors: the resize edge is on its left, the narrow-window
   overlay slides from the right, Inspect opens from the left, and popovers open toward the middle.
 - **Notifications.** Settings › Notifications has one switch each for needs you, done and error. With
