@@ -291,6 +291,29 @@ fn main() {
                     "{{\"method\":\"turn/completed\",\"params\":{{\"threadId\":\"exact-thread\",\"turn\":{{\"id\":\"{turn}\",\"status\":\"completed\"}}}}}}"
                 );
             }
+        } else if line.contains("\"method\":\"turn/steer\"") {
+            use std::fs::OpenOptions;
+            writeln!(
+                OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(fixture.join("steers"))
+                    .unwrap(),
+                "{line}"
+            )
+            .unwrap();
+            // Codex fails a steer unless the named turn is the one running, and a test can make
+            // it refuse outright, as it does when the turn ended a moment ago.
+            let running = format!("\"expectedTurnId\":\"turn-{turn_number}\"");
+            if fixture.join("steer-refuse").is_file() || !line.contains(&running) {
+                println!(
+                    "{{\"id\":{request_id},\"error\":{{\"code\":-32600,\"message\":\"expected turn does not match the active turn\"}}}}"
+                );
+            } else {
+                println!(
+                    "{{\"id\":{request_id},\"result\":{{\"turnId\":\"turn-{turn_number}\"}}}}"
+                );
+            }
         } else if line.contains("\"method\":\"turn/interrupt\"") {
             use std::fs::OpenOptions;
             writeln!(

@@ -16,7 +16,16 @@ fn main() {
     let mut input = stdin.lock();
     let mut output = std::io::stdout().lock();
     let mut line = String::new();
-    let scenario = std::env::var("FAKE_CLAUDE_SCENARIO").unwrap_or_default();
+    // A scenario comes from the environment, or from a file beside the executable when a test
+    // goes through the daemon and cannot set the environment of the process it starts.
+    let scenario = std::env::var("FAKE_CLAUDE_SCENARIO")
+        .ok()
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|executable| std::fs::read_to_string(executable.with_extension("scenario")).ok())
+        })
+        .unwrap_or_default();
 
     input.read_line(&mut line).unwrap();
     assert_eq!(
@@ -46,10 +55,52 @@ fn main() {
 
     line.clear();
     input.read_line(&mut line).unwrap();
-    assert_eq!(
-        line.trim_end(),
-        r#"{"message":{"content":[{"text":"hello fake Claude","type":"text"}],"role":"user"},"type":"user"}"#
-    );
+    if scenario == "interrupt-any" {
+        // The messages differ between turns: keep each one so a test can see which went out.
+        let text = line
+            .split(r#""text":""#)
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .unwrap_or_default()
+            .to_owned();
+        if let Ok(executable) = std::env::current_exe() {
+            let mut log = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(executable.with_extension("messages"))
+                .unwrap();
+            writeln!(log, "{text}").unwrap();
+        }
+        // The first message starts a turn that runs until it is interrupted; any later one is
+        // answered at once.
+        let first = std::env::current_exe()
+            .ok()
+            .map(|executable| executable.with_extension("messages"))
+            .and_then(|log| std::fs::read_to_string(log).ok())
+            .is_some_and(|log| log.lines().count() == 1);
+        if first {
+            writeln!(output, r#"{{"isReplay":true,"message":{{"content":[{{"text":"{text}","type":"text"}}]}},"type":"user"}}"#).unwrap();
+            output.flush().unwrap();
+            line.clear();
+            input.read_line(&mut line).unwrap();
+            let request_id = line
+                .split(r#""request_id":""#)
+                .nth(1)
+                .and_then(|rest| rest.split('"').next())
+                .unwrap_or_default()
+                .to_owned();
+            assert!(line.contains(r#""subtype":"interrupt""#), "{line}");
+            writeln!(output, r#"{{"response":{{"request_id":"{request_id}","subtype":"success"}},"type":"control_response"}}"#).unwrap();
+            writeln!(output, r#"{{"is_error":false,"result":"interrupted","session_id":"{session_id}","type":"result"}}"#).unwrap();
+            output.flush().unwrap();
+            return;
+        }
+    } else {
+        assert_eq!(
+            line.trim_end(),
+            r#"{"message":{"content":[{"text":"hello fake Claude","type":"text"}],"role":"user"},"type":"user"}"#
+        );
+    }
 
     if scenario == "approval" || scenario == "approval-decline" {
         for frame in [

@@ -11,7 +11,10 @@ use std::path::PathBuf;
 /// Bump when a message shape changes incompatibly (docs/API_PATTERNS.md, *Project-specific: API
 /// style*). A client and a daemon on different versions talk only inside the window
 /// `COMPATIBLE_SINCE` opens; outside it they refuse, and so do hooks.
-pub const PROTOCOL_VERSION: u32 = 93;
+pub const PROTOCOL_VERSION: u32 = 94;
+
+/// The first version whose daemon sends a queued chat message now (`Command::ConversationSendNow`).
+pub const SEND_NOW_SINCE: u32 = 94;
 
 /// The first version whose client reads a reasoning item in a chat's history
 /// (`conversation::history::Content::Reasoning`). The daemon leaves them out of the pages it
@@ -416,6 +419,13 @@ pub enum Command {
     },
     /// Take a message back out of the daemon's queue before it is delivered.
     ConversationDequeue {
+        id: crate::conversation::ConversationId,
+        generation: u64,
+        operation: u64,
+    },
+    /// Send a queued message now instead of when the turn ends: steered into the running turn when
+    /// the provider can, otherwise by stopping the turn and sending it next.
+    ConversationSendNow {
         id: crate::conversation::ConversationId,
         generation: u64,
         operation: u64,
@@ -2007,6 +2017,7 @@ impl ClientMsg {
             ClientMsg::Query(Query::WorktreeStanding { .. }) => WORKTREE_STANDING_SINCE,
             ClientMsg::Command(Command::ReopenClosedSession { .. }) => REOPEN_CLOSED_SINCE,
             ClientMsg::Command(Command::SnoozePane { .. }) => SNOOZE_SINCE,
+            ClientMsg::Command(Command::ConversationSendNow { .. }) => SEND_NOW_SINCE,
             ClientMsg::Command(
                 Command::QueueFollowUp { operation: Some(_), .. }
                 | Command::SendWhenReady { operation: Some(_), .. },
@@ -2440,7 +2451,7 @@ mod tests {
             decode::<ServerMsg>(&news),
             Ok(ServerMsg::ConversationChanged { id: read, generation: 2 }) if read == id
         ));
-        assert_eq!(PROTOCOL_VERSION, 93);
+        assert_eq!(PROTOCOL_VERSION, 94);
     }
 
     /// A new command is a new enum variant: a peer built before it can't read it, which is
@@ -2908,7 +2919,7 @@ mod tests {
 
     #[test]
     fn a_daemon_id_round_trips_without_a_new_protocol_version() {
-        assert_eq!(PROTOCOL_VERSION, 93);
+        assert_eq!(PROTOCOL_VERSION, 94);
         let snapshot = Snapshot {
             daemon_id: Some("0123456789abcdef0123456789abcdef".into()),
             ..Snapshot::default()
@@ -3232,6 +3243,27 @@ mod tests {
         ));
         assert_eq!(ClientMsg::Command(snooze).introduced_in(), SNOOZE_SINCE);
         const { assert!(SNOOZE_SINCE > COMPATIBLE_SINCE && SNOOZE_SINCE <= PROTOCOL_VERSION) };
+    }
+
+    /// Sending a queued message now is a new command: a daemon built before it cannot read it, so a
+    /// client asks only a daemon that says it is new enough, and `COMPATIBLE_SINCE` stays behind.
+    #[test]
+    fn sending_a_queued_message_now_is_asked_only_of_a_daemon_that_knows_it() {
+        #[derive(Debug, Deserialize)]
+        #[allow(dead_code)]
+        enum OldCommand {
+            ConversationDequeue { id: crate::conversation::ConversationId, generation: u64, operation: u64 },
+        }
+        let id = crate::conversation::ConversationId(3);
+        let now = Command::ConversationSendNow { id, generation: 2, operation: 5 };
+        let bytes = encode(&now).unwrap();
+        assert!(decode::<OldCommand>(&bytes).is_err());
+        assert!(matches!(
+            decode::<Command>(&bytes),
+            Ok(Command::ConversationSendNow { generation: 2, operation: 5, .. })
+        ));
+        assert_eq!(ClientMsg::Command(now).introduced_in(), SEND_NOW_SINCE);
+        const { assert!(SEND_NOW_SINCE > COMPATIBLE_SINCE && SEND_NOW_SINCE <= PROTOCOL_VERSION) };
     }
 
     #[test]

@@ -26,6 +26,10 @@ pub(super) enum Rpc {
     Interrupt {
         params: Value,
     },
+    /// Adds a message to the turn that is running: Codex's `turn/steer`.
+    Steer {
+        params: Value,
+    },
     Answer {
         request_id: RequestId,
         response: Value,
@@ -39,6 +43,7 @@ impl Rpc {
             Self::Turns { params } => Some(("thread/turns/list", params)),
             Self::Send { params } => Some(("turn/start", params)),
             Self::Interrupt { params } => Some(("turn/interrupt", params)),
+            Self::Steer { params } => Some(("turn/steer", params)),
             Self::Answer { .. } => None,
         }
     }
@@ -104,6 +109,9 @@ struct Runtime {
     commands: mpsc::Sender<Command>,
     task: tokio::task::JoinHandle<()>,
     secret: String,
+    /// Whether this runtime's provider takes a message into a running turn (Codex's `turn/steer`).
+    /// The provider's own schema decides, and it is known once the runtime is live.
+    turn_steer: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 impl Drop for Runtime {
     fn drop(&mut self) {
@@ -152,6 +160,14 @@ impl Registry {
             .get(&owner.conversation)
             .is_some_and(|runtime| runtime.owner == owner && runtime.phase == Phase::Live)
     }
+    /// Whether the live runtime of `id` at `generation` can take a message into a running turn.
+    pub(in crate::daemon) fn can_steer(&self, id: ConversationId, generation: u64) -> bool {
+        self.entries.get(&id).is_some_and(|runtime| {
+            runtime.phase == Phase::Live
+                && runtime.owner.generation == generation
+                && runtime.turn_steer.load(std::sync::atomic::Ordering::Acquire)
+        })
+    }
     pub(in crate::daemon) fn owns(&self, id: ConversationId) -> bool {
         self.entries.contains_key(&id)
     }
@@ -193,7 +209,16 @@ impl Registry {
         };
         let (stop, stopped) = mpsc::channel(RUNTIME_COMMAND_QUEUE);
         let (commands, requests) = mpsc::channel(RUNTIME_COMMAND_QUEUE);
-        let task = tokio::spawn(run(launch, owner, identity, events, stopped, requests));
+        let turn_steer = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let task = tokio::spawn(run(
+            launch,
+            owner,
+            identity,
+            events,
+            stopped,
+            requests,
+            turn_steer.clone(),
+        ));
         self.entries.insert(
             id,
             Runtime {
@@ -203,6 +228,7 @@ impl Registry {
                 commands,
                 task,
                 secret,
+                turn_steer,
             },
         );
         Ok(())
@@ -295,6 +321,7 @@ async fn run(
     events: mpsc::Sender<Ev>,
     mut stop: mpsc::Receiver<()>,
     mut requests: mpsc::Receiver<Command>,
+    turn_steer: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) {
     let launch = match launch.validate().await {
         Ok(launch) => launch,
@@ -338,6 +365,8 @@ async fn run(
         )
         .await
         .map_err(|_| anyhow::anyhow!("Codex effective configuration read timed out"))??;
+        // Set before `Ready`, so the daemon never sees a live runtime that has not said.
+        turn_steer.store(connection.turn_steer, std::sync::atomic::Ordering::Release);
         emit(&events, owner, Payload::Ready).await?;
         for envelope in preface {
             if let Envelope::Notification { method, params } = envelope {

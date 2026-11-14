@@ -986,6 +986,16 @@ impl Daemon {
                 anyhow::bail!("Only a human client can remove a queued message")
             }
             Command::ConversationDequeue { .. } => self.may(client, Grant::Write, None),
+            Command::ConversationSendNow { .. }
+                if structured
+                    || self
+                        .clients
+                        .get(&client)
+                        .is_some_and(|client| client.from.is_some()) =>
+            {
+                anyhow::bail!("Only a human client can send a queued message now")
+            }
+            Command::ConversationSendNow { .. } => self.may(client, Grant::Write, None),
             Command::SetSetting { .. }
                 if structured
                     || self

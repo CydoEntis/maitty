@@ -816,6 +816,30 @@ resumes a chat whose folder was deleted, `Launch::validate` (a background task, 
 `git worktree prune` and `git worktree add -- <folder> <branch>`; a branch that is gone too fails the send with a message
 naming it.
 
+Protocol 94 adds `Command::ConversationSendNow { id, generation, operation }`: send a message waiting in the
+daemon's queue now instead of when the turn ends (human clients only, write grant; it has its own `introduced_in`
+arm, `SEND_NOW_SINCE`, and `COMPATIBLE_SINCE` stays 78, since an older daemon is simply not asked). The daemon looks
+the message up by `operation` in the conversation's current generation; a stale generation, or a number that is not
+waiting (sent, taken back or never queued), is refused with a reason, never ignored. It is refused too while the
+conversation has an unanswered approval or question, whichever way it would have gone. Then:
+
+- Codex whose own generated schema declares `turn/steer` (known to the daemon when the runtime is live, from the same
+  inventory the compatibility check reads, kept with the live runtime): the message is steered into the running turn with
+  `expectedTurnId` set to the acknowledged active turn. It stays in the queue until Codex answers, so nothing else
+  delivers it meanwhile. An answer without an error takes it out of the queue and records its number as the
+  conversation's acknowledged operation (a retry of the send answers `ConversationSent`); the reply is `Ok`. An error
+  from Codex (the turn ended a moment ago, another turn runs) leaves the message waiting, answers the asker with a
+  message saying so, and does not mark the conversation blocked; the ordinary delivery then sends it as the next turn,
+  once.
+- Otherwise (Claude, or Codex without `turn/steer`): the turn is interrupted exactly as `ConversationCancel` does, the
+  message moves to the front of the queue, and the ordinary delivery sends it as the next turn when the turn ends. If
+  the turn already ended, or an interrupt is already pending, the message just moves to the front and is delivered.
+
+A retry with the same `operation` while the steer or interrupt is under way is answered `Ok` and does nothing more.
+`ConversationDequeue` of a message being steered is refused (`being sent now`), since Codex is about to have it. A
+message sent now out of turn can leave the conversation's receipt with a higher number than a message still waiting,
+so `ConversationSend` looks at the waiting queue before it judges a number stale.
+
 Protocol 92 adds `Command::SnoozePane { term, until }` and the defaulted `TermInfo.snoozed_until` (unix seconds;
 an older peer decodes it as `None`, and a test decodes the old shape). `until: None`, or a time already past, wakes the
 pane; a time more than a week ahead is refused, and so is a snooze of a chat session's pane (`conversation_id`) or of a
