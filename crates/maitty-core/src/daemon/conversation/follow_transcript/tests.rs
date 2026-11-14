@@ -1065,3 +1065,92 @@ fn a_secret_with_an_escape_inside_it_is_not_in_the_stored_reasoning() {
     assert!(!texts[0].contains(&token) && !texts[0].contains(head), "{}", texts[0]);
     assert!(texts[0].contains("[redacted]"));
 }
+
+/// A synthetic Claude transcript with the shape of a real one: a summary and a snapshot line, a
+/// side-chain line, a thinking block, two tool calls, an edit and a question.
+const CLAUDE_TRANSCRIPT: &str = include_str!("../fixtures/claude_transcript.jsonl");
+
+#[test]
+fn a_recorded_claude_transcript_replays_to_its_history_in_order() {
+    // `lines()` drops a CRLF too, so a Windows checkout replays the same as a Linux one.
+    let lines: Vec<String> = CLAUDE_TRANSCRIPT.lines().map(str::to_owned).collect();
+
+    let history = history_of(Format::Claude, &lines);
+
+    let items = items(&history);
+    assert_eq!(items.len(), 7, "{items:#?}");
+    assert_eq!(
+        message(items[0]),
+        (&Role::User, "add a greeting function to the demo project")
+    );
+    assert_eq!(
+        items[1].content,
+        Content::Reasoning {
+            text: "I should look at the project files before editing.".into()
+        }
+    );
+    assert_eq!(
+        message(items[2]),
+        (&Role::Assistant, "I will list the project files first.")
+    );
+    assert_eq!(
+        items[3].content,
+        Content::Tool {
+            kind: "commandExecution".into(),
+            output: "main.py\nutil.py".into(),
+            label: "ls /home/user/demo/src".into(),
+            input: Some(json!({
+                "command": "ls /home/user/demo/src",
+                "description": "List the source files",
+            })),
+            exit_code: None,
+            duration_ms: None,
+        }
+    );
+    assert_eq!(
+        items[4].content,
+        Content::Tool {
+            kind: "commandExecution".into(),
+            output: "The file /home/user/demo/src/util.py has been updated.".into(),
+            label: "Edit ".into(),
+            input: Some(json!({
+                "file_path": "/home/user/demo/src/util.py",
+                "old_string": "# greetings go here",
+                "new_string": "def greet(name):\n    return f\"Hello, {name}!\"",
+            })),
+            exit_code: None,
+            duration_ms: None,
+        }
+    );
+    // The transcript follower has no question model (the structured Claude adapter does): a question is a tool step carrying the question and its
+    // options as input, and the answer as output.
+    assert_eq!(
+        items[5].content,
+        Content::Tool {
+            kind: "commandExecution".into(),
+            output: "User has answered your questions: \"Which greeting style should it use?\"=\"Casual\".".into(),
+            label: "AskUserQuestion ".into(),
+            input: Some(json!({ "questions": [{
+                "question": "Which greeting style should it use?",
+                "header": "Style",
+                "multiSelect": false,
+                "options": [
+                    { "label": "Formal", "description": "Hello, Name." },
+                    { "label": "Casual", "description": "Hi Name!" },
+                ],
+            }] })),
+            exit_code: None,
+            duration_ms: None,
+        }
+    );
+    assert_eq!(
+        message(items[6]),
+        (&Role::Assistant, "The greeting function is added in util.py.")
+    );
+    assert!(items[3..=5].iter().all(|e| e.state == ItemState::Completed));
+    let turns = turns(&history);
+    assert_eq!(turns.len(), 1);
+    assert_eq!(turns[0].state, ItemState::Completed);
+    assert_eq!(turns[0].started_at_ms, Some(1_767_261_601_000));
+    assert_eq!(turns[0].completed_at_ms, Some(1_767_261_614_000));
+}
