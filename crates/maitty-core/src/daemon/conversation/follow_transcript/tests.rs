@@ -1123,3 +1123,63 @@ fn a_recorded_claude_transcript_replays_to_its_history_in_order() {
     assert_eq!(turns[0].started_at_ms, Some(1_767_261_601_000));
     assert_eq!(turns[0].completed_at_ms, Some(1_767_261_614_000));
 }
+
+const CODEX_ROLLOUT: &str = include_str!("../fixtures/codex_rollout.jsonl");
+
+#[test]
+fn a_recorded_codex_rollout_replays_to_its_history_in_order() {
+    let lines: Vec<String> = CODEX_ROLLOUT.lines().map(str::to_owned).collect();
+
+    let history = history_of(Format::Codex, &lines);
+
+    // The rollout holds an `exec_approval_request` event, and the follower makes no history item
+    // of it: the Codex arm reads only turn events, messages, reasoning, calls and outputs. The
+    // approval shows as the command step it asks about. The rollout's session_meta, turn_context,
+    // item_completed, token_count lines and the reasoning with no summary add no item either.
+    let items = items(&history);
+    assert_eq!(items.len(), 6, "{items:#?}");
+    assert_eq!(
+        message(items[0]),
+        (&Role::User, "add a greeting function to the demo project")
+    );
+    assert_eq!(
+        items[1].content,
+        Content::Reasoning {
+            text: "I should look at the project files before editing.".into()
+        }
+    );
+    assert_eq!(
+        message(items[2]),
+        (&Role::Assistant, "I will list the project files first.")
+    );
+    assert_eq!(
+        items[3].content,
+        Content::Tool {
+            kind: "commandExecution".into(),
+            output: "main.py\nutil.py".into(),
+            label: "ls /home/user/demo/src".into(),
+            input: None,
+            exit_code: Some(0),
+            duration_ms: Some(200),
+        }
+    );
+    let Content::Tool { kind, label, output, .. } = &items[4].content else {
+        panic!("not a file change: {:?}", items[4].content)
+    };
+    assert_eq!(
+        (kind.as_str(), label.as_str()),
+        ("fileChange", "Edited /home/user/demo/src/util.py")
+    );
+    assert!(output.contains("+def greet(name):"), "{output}");
+    assert_eq!(
+        message(items[5]),
+        (&Role::Assistant, "The greeting function is added in util.py.")
+    );
+    assert!(items[3..=4].iter().all(|e| e.state == ItemState::Completed));
+    let turns = turns(&history);
+    assert_eq!(turns.len(), 1);
+    assert_eq!(turns[0].source.turn, "00000000-0000-4000-8000-000000000301");
+    assert_eq!(turns[0].state, ItemState::Completed);
+    assert_eq!(turns[0].started_at_ms, Some(1_767_261_601_000));
+    assert_eq!(turns[0].completed_at_ms, Some(1_767_261_611_000));
+}

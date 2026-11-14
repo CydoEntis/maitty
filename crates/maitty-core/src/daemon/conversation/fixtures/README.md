@@ -30,4 +30,22 @@ never paste it into an issue, a chat or a model. Clean-up checklist for a new fi
    file for your home path, login name, machine name and those prefixes before committing.
 6. Keep it small (about 15 lines) and keep one line per kind of block the test needs.
 
-A recorded Codex rollout replay is a separate piece of work (MAITTY-318).
+### Codex
+
+`codex_rollout.jsonl` is a Codex rollout (session file) built the same way: a fictional task, made-up
+ids, paths under `/home/user/demo` and fixed 2026 timestamps. It holds `session_meta`,
+`turn_context`, the injected environment message (skipped), the person's message, one reasoning
+item with a summary and one with an empty summary and only `encrypted_content` (no history item), a
+shell command with its output, an `exec_approval_request` event, a `token_count` event, an
+`apply_patch` call with its output, the closing message and `task_complete`.
+`a_recorded_codex_rollout_replays_to_its_history_in_order` replays it and asserts the items in order.
+The follower makes no history item from an approval event; the test says so. No rollout on the
+machine this was written on held an approval event, so that line's shape comes from the Codex
+protocol, not from a recording.
+
+Record a new one by running Codex on a throwaway task in a scratch folder, then reading the newest
+file under `~/.codex/sessions/<year>/<month>/<day>/rollout-*.jsonl`. Learn only the line shapes (print
+field names and types, never values), and write each line fresh. The recording holds your real prompts,
+paths, account ids and your instructions; keep it local and never paste it into an issue, a chat or a
+model. Apply the checklist above, and also: `base_instructions`, `encrypted_content`, account, creator
+and thread ids, `repository_url` and every `commit_hash` are placeholders.
