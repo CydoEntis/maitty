@@ -120,14 +120,16 @@ describe('usage and cost in the desktop app', () => {
     await waitFor(() => { expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument() })
   })
 
-  it('has no usage button in the sidebar footer: Settings holds it, one key away', async () => {
+  it('has no usage button in the sidebar footer or the Settings nav: its own key opens it', async () => {
     const user = userEvent.setup()
     renderDesktopApp()
     await screen.findByRole('button', { name: 'Settings' })
     expect(screen.queryByRole('button', { name: 'Usage and cost' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Settings' }))
-    await user.click(within(screen.getByRole('navigation', { name: 'Settings sections' })).getByRole('button', { name: /Usage & cost/ }))
+    expect(within(screen.getByRole('navigation', { name: 'Settings sections' })).queryByRole('button', { name: /Usage & cost/ })).toBeNull()
+    await user.keyboard('{Escape}')
+    await user.keyboard('{Control>}{Shift>}u{/Shift}{/Control}')
     expect(await screen.findByRole('region', { name: 'Usage and cost' })).toBeInTheDocument()
   })
 

@@ -33,9 +33,6 @@ function loadText(loads: readonly ProcessLoad[]): string {
   return `${formatCpu(sumCpu(loads))} · ${formatMemory(sumMemory(loads))}`
 }
 
-const WEBVIEW_ICON = <path d="M3 5h18v12H3zM8 21h8M12 17v4" />
-const PROCESS_ICON = <path d="M4 4h16v16H4zM9 9h6v6H9M12 1v3M12 20v3M1 12h3M20 12h3" />
-const OVERLAY_ICON = <path d="M3 17l5-6 4 4 5-8 4 5" />
 
 export function PerformanceSection({ preferences, update, appVersion }: PerformanceSectionProps) {
   const sample = usePerfSample()
@@ -51,7 +48,7 @@ export function PerformanceSection({ preferences, update, appVersion }: Performa
   const gpu = document.documentElement.dataset.gpu === 'webgl' ? 'WebGL 2' : 'software'
   return (
     <>
-      <Card title="Web view" color="var(--ansi-blue)" iconPath={WEBVIEW_ICON}>
+      <Card title="Web view">
         <Row label="Frames" detail="A frame over 50 ms is a hitch you can feel. Idle, this stays near the display's rate.">
           <Value>{framesText(sample)}</Value>
         </Row>
@@ -70,8 +67,6 @@ export function PerformanceSection({ preferences, update, appVersion }: Performa
       </Card>
       <Card
         title="Processes"
-        color="var(--ansi-green)"
-        iconPath={PROCESS_ICON}
         meta={<span className="mx-scard-value">CPU is a share of one core{loads ? ` of ${String(loads.cores)}` : ''}</span>}
         footRow
         foot={<><button type="button" className="mx-text-button" onClick={copyReport}>Copy report</button><span>Paste it into a bug report, or hand it to an agent.</span></>}
@@ -92,7 +87,7 @@ export function PerformanceSection({ preferences, update, appVersion }: Performa
         ))}
         {processes.isError && <Row label="Process figures are unavailable" detail={processes.error.message}><Value>{''}</Value></Row>}
       </Card>
-      <Card title="Overlay" color="var(--ansi-mag)" iconPath={OVERLAY_ICON}>
+      <Card title="Overlay">
         <Row label="Show the readout over the window" detail="Frames and process load in a corner while you work, so a lag spike can be matched with what caused it.">
           <Switch aria-label="Show the performance overlay" checked={preferences.perfOverlay} onCheckedChange={(value) => { update('perfOverlay', value) }} />
         </Row>

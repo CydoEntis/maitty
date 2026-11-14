@@ -1088,7 +1088,7 @@ has a message box that works: Enter sends, Stop interrupts, a message sent while
 waits in a queue (with Remove), and each permission the agent asks for appears in the chat with
 **Yes once (y)**, **This session (a)** and **No (n)**; a command also has **Always in this project**,
 which approves that exact command (written the same) in that project from then on. Those are kept
-in `chat-allowed-commands.json` in Maitty's data folder, never in the repo. Settings → Agents lists
+in `chat-allowed-commands.json` in Maitty's data folder, never in the repo. Settings → Permissions lists
 them with a **Forget** for each, which takes effect at once (a second service running on the same
 computer drops it only when it next starts). Nothing else is ever remembered: a file change, an extra permission or a
 question always asks. A chat session has no terminal (to use the agent's own screen, start a terminal
