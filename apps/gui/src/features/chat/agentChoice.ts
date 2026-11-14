@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { loadAgentModels } from '@/api/daemon'
 import type { ChatAgent } from '@/features/workspace/model/chatView'
-import { hasAbility } from '@/features/workspace/model/agentAbilities'
+import { abilitiesOf, hasAbility } from '@/features/workspace/model/agentAbilities'
 import { modelLabel } from './chatMeta'
 
 /** How much the model thinks before it answers. */
@@ -71,7 +71,7 @@ export function setDiscoveredModels(agent: ChatAgent, models: readonly ModelOpti
   // A Default the agent described (the model it will run) says what it is, instead of the generic line.
   const described = models.find((model) => model.id === DEFAULT_PICK)
   const first = described === undefined ? KNOWN_MODELS[agent][0] as ModelOption : { ...(KNOWN_MODELS[agent][0] as ModelOption), blurb: described.blurb }
-  const fixed = agent === 'claude' ? KNOWN_MODELS.claude.slice(1).filter((model) => !read.some((r) => r.id === model.id)) : []
+  const fixed = abilitiesOf(agent).readModelsAreExtras ? KNOWN_MODELS[agent].slice(1).filter((model) => !read.some((r) => r.id === model.id)) : []
   discovered = { ...discovered, [agent]: [first, ...read, ...fixed] }
   for (const listener of modelListeners) listener()
 }
@@ -106,7 +106,7 @@ export function choiceFor(model: ModelOption): string {
  */
 export function effortAllowed(agent: ChatAgent, model: ModelOption | undefined, level: Reasoning): boolean {
   if (model?.efforts != null) return model.efforts.includes(level)
-  return !(agent === 'codex' && level === 'max')
+  return !(abilitiesOf(agent).maxEffortNeedsListing && level === 'max')
 }
 
 /** The models the menu shows before "More models" is opened: the newest, and the picked one wherever it is. */
