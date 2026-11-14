@@ -4,10 +4,9 @@
 .mx-main-wrap { flex: 1; min-width: 0; display: flex; padding: 12px; }
 .mx-main {
   flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; overflow: hidden;
-  background: linear-gradient(180deg, rgba(var(--hl), calc(.035 * var(--hk) * var(--gk))), rgba(var(--hl), calc(.012 * var(--hk) * var(--gk))) 120px), var(--main);
+  background: var(--main);
   border: 1px solid rgba(var(--hl), calc(.09 * var(--hk)));
   border-radius: var(--r14);
-  box-shadow: inset 0 1px 0 rgba(var(--hl), calc(.05 * var(--hk) * var(--gk))), 0 10px 30px -12px rgba(var(--sd), calc(.7 * var(--sk) * var(--gk)));
   transition: border-color .2s ease;
 }
 
@@ -68,8 +67,8 @@
 .mx-pane.is-terminal { background: var(--main); }
 /* Two or more panes are separate cards on the window's ground with a gap between them, not boxes inside one big card. */
 /* A pane with terminals pinned under it is a card too, so the two read as a pair. */
-.mx-pane.is-card, .mx-pane-cell:has(> .mx-terms) > .mx-pane { background: var(--main); border: 1px solid var(--m-line); box-shadow: var(--m-edge), var(--m-shadow); }
-.mx-main:has(> .mx-pane-stack > .mx-panes.is-split:not(.is-kept)), .mx-main:has(> .mx-pane-stack > .mx-panes:not(.is-kept) .mx-terms.is-under) { background: none; border-color: transparent; box-shadow: none; backdrop-filter: none; overflow: visible; }
+.mx-pane.is-card, .mx-pane-cell:has(> .mx-terms) > .mx-pane { background: var(--main); border: 1px solid var(--line); }
+.mx-main:has(> .mx-pane-stack > .mx-panes.is-split:not(.is-kept)), .mx-main:has(> .mx-pane-stack > .mx-panes:not(.is-kept) .mx-terms.is-under) { background: none; border-color: transparent; box-shadow: none; overflow: visible; }
 .mx-panes.is-split, .mx-panes:has(.mx-terms.is-under) { padding: 0; }
 
 /* The gap between two columns, or two panes of a column, is the handle: it lights while hovered or dragged. */
@@ -112,13 +111,12 @@
 /* An agent's own terminals: a tab of the side panel, or a drawer under its chat. */
 .mx-terms { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .mx-terms.is-panel { flex: 1; }
-/* Under the chat: a glass card of its own. Its height eases between folded and open; the terminal inside keeps the
+/* Under the chat: a card of its own. Its height eases between folded and open; the terminal inside keeps the
    open size throughout and is only uncovered, so its text is never fitted again on the way. */
 .mx-terms.is-under {
   position: relative; flex: none; height: min(var(--terms-open), 60cqh); min-height: 42px; overflow: hidden;
   border-radius: var(--r14); border: 1px solid rgba(var(--hl), calc(.11 * var(--hk)));
-  background: color-mix(in srgb, var(--main) 70%, transparent); backdrop-filter: blur(26px) saturate(1.35);
-  box-shadow: var(--m-edge), var(--m-shadow);
+  background: color-mix(in srgb, var(--main) 70%, transparent);
   transition: height .28s cubic-bezier(.2, .8, .2, 1);
   animation: mx-rise .3s cubic-bezier(.2, .8, .2, 1);
 }

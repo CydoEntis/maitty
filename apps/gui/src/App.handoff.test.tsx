@@ -1321,7 +1321,7 @@ describe('desktop overlays and pane tools', () => {
     await user.click(await screen.findByRole('menuitemradio', { name: 'Rounded' }))
 
     expect(document.documentElement.dataset.corners).toBe('rounded')
-    expect(document.documentElement.dataset.finish).toBe('flat')
+    expect(document.documentElement.dataset.finish).toBeUndefined()
     expect(within(bar).getByRole('button', { name: 'Corners: Rounded' })).toBeInTheDocument()
   })
 

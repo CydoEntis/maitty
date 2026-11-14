@@ -174,7 +174,7 @@ outside closes it. Only this computer's daemon is asked: another machine's close
 **Desktop service states** (`ServiceStatus`, `model/serviceState.ts`). While maittyd does not answer, every status reads
 Unknown, spinners stop and input waits. The first four failed tries show a thin bar under the pane header, "Reconnecting to
 maittyd · your sessions are still running", with "Try N of 5 · next in Ns" (it ticks each second) and **Retry now**. After the
-fifth a veil (the main card under `color-mix(--main 55%)` and a 3px blur) and one glass card take over: **Maitty service
+fifth a veil (the main card under `color-mix(--main 55%)`) and one card take over: **Maitty service
 stopped**, a line saying how many sessions are saved, the technical details under a Details disclosure, and **Start service**,
 **Try again** and **Open log** (shows `daemon.log` selected in the data folder; the only record of why it stopped). The desktop's connection starts maittyd itself on every try (`open_or_spawn_for_user`), so both buttons try
 again at once; there is no separate start-service command. A running service of another protocol gets the same veil and card,

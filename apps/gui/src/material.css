@@ -10,15 +10,15 @@
  * from a library) or `mx-field`. A new surface joins a list here; it does not set a background of
  * its own. Terminal panes stay solid: the terminal draws its own ground.
  *
- * The desktop has one look, flat: solid fills, a hairline, no blur. Floats keep one plain shadow so
- * they stay apart from what is under them. The one shape choice is the corners (`data-corners`,
+ * The desktop has one look, flat: solid fills, a hairline, no blur or gradient. Floats keep one plain
+ * shadow so they stay apart from what is under them. The one shape choice is the corners (`data-corners`,
  * the rule at the end of this file and the `--r-*` tokens in `tokens.css`). A component never asks
  * which is on; it reads the tokens.
  */
 
 /* ---- tokens ---- */
 /* Portalled content can sit outside the window root, so the light and shade have defaults here. */
-:root { --hl: 255, 255, 255; --hs: 255, 255, 255; --hk: 1; --sd: 0, 0, 0; --sk: 1; --gk: 1; }
+:root { --hl: 255, 255, 255; --hs: 255, 255, 255; --hk: 1; --sd: 0, 0, 0; --sk: 1; }
 /* The theme's own solid colours, under the role names. Declared on the window root as well, because
    the theme colours are set inline there. */
 :root, .mx-app, .app-shell {
@@ -27,28 +27,6 @@
   --m-sel: var(--sel);
   --m-hover: var(--hover);
   --m-pane: var(--pane);
-}
-:root[data-finish="flat"],
-:root[data-finish="flat"] .mx-app {
-  --m-panel: var(--main, var(--popover));
-  --m-float: var(--main, var(--popover));
-  /* A field sits one step off the pane it is on, so the message box can be told from its ground. */
-  --m-field: var(--raise);
-  --m-line: var(--line);
-  --m-sheen: none;
-  --m-sheen-main: none;
-  --m-edge: none;
-  --m-shadow: none;
-  --m-blur: none;
-  --m-line-float: var(--line);
-  --m-sheen-float: none;
-  --m-edge-float: none;
-  --m-shadow-float: none;
-  --m-blur-float: none;
-  --m-line-field: var(--line2);
-  --m-sheen-field: none;
-  /* Gradients and lift (every rule that multiplies by --gk) take nothing; hover tints stay. */
-  --gk: 0;
 }
 /* ---- component tokens ----
    The shared pieces every control reads, so one component serves every theme:
@@ -68,10 +46,6 @@
   --c-knob: var(--muted); --c-knob-on: var(--on-accent); --c-knob-sh: none;
 }
 
-/* Without a GPU the blur is dropped (workspace.css), and the fills turn solid with it. */
-:root[data-gpu="software"],
-:root[data-gpu="software"] .mx-app { --m-panel: var(--main, var(--popover)); --m-float: var(--main, var(--popover)); --m-field: var(--main, var(--popover)); --m-blur: none; --m-blur-float: none; }
-
 /* ---- the window behind the cards: the theme's ground; Settings › Background glow adds its tints (workspace.css) ---- */
 .mx-window { background: var(--bg); }
 
@@ -81,13 +55,10 @@
 .mx-app .mx-sidebar,
 .mx-app .mx-inspect,
 .mx-app .mx-activity {
-  background: var(--m-sheen), var(--m-panel);
-  border: 1px solid var(--m-line);
-  box-shadow: var(--m-edge), var(--m-shadow);
-  backdrop-filter: var(--m-blur);
+  background: var(--main);
+  border: 1px solid var(--line);
+  box-shadow: none;
 }
-/* The workspace card carries a flat highlight, the sidebar one that fades out over its first 120px. */
-.mx-app .mx-main { background: var(--m-sheen-main), var(--m-panel); }
 
 /* ---- float ---- */
 .mx-app .mx-ctx,
@@ -108,78 +79,39 @@
 .mx-app .mx-pane-ended,
 .mx-app .mx-focus-pill,
 .mx-pop {
-  background: var(--m-sheen-float), var(--m-float);
-  border: 1px solid var(--m-line-float);
-  box-shadow: var(--m-edge-float), var(--m-shadow-float);
-  backdrop-filter: var(--m-blur-float);
+  background: var(--main);
+  border: 1px solid var(--line);
+  /* One plain shadow keeps a flat float apart from what is under it. */
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .35);
 }
+/* The corner readout sits on the window, not over it. */
+.mx-app .mx-perf-hud { box-shadow: none; }
 /* Whatever opens over the window is solid: the theme's own ground, never a tint of what is behind it. This sits after the
    roles above and is more specific than any component's own fill, so a popup that was painted from a see-through role
-   (a hover or a raise tint) is still opaque. The finish keeps its light and shade (sheen, edge, shadow) on top. */
+   (a hover or a raise tint) is still opaque. */
 .mx-app :is([data-radix-popper-content-wrapper] > *, [role="menu"], [role="listbox"], [role="dialog"], [role="alertdialog"], [role="tooltip"], .open-project-dialog, .mx-pop, .mx-menu, .mx-picker-menu, .mx-tip, .mx-ctx, .mx-palette, .mx-find, .mx-notice) {
   background-color: var(--main);
 }
 :root :is([data-radix-popper-content-wrapper] > *) { background-color: var(--main); }
 
-/* One plain shadow keeps a flat float apart from what is under it. */
-:root[data-finish="flat"] .mx-ctx,
-:root[data-finish="flat"] .mx-palette,
-:root[data-finish="flat"] .mx-find,
-:root[data-finish="flat"] .mx-settings,
-:root[data-finish="flat"] .mx-crew-menu,
-:root[data-finish="flat"] .mx-ns-dialog,
-:root[data-finish="flat"] .mx-rename,
-:root[data-finish="flat"] .mx-welcome,
-:root[data-finish="flat"] .mx-notice,
-:root[data-finish="flat"] .mx-menu,
-:root[data-finish="flat"] .mx-picker-menu,
-:root[data-finish="flat"] .maitty-toaster [data-sonner-toast][data-styled="true"],
-:root[data-finish="flat"] .mx-tip,
-:root[data-finish="flat"] .mx-upd-card,
-:root[data-finish="flat"] .mx-pane-ended,
-:root[data-finish="flat"] .mx-focus-pill,
-:root[data-finish="flat"] .mx-pop { box-shadow: 0 10px 28px rgba(0, 0, 0, .35); }
-:root[data-finish="flat"] .mx-settings-scrim { backdrop-filter: none; }
-
 /* ---- field ---- */
+/* A field sits one step off the pane it is on, so the message box can be told from its ground. */
 .mx-app .mx-box,
 .mx-app .mx-settings-tray,
 .mx-field {
-  background: var(--m-sheen-field), var(--m-field);
-  border: 1px solid var(--m-line-field);
-  box-shadow: var(--m-edge-float);
-  backdrop-filter: none;
+  background: var(--raise);
+  border: 1px solid var(--line2);
+  box-shadow: none;
 }
-.mx-app .mx-settings-tray { border-top: 0; box-shadow: none; }
+.mx-app .mx-settings-tray { border-top: 0; }
 
-/* The new chat page sits over the panes, so it stays opaque in both finishes. */
+/* The new chat page sits over the panes, so it stays opaque. */
 .mx-app .mx-newchat { background: var(--main, var(--popover)); }
-
-/* ---- the same roles in the older conversation shell (App.css) ---- */
-:root .main-card, :root .context-panel, :root .empty-workspace {
-  background: var(--m-sheen), var(--m-panel);
-  border-color: var(--m-line);
-  box-shadow: var(--m-edge), var(--m-shadow);
-  backdrop-filter: var(--m-blur);
-}
-:root .settings-dialog {
-  background: var(--m-sheen-float), var(--m-float);
-  border-color: var(--m-line-float);
-  box-shadow: var(--m-edge-float), var(--m-shadow-float);
-  backdrop-filter: var(--m-blur-float);
-}
-:root .composer-box, :root .user-bubble, :root .activity-row, :root .approval-request {
-  background: var(--m-sheen), var(--m-field);
-  border-color: var(--m-line);
-  box-shadow: var(--m-edge);
-}
 
 /* ---- inside a float: the settings dialog's own parts take the material, not fills of their own ---- */
 .mx-app .mx-settings-nav { background: var(--m-well); border-right-color: var(--line); }
 .mx-app .mx-settings-header { background: transparent; border-bottom-color: var(--line); }
 
-/* ---- shape rules ----
-   What the tokens cannot say. The look is flat (no blur anywhere), and Square corners square every corner;
-   Rounded keeps each component's own radius. */
+/* ---- corners ----
+   What the tokens cannot say: Square squares every corner, Rounded keeps each component's own radius. */
 :root[data-corners="square"] .mx-app * { border-radius: 0 !important; }
-.mx-app * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }

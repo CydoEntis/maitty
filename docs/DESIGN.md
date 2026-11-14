@@ -219,17 +219,22 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   below the top edge and 36px in from the side, clear of the title bar's controls.
 - **One material, three roles (`apps/gui/src/material.css`).** Every surface is a *panel* (sidebar, main card,
   inspector), a *float* (menus, popovers, dialogs, the palette, find, toasts) or a *field* (the message box and its
-  tray), and takes its fill, hairline and shadow from that role's `--m-*` tokens: solid fills, a hairline, no
-  highlight (`--gk` is 0, which turns off every gradient and lift that multiplies by it; hover tints stay). A new
+  tray), and takes its fill, hairline and shadow from that role's rule in `material.css`: a panel is `--main` with a
+  `--line` hairline and no shadow, a float the same with one plain shadow, a field `--raise` with a `--line2` hairline.
+  There is one finish, flat: no gradient, highlight or blur anywhere (no `backdrop-filter`; hover tints stay). A new
   surface is added to a role's list in `material.css`; it does not set a background of its own. A popover opens
   through `PopupContent` (`components/ui/popup.tsx`) or carries `mx-pop`, so it is portalled into the window root and
   takes the float role. **Inside a surface**, nothing reads the theme's solid colours directly: a sunken control is
   `--m-well`, a raised or current row `--m-raise`, a picked row `--m-sel`, a hovered one `--m-hover`, a dialog's own
   ground `--m-pane`, each mapped to the theme's `--well`/`--raise`/`--sel`/`--hover`/`--pane`. Tints are written
   `rgba(var(--hl), calc(.06 * var(--hk)))`, never a fixed white. `src/material.test.ts` fails when a stylesheet other
-  than `material.css`, `index.css` and `tokens.css` reads a solid surface colour or a fixed white. Left on purpose:
-  terminal grounds (`--term`, `--main` under a terminal), scrims, brand and status colours, the switch knob, and the
-  legacy `App.css` shell outside the window root.
+  than `material.css`, `index.css` and `tokens.css` reads a solid surface colour or a fixed white, and when any
+  stylesheet reads a token of the removed glass finish (`--m-sheen`, `--m-edge`, `--m-shadow`, `--m-blur`, `--m-line`,
+  `--m-panel`, `--m-float`, `--m-field`, `--gk`, `--blur-pop`), selects on `data-finish` or blurs with
+  `backdrop-filter`. It reads the stylesheets from disk, because Vitest hands a test every `.css` import
+  as an empty string. Left on purpose: terminal grounds (`--term`, `--main` under a terminal), scrims, brand and status
+  colours, and the browser preview's `App.css` shell (`features/preview/`), which keeps its own fills and `data-theme`
+  tokens in `index.css`.
 - **Design tokens (`apps/gui/src/tokens.css`).** The handoff's role names over the theme's colours, so a component
   never reads a theme colour or a raw value: `--bubble` (a user message), `--needs`/`--on-needs` (the theme's `--warn`,
   meaning needs you and nothing else), `--err`, `--focus`/`--link` (the theme's blue), code colours (`--code-kw`,
@@ -258,11 +263,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   gallery shows every primitive in every state, and the chat's cards at 760 and 360px, on any theme and either corners: open the app or the browser preview
   with `#gallery` (`#gallery?theme=Paper&corners=rounded`; `features/gallery/`).
 - **Corners: Square or Rounded, any theme** (Settings › Appearance › Corners, `corners`; the root carries
-  `data-corners`, and `data-finish` is always `flat`). Square is the default. Corners are shape only, never colour or
+  `data-corners`). Square is the default. Corners are shape only, never colour or
   type: every theme wears either, in Inter and JetBrains Mono (`withLook` in `theme/corners.ts` sets `--ui`, `--mono`
   and the shading). Square is the one rule at the end of `material.css`, which zeroes every radius inside the window;
-  Rounded sets `--r-control` 6px, `--r-panel` 10px and `--r-badge` 3px. Until a component moves onto those tokens
-  (the shared primitives, MAITTY-375) it keeps its own radius under Rounded. The corners are the desktop app's own: the
+  Rounded sets `--r-control` 6px, `--r-panel` 10px and `--r-badge` 3px. A component not yet on those tokens keeps its
+  own radius under Rounded. The corners are the desktop app's own: the
   shared `window_style` setting is not read by the desktop. A window style saved before the switch carries over: Glass,
   Flat and the older names to Rounded, Squared and Retro Pixel to Square (`cornersOfWindowStyle`). **Components are
   built once and read tokens, never the corners.** Besides the base tokens, the shared pieces read the component
@@ -362,7 +367,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   `--muted` (the daemon's `TermInfo.resume_at`, in this computer's time; `limited until Thu 14:05` when that is not today), and it goes back to the daemon's status when that
   time comes or the daemon clears it. Only that time makes a session limited, and only one the daemon calls idle or done: one that works, asks or failed keeps its status. A limited session is listed under the sidebar's Needs you and nowhere else that says needs you: the jump, the tray, the counts and the notices leave it out, because it waits on the limit and not on you, and its limit ending is not a new finish. Any other agent row has, at the right in 11px `--muted`, how long it has been in its state (`now`, `4m`, `3h`,
   `2d`; the daemon's `TermInfo.since`); it gives way to the close button on hover. A finished agent's menu has **Mark as
-  done**, which files it under Idle without opening it (`MarkSeen`). A shell's tile is a flat `--raise` square with a teal `>_`. The selected row is a raised glass pill. The row
+  done**, which files it under Idle without opening it (`MarkSeen`). A shell's tile is a flat `--raise` square with a teal `>_`. The selected row is a raised pill. The row
   is named by the name you gave it, else a shell's folder, else its agent. **Rename**: double-click, F2 or the menu
   turns the name into a field; Enter or leaving saves, Esc cancels, empty clears. Project colours are five tokens
   (`--proj-1` to `--proj-5`: teal, blue, pink, violet, green), chosen from the project's name, never amber or red.
@@ -597,7 +602,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   (`data/agentTerminals.ts`), so the terminal app lists them as sessions, and one whose agent is gone is a row again.
   They show in the side panel's Terminal tab, or pinned under the agent's chat (Settings › Terminal › Panes ›
   Terminals open in, the layout buttons (the drawer icon pins them under, the side-panel icon moves them back), or
-  the pane menu): a glass card of its own 8px under the pane, with a centred handle to size it (120 to 640px, at most
+  the pane menu): a card of its own 8px under the pane, with a centred handle to size it (120 to 640px, at most
   60% of the two together; `model/terminalDrawer.ts`), folding to its 42px header (the **Terminals** button or ×),
   and starting folded in a window under 760px tall. The card's height eases over .28s; the terminal inside stays
   mounted at its open size and is only uncovered, so its text is never fitted again on the way. A shell's terminals
@@ -823,7 +828,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   are when it ends is where the next slide starts from; the two together made the list bounce.
 - **Sidebar footer and updates.** The footer's left slot shows the version, or what an update needs
   from you: a pill that opens a card upward with the matching actions. An update waiting to be downloaded or
-  installed is a glass button, a sheen sweeping across it, a tile with an arrow falling into a tray, **Update** and the
+  installed is a button, a sheen sweeping across it, a tile with an arrow falling into a tray, **Update** and the
   version in mono (**Restart to update** once downloaded); the download's percent and **Update failed** keep a tinted pill. Every card closes with an X in its corner; the download's card shows the bar, what has arrived of the whole (`34.9 MB of 102 MB`) and, on the right, the percent and the time left from the last ten seconds' speed (`about 12 min left`, `downloadEta.ts`). Settings shows the same bar and line under its update row while a download runs, with the percent on its button (`DownloadProgress`); a light passes along the bar, and with no size yet a short run slides across, so it never reads as stuck. The updater downloads first and installs only on
   **Restart now**, or by itself when the app is idle, so sessions keep running either way. Settings › General › Updates shows the state with
   one fitting button and two switches: download automatically (on) and **Install updates when idle** (on, helper
