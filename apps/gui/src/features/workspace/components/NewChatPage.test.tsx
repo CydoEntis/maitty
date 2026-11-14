@@ -34,15 +34,30 @@ function codexPage(onStart: () => Promise<void>, codexYolo = false) {
 }
 
 /** The page opens on the most recent project: it is the first of the list. */
+/** Waits until the page has picked this project: the Where pill in the tray names it. */
 async function pickProject(name: string) {
-  expect(await screen.findByRole('button', { name: `Project: ${name}` })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: new RegExp(`^Where this chat runs: ${name}( ·|,|$)`) })).toBeInTheDocument()
 }
 
+
+/** Opens the Where popover in the message box's tray, unless it is open, so the project, branch and Work in controls can be found. */
+/** The menu opened last: the Where popover stays open under a project or branch menu, and both are dialogs. */
+async function lastPopup() {
+  const open = await screen.findAllByRole('dialog')
+  const last = open.at(-1)
+  if (last === undefined) throw new Error('no menu is open')
+  return last
+}
+
+async function inWhere() {
+  const pill = await screen.findByRole('button', { name: /^Where this chat runs/ })
+  if (pill.getAttribute('aria-expanded') !== 'true') await userEvent.click(pill)
+}
 describe('the new chat page', () => {
   it('opens ready to type on the most recent project, with no folder step', async () => {
     page()
     expect(screen.getByRole('heading', { name: 'What should we work on?' })).toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: 'Project: growth' })).toBeInTheDocument()
+    await pickProject('growth')
     expect(screen.queryByRole('textbox', { name: 'Search projects or paste a path' })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'First message' })).toHaveFocus()
   })
@@ -57,6 +72,7 @@ describe('the new chat page', () => {
     expect(screen.getByText('No projects match. Paste a full path, or use Browse…')).toBeInTheDocument()
     await userEvent.type(screen.getByRole('textbox', { name: 'Search projects or paste a path' }), '/srv/new-app')
     await userEvent.click(within(screen.getByRole('list', { name: 'Open folder' })).getByRole('button', { name: /^Open new-app/ }))
+    await inWhere()
     expect(await screen.findByRole('button', { name: 'Project: new-app' })).toBeInTheDocument()
   })
 
@@ -67,35 +83,43 @@ describe('the new chat page', () => {
         <NewChatPage machine={0} machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="claude" browse={() => Promise.resolve(null)} onStart={() => Promise.resolve()} onWarm={onWarm} onOtherMachine={() => undefined} onCancel={() => undefined} />
       </div>,
     )
-    // Own copy is on: a worktree is made when the chat starts, so there is no checkout to start the agent in ahead.
-    await screen.findByRole('switch', { name: 'Own copy' })
-    await userEvent.click(screen.getByRole('switch', { name: 'Own copy' }))
+    // New worktree is chosen: a worktree is made when the chat starts, so there is no checkout to start the agent in ahead.
+    await inWhere()
+    await screen.findByRole('radio', { name: 'This folder' })
+    await inWhere()
+    await userEvent.click(screen.getByRole('radio', { name: 'This folder' }))
     await waitFor(() => { expect(onWarm).toHaveBeenLastCalledWith({ folder: '/dev/growth', agent: 'claude', model: 'default', reasoning: 'medium', mode: 'default' }) })
 
     unmount()
     expect(onWarm).toHaveBeenLastCalledWith(null)
   })
 
-  it('shows the project, its branch and Own copy as three controls, with the tasks under them', async () => {
+  it('puts the project, its branch and where to work in the Where popover, with the tasks on the page', async () => {
     page()
+    await inWhere()
     expect(await screen.findByRole('button', { name: 'Project: growth' })).toBeInTheDocument()
+    await inWhere()
     expect(await screen.findByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })).toBeInTheDocument()
-    expect(screen.getByRole('switch', { name: 'Own copy' })).toBeChecked()
+    await inWhere()
+    expect(screen.getByRole('radio', { name: 'New worktree' })).toBeChecked()
     expect(within(screen.getByRole('list', { name: 'Suggested tasks' })).getAllByRole('button')).toHaveLength(3)
   })
 
   it('swaps the project from the dropdown under its button', async () => {
     page()
+    await inWhere()
     await userEvent.click(await screen.findByRole('button', { name: 'Project: growth' }))
-    const menu = await screen.findByRole('dialog')
+    const menu = await lastPopup()
     expect(within(menu).getByRole('radio', { name: /growth/ })).toHaveTextContent('6')
     await userEvent.click(within(menu).getByRole('radio', { name: /api/ }))
+    await inWhere()
     expect(await screen.findByRole('button', { name: 'Project: api' })).toBeInTheDocument()
   })
 
   it('starts in a worktree of its own on a new branch by default, from where the checkout is', async () => {
     const onStart = vi.fn<(request: { message: string; branch?: unknown }) => Promise<void>>().mockResolvedValue(undefined)
     page(onStart)
+    await inWhere()
     await screen.findByText(/Starts from dev · ↓2 behind origin\/dev/)
     await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'hello')
     await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
@@ -105,16 +129,20 @@ describe('the new chat page', () => {
 
   it('names the new branch after the message as it is typed, and two words while it has none', async () => {
     page()
+    await inWhere()
     expect(await screen.findByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })).toBeInTheDocument()
     await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'Fix the login bug')
+    await inWhere()
     expect(screen.getByRole('button', { name: 'Branch: fix-the-login-bug' })).toBeInTheDocument()
     await userEvent.clear(screen.getByRole('textbox', { name: 'First message' }))
+    await inWhere()
     expect(screen.getByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })).toBeInTheDocument()
   })
 
   it('names the branch after a suggested task when that is what is sent', async () => {
     const onStart = vi.fn<(request: NewChatRequest) => Promise<void>>().mockResolvedValue(undefined)
     page(onStart)
+    await inWhere()
     await screen.findByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })
     await userEvent.click(screen.getByRole('button', { name: /Review my uncommitted changes/ }))
     await waitFor(() => { expect(onStart.mock.calls[0]?.[0].branch?.name).toBe('review-my-uncommitted-changes') })
@@ -127,25 +155,30 @@ describe('the new chat page', () => {
           seed={{ folder: '/dev/growth', message: 'This continues an earlier chat whose context was full.' }} />
       </div>,
     )
+    await inWhere()
     expect(await screen.findByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })).toBeInTheDocument()
   })
 
   it('stops following the message once a branch is named', async () => {
     const onStart = vi.fn<(request: NewChatRequest) => Promise<void>>().mockResolvedValue(undefined)
     page(onStart)
+    await inWhere()
     await userEvent.click(await screen.findByRole('button', { name: /^Branch: / }))
     await userEvent.type(screen.getByRole('textbox', { name: 'Search or create a branch' }), 'my-own')
     await userEvent.click(screen.getByRole('radio', { name: 'Create branch my-own' }))
     await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'Fix the login bug')
+    await inWhere()
     expect(screen.getByRole('button', { name: 'Branch: my-own' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
     await waitFor(() => { expect(onStart.mock.calls[0]?.[0].branch?.name).toBe('my-own') })
   })
 
-  it('edits the checkout on its own branch when Own copy is turned off', async () => {
+  it('edits the checkout on its own branch when This folder is chosen', async () => {
     const onStart = vi.fn<(request: { message: string; branch?: unknown }) => Promise<void>>().mockResolvedValue(undefined)
     page(onStart)
-    await userEvent.click(await screen.findByRole('switch', { name: 'Own copy' }))
+    await inWhere()
+    await userEvent.click(await screen.findByRole('radio', { name: 'This folder' }))
+    await inWhere()
     expect(await screen.findByRole('button', { name: 'Branch: dev' })).toBeInTheDocument()
     await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'hello')
     await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
@@ -158,8 +191,10 @@ describe('the new chat page', () => {
     sync.behind = 2
     sync.pulled = []
     page()
-    await userEvent.click(await screen.findByRole('switch', { name: 'Own copy' }))
+    await inWhere()
+    await userEvent.click(await screen.findByRole('radio', { name: 'This folder' }))
     expect(await screen.findByText('↓2 behind origin/dev')).toBeInTheDocument()
+    await inWhere()
     await userEvent.click(screen.getByRole('button', { name: '↓ Pull' }))
     await waitFor(() => { expect(sync.pulled).toEqual(['/dev/growth']) })
   })
@@ -168,7 +203,9 @@ describe('the new chat page', () => {
     sync.dirty = true
     sync.behind = 1
     page()
-    await userEvent.click(await screen.findByRole('switch', { name: 'Own copy' }))
+    await inWhere()
+    await userEvent.click(await screen.findByRole('radio', { name: 'This folder' }))
+    await inWhere()
     const pull = await screen.findByRole('button', { name: '↓ Pull' })
     expect(pull).toBeDisabled()
     expect(pull).toHaveAttribute('title', 'You have uncommitted changes. Commit or stash first.')
@@ -184,6 +221,7 @@ describe('the new chat page', () => {
     expect(api).toHaveTextContent('↓3')
     expect(api).toHaveAttribute('title', '/dev/api')
     await userEvent.click(api)
+    await inWhere()
     expect(await screen.findByRole('button', { name: 'Project: api' })).toBeInTheDocument()
   })
 
@@ -266,12 +304,13 @@ describe('resuming a saved conversation from the new chat page', () => {
     expect(saved.read).toHaveBeenLastCalledWith('claude', '/dev/growth')
   })
 
-  it('starts the agent with the picked conversation in the folder it was saved in, without Own copy', async () => {
+  it('starts the agent with the picked conversation in the folder it was saved in, without a new worktree', async () => {
     saved.read.mockResolvedValue([{ id: ID, first_message: 'Fix the login redirect', last_active: HOURS_AGO_2 }])
     const onStart = vi.fn<(request: { resume: string | null; branch: unknown; folder: string }) => Promise<void>>().mockResolvedValue(undefined)
     page(onStart)
     await screen.findByRole('list', { name: 'Resume' })
-    expect(screen.getByRole('switch', { name: 'Own copy' })).toBeChecked()
+    await inWhere()
+    expect(screen.getByRole('radio', { name: 'New worktree' })).toBeChecked()
     expect(screen.getByText('A resumed conversation continues in growth, the folder it was saved in, not in a copy of its own.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Fix the login redirect/ }))
     await waitFor(() => { expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ folder: '/dev/growth', resume: ID, branch: null })) })
@@ -350,6 +389,7 @@ describe('the new chat page opened from a full chat', () => {
         <NewChatPage machine={0} machines={[{ machine: 0, label: 'This computer', local: true }]} projects={PROJECTS} defaultAgent="claude" browse={() => Promise.resolve(null)} onStart={() => Promise.resolve()} onOtherMachine={() => undefined} onCancel={() => undefined} seed={{ folder: '/dev/api', message: 'This continues an earlier chat' }} />
       </div>,
     )
+    await inWhere()
     expect(await screen.findByRole('button', { name: 'Project: api' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'First message' })).toHaveValue('This continues an earlier chat')
   })
@@ -359,6 +399,7 @@ describe('starting a chat and going on writing', () => {
   type Start = (request: NewChatRequest, options?: { background?: boolean }) => Promise<void>
   const box = () => screen.getByRole('textbox', { name: 'First message' })
   async function ready() {
+    await inWhere()
     await screen.findByRole('button', { name: /^Branch: [a-z]+-[a-z]+$/ })
   }
 
@@ -374,8 +415,10 @@ describe('starting a chat and going on writing', () => {
     expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ folder: '/dev/growth', message: 'first task', mode: 'plan' }), { background: true })
     expect(box()).toHaveValue('')
     expect(screen.getByRole('heading', { name: 'What should we work on?' })).toBeInTheDocument()
+    await inWhere()
     expect(screen.getByRole('button', { name: 'Project: growth' })).toBeInTheDocument()
-    expect(screen.getByRole('switch', { name: 'Own copy' })).toBeChecked()
+    await inWhere()
+    expect(screen.getByRole('radio', { name: 'New worktree' })).toBeChecked()
     expect(screen.getByRole('button', { name: /^Starting permission mode: Plan mode/ })).toBeInTheDocument()
   })
 
@@ -478,17 +521,18 @@ describe('starting a chat and going on writing', () => {
     expect(within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' })).not.toBeChecked()
   })
 
-  it('will not tick another agent with Own copy off, and says why', async () => {
+  it('will not tick another agent in This folder, and says why', async () => {
     const onStart = vi.fn<Start>(() => new Promise(() => undefined))
     page(onStart)
     await ready()
     const codex = within(screen.getByRole('group', { name: 'Also start with' })).getByRole('checkbox', { name: 'Codex' })
     await userEvent.click(codex)
-    await userEvent.click(screen.getByRole('switch', { name: 'Own copy' }))
+    await inWhere()
+    await userEvent.click(screen.getByRole('radio', { name: 'This folder' }))
 
     expect(codex).toHaveAttribute('aria-disabled', 'true')
     expect(codex).not.toBeChecked()
-    expect(codex).toHaveAccessibleDescription('Each agent needs a copy of its own. Turn on Own copy to start several.')
+    expect(codex).toHaveAccessibleDescription('Each agent needs a copy of its own. Choose New worktree to start several.')
     await userEvent.click(codex)
     expect(codex).not.toBeChecked()
     await userEvent.type(box(), 'fix the login{Enter}')
@@ -548,6 +592,7 @@ describe('the new chat page on another machine', () => {
     const onStart = vi.fn(() => Promise.resolve())
     remotePage(onStart)
     await pickProject('app')
+    await inWhere()
     expect(screen.queryByRole('button', { name: /^Branch/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Attach files' })).not.toBeInTheDocument()
     await userEvent.type(screen.getByRole('textbox', { name: 'First message' }), 'hello')
@@ -567,6 +612,7 @@ describe('the new chat page on another machine', () => {
   it('offers this computer as another place to start', async () => {
     const onOtherMachine = vi.fn()
     remotePage(() => Promise.resolve(), onOtherMachine)
+    await inWhere()
     await userEvent.click(await screen.findByRole('button', { name: 'Project: app' }))
     expect(screen.queryByRole('button', { name: /Browse for a folder/ })).not.toBeInTheDocument()
     await userEvent.click(await screen.findByRole('button', { name: /Start on This computer/ }))

@@ -18,7 +18,8 @@ import { LOCAL_MACHINE } from '@/api/machines'
 import { CHAT_AGENTS, chatAgentOf, type ChatAgent } from '../model/chatView'
 import { abilitiesOf, hasAbility } from '../model/agentAbilities'
 import { ageOf, nowSeconds, splitRecent, useFolderBranches, useGlances, useInstalledAgents, useSavedConversations, useSyncState } from '../model/newChatHost'
-import { Switch } from '@/components/ui/switch'
+import { Segmented, SegmentedItem } from '@/components/ui/radio-group'
+import { WherePopover } from './WherePopover'
 import type { NewSessionProject } from '../model/newSession'
 import { branchNameFromMessage, suggestBranchName } from '../model/worktreeName'
 import { Icon } from './glyphs'
@@ -106,6 +107,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const [branchPick, setBranchPick] = useState<{ folder: string; pick: BranchChoice } | null>(null)
   // Own copy: the agent works in a worktree of its own, so the checkout is untouched. On unless it is turned off.
   const [treeMode, setTreeMode] = useState(true)
+  const [whereOpen, setWhereOpen] = useState(false)
   // Other agents the same message also starts with, each on a new branch in a worktree of its own.
   const [alsoPicked, setAlsoPicked] = useState<ReadonlySet<ChatAgent>>(() => new Set())
   const [busy, setBusy] = useState(false)
@@ -115,6 +117,8 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const [takenNames, setTakenNames] = useState<ReadonlySet<string>>(() => new Set())
   const text = useRef<HTMLTextAreaElement>(null)
   const box = useRef<HTMLDivElement>(null)
+  // The box and its tray: the Where popover rises from its top edge, lined up with its left.
+  const stack = useRef<HTMLDivElement>(null)
   const { attachments } = useComposerState(NEW_CHAT_DRAFT)
   // A new chat runs on this computer, so its files are copied here and named by path in the first message.
   const attach = useAttachmentIntake({ conversation: NEW_CHAT_DRAFT, blocked: remote ? `Files stay on this computer, not on ${targetLabel}` : busy ? 'The chat is starting' : null })
@@ -277,7 +281,8 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
       event.preventDefault()
       if (event.ctrlKey || event.metaKey) startInBackground()
       else start()
-    } else if (event.key === 'Escape') {
+    } else if (event.key === 'Escape' && event.target instanceof Node && event.currentTarget.contains(event.target)) {
+      // An Escape from a menu or the Where popover (portalled, so outside this element) closes only that.
       event.preventDefault()
       onCancel()
     }
@@ -310,7 +315,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
   const inWorktree = new Set((branches?.worktrees ?? []).flatMap((tree) => (tree.branch === null ? [] : [tree.branch])))
   const branchLabel = branch?.name ?? branches?.current ?? 'detached'
   const pickBranch = (pick: BranchChoice) => { setBranchPick({ folder, pick }) }
-  // Own copy off drops a worktree pick: the agent edits the checkout, on the branch the folder is on.
+  // This folder drops a worktree pick: the agent edits the checkout, on the branch the folder is on.
   const setOwnCopy = (on: boolean) => {
     setTreeMode(on)
     if (!on && branch?.worktree === true) setBranchPick(null)
@@ -399,41 +404,6 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
           </div>
         ) : (
           <>
-            <div className="mx-nc-picks">
-              <ChipMenu title="Project" side="bottom" label={<strong>{folderName}</strong>} summary={folderName} icon={<span className="mx-ns-square" style={{ background: current?.color ?? 'var(--dim)' }} aria-hidden="true" />} search="Search projects" width={300}
-                sections={folderSections} fromQuery={fromPath}
-                footer={<>{browse !== null && <button type="button" className="mx-chip-action" onClick={pickOther}><Icon name="folder" size={12} />Browse for a folder…</button>}{otherMachines}{addMachine}</>} />
-              {branches !== null && (
-                <>
-                  <ChipMenu title="Branch" side="bottom" summary={branchLabel} label={<span className="mx-nc-branch">{branchLabel}</span>} icon={<span className="mx-nc-branch"><Icon name="branch" size={12} /></span>}
-                    search="Search or create a branch" width={320} sections={branchSections} fromQuery={fromBranchName} />
-                </>
-              )}
-              {branches !== null && (
-                <label className="mx-own-copy" title="The agent works in a worktree of its own, so your checkout stays as it is.">
-                  <Icon name="worktree" size={13} />
-                  <span>Own copy</span>
-                  <Switch checked={treeMode} onCheckedChange={setOwnCopy} aria-label="Own copy" />
-                </label>
-              )}
-            </div>
-            {sync !== null && !remote && (
-              <p className="mx-nc-sync" aria-live="polite">
-                {treeMode ? (
-                  <>
-                    <span className="mx-nc-dot" aria-hidden="true" />
-                    {`Starts from ${sync.branch ?? 'here'}`}{sync.upstream !== null && sync.behind > 0 ? ` · ↓${String(sync.behind)} behind ${sync.upstream}` : ''}
-                  </>
-                ) : sync.upstream !== null && sync.behind > 0 ? (
-                  <>
-                    <span className="mx-nc-behind">↓{sync.behind} behind {sync.upstream}</span>
-                    <button type="button" className="mx-nc-pull" disabled={sync.dirty || pulling} title={sync.dirty ? 'You have uncommitted changes. Commit or stash first.' : `Run git pull --ff-only`} onClick={() => { void pull().then(() => { setPulledNow(true) }).catch((failure: unknown) => { toast.error(errorMessage(failure, 'Could not pull')) }) }}>↓ Pull</button>
-                  </>
-                ) : sync.upstream !== null ? (
-                  <><span className="mx-nc-dot" aria-hidden="true" />{pulledNow ? 'Pulled · up to date with' : 'Up to date with'} {sync.upstream}</>
-                ) : null}
-              </p>
-            )}
             {switchTo.length > 0 && (
               <div className="mx-nc-switch" role="group" aria-label="Switch to">
                 <span className="mx-nc-switch-label">Switch to</span>
@@ -462,20 +432,61 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
       </div>
       <div ref={box} className="mx-composer">
         <div className="mx-composer-column">
-          <div className="mx-newchat-stack mx-field">
+          <div ref={stack} className="mx-newchat-stack">
             <div className="mx-box">
               <DraftAttachments attachments={attachments} onRemove={attach.remove} />
               <textarea ref={text} onPaste={onPaste} aria-label="First message" rows={2} value={message} placeholder={folder === '' ? 'Pick a folder above, then describe a task…' : 'Describe a task, or pick one above…'} className="mx-box-text" onChange={(event) => { setMessage(event.target.value) }} />
               <div className="mx-box-row">
                 {!remote && <button type="button" className="mx-box-attach" aria-label="Attach files" title="Attach files" onClick={attach.pick}><Icon name="plus" size={16} /></button>}
                 <span className="mx-spacer" />
+                <AgentPicker agentOnly={remote} agent={agent} choice={choice} onChange={(change) => { setChoice((was) => ({ ...was, ...change })) }} onAgent={pickAgent} />
                 <button type="button" className={`mx-send${busy || folder === '' || agentMissing ? ' is-off' : ''}`} aria-label={empty ? 'Start chat' : 'Send message'} title={folder === '' ? 'Pick a folder first' : `${empty ? 'Start an empty chat' : 'Send (Enter)'}${remote ? '' : ` · ${BACKGROUND_KEY} starts it and keeps this page open`}`} disabled={busy || folder === '' || agentMissing} onClick={() => { start() }}>
                   <Icon name="arrowUp" size={15} strokeWidth={2.2} />
                 </button>
               </div>
             </div>
-            <div className="mx-ctxtray">
-              <AgentPicker agentOnly={remote} agent={agent} choice={choice} onChange={(change) => { setChoice((was) => ({ ...was, ...change })) }} onAgent={pickAgent} />
+            <div className="mx-settings-tray mx-ctxtray">
+              {folder !== '' && (
+                <>
+                  <WherePopover open={whereOpen} onOpenChange={setWhereOpen} folderName={folderName} color={current?.color ?? null} branch={branches === null ? null : branchLabel} worktree={treeMode && branches !== null} anchor={stack}>
+                    <h3 className="mx-where-label">Project</h3>
+                    <ChipMenu title="Project" side="bottom" label={<strong>{folderName}</strong>} summary={folderName} icon={<span className="mx-ns-square" style={{ background: current?.color ?? 'var(--dim)' }} aria-hidden="true" />} search="Search projects" width={300}
+                      sections={folderSections} fromQuery={fromPath}
+                      footer={<>{browse !== null && <button type="button" className="mx-chip-action" onClick={pickOther}><Icon name="folder" size={12} />Browse for a folder…</button>}{otherMachines}{addMachine}</>} />
+                    {branches !== null && (
+                      <>
+                        <h3 className="mx-where-label">Branch in {folderName}</h3>
+                        <ChipMenu title="Branch" side="bottom" summary={branchLabel} label={<span className="mx-nc-branch">{branchLabel}</span>} icon={<span className="mx-nc-branch"><Icon name="branch" size={12} /></span>}
+                          search="Search or create a branch" width={320} sections={branchSections} fromQuery={fromBranchName} />
+                        <h3 className="mx-where-label">Work in</h3>
+                        <Segmented aria-label="Work in" value={treeMode ? 'tree' : 'folder'} onValueChange={(next) => { if (next === 'tree' || next === 'folder') setOwnCopy(next === 'tree') }} className="mx-where-work">
+                          <SegmentedItem value="folder" className="mx-where-work-option"><Icon name="folder" size={12} />This folder</SegmentedItem>
+                          <SegmentedItem value="tree" className="mx-where-work-option is-tree"><Icon name="worktree" size={12} />New worktree</SegmentedItem>
+                        </Segmented>
+                        <p className="mx-where-note">{treeMode ? 'Own copy on a new branch. Your checkout stays untouched.' : `Edits your checkout of ${branchLabel} directly.`}</p>
+                      </>
+                    )}
+                    {sync !== null && !remote && (
+                      <p className="mx-nc-sync" aria-live="polite">
+                        {treeMode ? (
+                          <>
+                            <span className="mx-nc-dot" aria-hidden="true" />
+                            {`Starts from ${sync.branch ?? 'here'}`}{sync.upstream !== null && sync.behind > 0 ? ` · ↓${String(sync.behind)} behind ${sync.upstream}` : ''}
+                          </>
+                        ) : sync.upstream !== null && sync.behind > 0 ? (
+                          <>
+                            <span className="mx-nc-behind">↓{sync.behind} behind {sync.upstream}</span>
+                            <button type="button" className="mx-nc-pull" disabled={sync.dirty || pulling} title={sync.dirty ? 'You have uncommitted changes. Commit or stash first.' : `Run git pull --ff-only`} onClick={() => { void pull().then(() => { setPulledNow(true) }).catch((failure: unknown) => { toast.error(errorMessage(failure, 'Could not pull')) }) }}>↓ Pull</button>
+                          </>
+                        ) : sync.upstream !== null ? (
+                          <><span className="mx-nc-dot" aria-hidden="true" />{pulledNow ? 'Pulled · up to date with' : 'Up to date with'} {sync.upstream}</>
+                        ) : null}
+                      </p>
+                    )}
+                  </WherePopover>
+                  <span className="mx-tray-sep" aria-hidden="true" />
+                </>
+              )}
               {forcedFull ? (
                 <span className="mx-tray-fact is-danger" title="Yolo mode is on for Codex (Settings, General), so it starts with full access. Turn the setting off to pick another mode.">{modeLabel(CODEX_FULL_MODE)}</span>
               ) : modes.length > 0 ? (
@@ -491,7 +502,6 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
               )}
               <span className="mx-spacer" />
               {remote && <span className="mx-tray-fact" title={`Model and effort are the agent's own on ${targetLabel}`}>On {targetLabel}</span>}
-              {folder !== '' && <span className="mx-tray-fact" title={folder}>{folder}</span>}
             </div>
           </div>
           {alsoOffered.length > 0 && (
@@ -503,7 +513,7 @@ export function NewChatPage({ machines, machine, projects, defaultAgent, bypassA
                   {AGENT_LABEL[other]}
                 </label>
               ))}
-              {!treeMode && <span id={alsoWhy} className="mx-nc-also-why">Each agent needs a copy of its own. Turn on Own copy to start several.</span>}
+              {!treeMode && <span id={alsoWhy} className="mx-nc-also-why">Each agent needs a copy of its own. Choose New worktree to start several.</span>}
             </div>
           )}
           {error !== null && <p role="alert" className="mx-composer-error">{error}</p>}

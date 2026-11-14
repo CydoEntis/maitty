@@ -13,14 +13,17 @@ export type UsageItem = {
   readonly resetsIn: string | null
   /** The limit's window as the tray says it after the figure (`week`, `5h`); null for the context. */
   readonly window: string | null
-  readonly tone: 'plain' | 'warn' | 'danger'
+  /** Which of the theme's four meter colours it wears. */
+  readonly tone: 'ok' | 'mid' | 'high' | 'max'
+  /** Under half used: the tray keeps it out of sight until the message box is hovered or focused. */
+  readonly low: boolean
 }
 
 const FULL = 100
-/** From here a meter is amber (layout 2g: four fifths): worth a look before it is a problem. */
-const WARN_FROM = 80
-/** From here it is red: the next long turn may not fit. */
-const DANGER_FROM = 90
+/** Where a meter moves to the theme's next colour (the desktop mock's steps): a quarter, a half, three quarters. */
+const MID_FROM = 25
+const HIGH_FROM = 50
+const MAX_FROM = 75
 const MINUTE = 60
 const HOUR = 3600
 const DAY = 86_400
@@ -28,7 +31,7 @@ const DAY = 86_400
 /** The names the daemon gives the limit windows, as the strip says them; any other is shown as it came. */
 const LIMIT_LABEL: Readonly<Record<string, string>> = { '5h': '5-hour limit', week: 'Weekly limit' }
 
-const toneOf = (percent: number): UsageItem['tone'] => (percent >= DANGER_FROM ? 'danger' : percent >= WARN_FROM ? 'warn' : 'plain')
+const toneOf = (percent: number): UsageItem['tone'] => (percent >= MAX_FROM ? 'max' : percent >= HIGH_FROM ? 'high' : percent >= MID_FROM ? 'mid' : 'ok')
 const whole = (value: number): number => Math.min(FULL, Math.max(0, Math.round(value)))
 
 /** `2d 4h`, `3h 10m`, `12m`: the two largest parts of a wait, or `now` when it is over. */
@@ -47,7 +50,7 @@ export function waitWords(seconds: number): string {
  * them. A figure the agent did not report has no meter, never a zero (ADR 0009). `now` is unix seconds.
  */
 export function usageItems(usage: SessionUsage, now: number): UsageItem[] {
-  const context: UsageItem[] = usage.context === null ? [] : [{ key: 'context', label: 'Context', percent: whole(usage.context), resetsIn: null, window: null, tone: toneOf(whole(usage.context)) }]
+  const context: UsageItem[] = usage.context === null ? [] : [{ key: 'context', label: 'Context', percent: whole(usage.context), resetsIn: null, window: null, tone: toneOf(whole(usage.context)), low: whole(usage.context) < HIGH_FROM }]
   const limits = usage.limits.map((limit): UsageItem => ({
     key: `limit-${limit.name}`,
     label: LIMIT_LABEL[limit.name] ?? limit.name,
@@ -55,6 +58,7 @@ export function usageItems(usage: SessionUsage, now: number): UsageItem[] {
     resetsIn: limit.resetsAt > 0 ? waitWords(limit.resetsAt - now) : null,
     window: limit.name,
     tone: toneOf(whole(limit.used)),
+    low: whole(limit.used) < HIGH_FROM,
   }))
   return [...context, ...limits]
 }
