@@ -1,0 +1,100 @@
+/*
+ * The window frame of the desktop redesign (MAITTY-380): the title bar, the sidebar, the pane header and the side
+ * panel, as the whole-app mock draws them. Every colour is a role token; corners follow `--r-*`.
+ */
+
+/* The title bar: 38px on the window's ground, the Maitty menu at the left, the view toggles and window buttons at the right. */
+.mx-app .title-bar { height: 38px; flex: 0 0 38px; gap: 12px; padding-left: 8px; background: var(--bg); border-bottom: 0; color: var(--muted); }
+.title-bar-fill { flex: 1; align-self: stretch; }
+.mx-tbar-logo { display: inline-flex; height: 28px; align-items: center; gap: 7px; padding: 0 8px 0 4px; border-radius: var(--r-control); outline: none; }
+.mx-tbar-logo:hover, .mx-tbar-logo[aria-expanded="true"] { background: var(--m-hover); }
+.mx-tbar-logo:focus-visible, .mx-tbar-toggle:focus-visible { box-shadow: 0 0 0 2px var(--focus); }
+.mx-tbar-logo img { width: 16px; height: 16px; object-fit: contain; pointer-events: none; }
+.mx-tbar-word { font-size: 13px; font-weight: 600; color: var(--fg); }
+.mx-tbar-ai { color: var(--accent-text); }
+.mx-tbar-toggles { display: flex; align-items: center; gap: 2px; margin-right: 8px; }
+.mx-tbar-toggle { display: grid; width: 28px; height: 28px; place-items: center; border-radius: var(--r-control); color: var(--dim); outline: none; transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.mx-tbar-toggle.is-on { color: var(--fg); }
+.mx-tbar-toggle:hover { background: var(--m-hover); color: var(--fg); }
+.title-bar[data-platform="windows"] [data-testid="window-controls"] > button { height: 38px; }
+
+/* The sidebar: a 264px card on `--card` with a hairline, 8px from the window's edges, its top under the title bar. */
+.mx-app .mx-sidebar { margin: 0 0 8px 8px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-panel); box-shadow: none; }
+.mx-app[data-side="right"] .mx-sidebar { margin: 0 8px 8px 0; }
+.mx-sidebar-top { flex-direction: row; align-items: center; gap: 2px; height: 28px; box-sizing: content-box; padding: 8px 8px 12px 16px; }
+.mx-sidebar-title { font-size: 12px; font-weight: 600; color: var(--muted); }
+.mx-sidebar .mx-head-button { width: 26px; height: 26px; border-radius: var(--r-control); }
+.mx-sidebar .mx-head-button:not(:disabled):hover { background: var(--m-hover); }
+.mx-sidebar .mx-head-button:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--focus); }
+.mx-sidebar-list { gap: 6px; }
+.mx-sections { gap: 6px; }
+/* Group headings: the name and a count; Needs you alone in the needs colour. */
+.mx-section-head { gap: 7px; border-radius: var(--r-control); color: var(--dim); }
+.mx-section-head.is-working, .mx-section-head.is-done, .mx-section-head.is-idle { color: var(--dim); }
+.mx-section-head.is-needs { color: var(--needs); }
+.mx-section-head:hover { background: var(--m-hover); }
+.mx-rows { gap: 2px; }
+/* A row: the 16px tile, the name and its time, the project and machine under it. */
+.mx-row { align-items: flex-start; gap: 10px; min-height: 0; padding: 7px 10px; border-radius: var(--r-control); }
+.mx-row:hover { background: var(--m-hover); }
+.mx-row.is-selected, .mx-row.is-selected:hover { background: var(--m-sel); box-shadow: none; }
+.mx-row .mx-row-icon { margin-top: 1px; }
+.mx-row-name { font-weight: 450; color: var(--fg2); }
+.mx-row.is-active .mx-row-name { font-weight: 450; color: var(--fg2); }
+.mx-row.is-needs .mx-row-name, .mx-row.is-selected .mx-row-name { font-weight: 600; color: var(--fg); }
+.mx-row-when { font-family: var(--mono); color: var(--dim); }
+.mx-row-sub { gap: 6px; font-size: calc(11.5px * var(--sidebar-text, 1)); line-height: calc(15px * var(--sidebar-text, 1)); color: var(--dim); }
+.mx-row-sub .mx-row-project-name { flex: 1; }
+.mx-row-machine { flex: none; max-width: 45%; }
+.mx-row-close { top: 7px; bottom: auto; right: 8px; border-radius: var(--r-control); background: transparent; }
+.mx-row-close:hover:not(:disabled) { color: var(--err); background: color-mix(in srgb, var(--err) 14%, transparent); }
+.mx-sidebar-foot { border-top-color: var(--line); }
+
+/* The frame's flat tile: the mark in its own colour on the raised surface, ringed by a hairline. */
+.mx-app-icon.is-flat { background: var(--m-raise); box-shadow: inset 0 0 0 1px var(--line); border-radius: calc(var(--r-control) * .8); }
+.mx-app-icon.is-flat.is-claude { color: #D97757; }
+.mx-app-icon.is-flat.is-codex, .mx-app-icon.is-flat.is-opencode { color: var(--fg2); }
+.mx-app-icon.is-flat.is-shell { color: var(--dim); }
+.mx-app-icon.is-flat.size-16, .mx-sidebar .mx-app-icon.is-flat.size-16 { width: 16px; height: 16px; font-size: 7px; }
+.mx-app-icon.is-flat.size-16 svg { width: 11px; height: 11px; }
+.mx-app-icon.is-flat.size-20 svg { width: 13px; height: 13px; }
+.mx-app-icon.is-dimmed { opacity: .45; }
+
+/* The 9px status badge, cut out of the tile by a ring in the surface colour. */
+.mx-app .mx-row-icon .mx-badge, .mx-app .mx-pane-icon .mx-badge { right: -3px; bottom: -3px; width: 9px; height: 9px; border: 0; border-radius: var(--r-badge); box-shadow: 0 0 0 2px var(--card); font: 800 7px/1 var(--mono); }
+.mx-app .mx-badge.is-needs { background: var(--needs); color: var(--on-needs); animation: mx-badge-pulse 1.6s ease-in-out infinite; }
+.mx-app .mx-badge.is-done { background: var(--done); color: var(--on-accent); }
+.mx-app .mx-badge.is-error { background: var(--err); color: #fff; }
+.mx-app .mx-badge.is-limited { background: var(--muted); color: var(--card); }
+.mx-app .mx-badge.is-working { background: var(--card); color: var(--working); }
+.mx-app .mx-badge.is-working .mx-spin { font-size: 8px; line-height: 1; }
+.mx-app .mx-badge.is-unknown { width: 8px; height: 8px; background: var(--card); border: 1.5px dashed var(--dim); }
+@keyframes mx-badge-pulse { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .mx-app .mx-badge.is-needs { animation: none; } }
+:root[data-reduced-motion="true"] .mx-app .mx-badge.is-needs { animation: none; }
+
+/* The main area: one flat card on `--card`, 8px from the window and the sidebar. One pane fills it edge to edge, its
+   header ruled off by a hairline; split panes drop the shared card and each become a card of their own. */
+.mx-app .mx-main-wrap { padding: 0 8px 8px; }
+.mx-app[data-side="right"] .mx-main-wrap { padding: 0 0 8px 8px; }
+.mx-app .mx-main { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-panel); box-shadow: none; }
+.mx-panes:not(.is-split) { padding: 0; }
+.mx-app .mx-pane { border-radius: var(--r-panel); }
+.mx-app .mx-pane.is-card, .mx-app .mx-pane-cell:has(> .mx-terms) > .mx-pane { background: var(--card); border-color: var(--line); box-shadow: none; }
+
+/* The side panel (section 5): a flat card on `--main` with a hairline, a 44px header, and its views as plain pills
+   (the open one on a faint wash) rather than a sunken tray. It still opens over the panes. */
+.mx-app .mx-inspect { top: 0; bottom: 8px; right: 8px; background: var(--main); border: 1px solid var(--line); border-radius: var(--r-panel); }
+.mx-app[data-side="right"] .mx-inspect { left: 8px; }
+.mx-app .mx-inspect-head { height: 44px; gap: 4px; padding: 0 8px 0 12px; border-bottom-color: var(--line); }
+.mx-app .mx-inspect-tabs { padding: 0; background: none; box-shadow: none; border-radius: 0; }
+.mx-app .mx-inspect-tabs button { gap: 6px; padding: 0 10px; border-radius: var(--r-control); font-size: 13px; transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.mx-app .mx-inspect-tabs button.is-current { background: var(--m-hover); box-shadow: none; }
+.mx-app .mx-inspect-count, .mx-app .mx-inspect-tabs button.is-current .mx-inspect-count { min-width: 0; padding: 0; background: none; font: 500 11px var(--mono); color: var(--dim); }
+
+/* The terminal tabs (section 6.2): mono names on square-cornered pills, the open one on a wash with a hairline. */
+.mx-app .mx-terms-head { height: 44px; gap: 4px; padding: 0 6px 0 8px; }
+.mx-app .mx-terms-tabs { gap: 2px; }
+.mx-app .mx-terms-tab { border-radius: var(--r-control); font-family: var(--mono); font-weight: 500; }
+.mx-app .mx-terms-tab.is-current { background: var(--m-hover); box-shadow: inset 0 0 0 1px var(--line); }
+.mx-app .mx-terms-add { width: 26px; height: 26px; border-radius: var(--r-control); }

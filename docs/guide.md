@@ -913,14 +913,14 @@ Sessions › Keep each pane's recent output) stops saving it and deletes what wa
 ## The desktop chat
 
 In the desktop app an agent has a chat view as well as its terminal. For an agent that runs in a
-terminal it is the same session: the Terminal and Chat switch never restarts the agent. (A chat that
+terminal it is the same session: switching between the Chat and Terminal tabs in its pane's header never restarts the agent. (A chat that
 Maitty's background service runs, see [Worktrees](#worktrees), has no terminal.) This part is about working in the chat and
 checking what the agent did. What the status marks mean is in [What a session's status
 means](#what-a-sessions-status-means).
 
 ### Starting a chat
 
-**New chat** (the top of the sidebar, or **New agent chat…** in the command palette, Ctrl+Shift+T, ⌘T
+**New chat** (the `+` at the top of the sidebar, the Maitty menu at the top left of the window, or **New agent chat…** in the command palette, Ctrl+Shift+T, ⌘T
 on a Mac) opens a page that asks "What
 should we work on?". Pick a project (or paste a path, or **Browse…**), write the first message and
 press Enter. The page opens on your most recent project, and shows the project list only when you

@@ -1,7 +1,6 @@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import type { PaneView } from '../model/chatView'
 import { useTipWithKeys } from '@/features/shortcuts/platform'
-import { Icon } from './glyphs'
 
 type Props = {
   view: PaneView
@@ -9,23 +8,19 @@ type Props = {
 }
 
 /**
- * The terminal | chat switch of an agent's pane. Choosing a view changes what the pane shows and
- * sends nothing to the daemon: both views read the same session. The thumb moves with a transform
- * only, and Reduce motion turns the move off at the window root.
+ * The Chat · Terminal tabs of an agent's pane header, the chosen one underlined in the accent. Choosing a view changes
+ * what the pane shows and sends nothing to the daemon: both views read the same session.
  */
 export function PaneViewSwitch({ view, onChange }: Props) {
   const tip = useTipWithKeys()
-  const choices: ReadonlyArray<{ value: PaneView; label: string }> = [
-    { value: 'terminal', label: tip('Terminal view', 'chat-toggle') },
-    { value: 'chat', label: tip('Chat view', 'chat-toggle') },
+  const choices: ReadonlyArray<{ value: PaneView; word: string; label: string }> = [
+    { value: 'chat', word: 'Chat', label: tip('Chat view', 'chat-toggle') },
+    { value: 'terminal', word: 'Terminal', label: tip('Terminal view', 'chat-toggle') },
   ]
   return (
-    <RadioGroup aria-label="Pane view" orientation="horizontal" value={view} onValueChange={(next) => { if (next === 'terminal' || next === 'chat') onChange(next) }} className={`mx-view-switch${view === 'chat' ? ' is-chat' : ''}`} onMouseDown={(event) => { event.stopPropagation() }}>
-      <span aria-hidden="true" className="mx-view-thumb" />
-      {choices.map(({ value, label }) => (
-        <RadioGroupItem key={value} value={value} aria-label={label} title={label} className="mx-view-option">
-          <Icon name={value === 'terminal' ? 'prompt' : 'chat'} size={14} strokeWidth={2} />
-        </RadioGroupItem>
+    <RadioGroup aria-label="Pane view" orientation="horizontal" value={view} onValueChange={(next) => { if (next === 'terminal' || next === 'chat') onChange(next) }} className="mx-view-switch" onMouseDown={(event) => { event.stopPropagation() }}>
+      {choices.map(({ value, word, label }) => (
+        <RadioGroupItem key={value} value={value} aria-label={label} title={label} className="mx-view-option">{word}</RadioGroupItem>
       ))}
     </RadioGroup>
   )

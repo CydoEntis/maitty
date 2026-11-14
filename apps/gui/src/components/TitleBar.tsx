@@ -1,18 +1,27 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { TitleBarView } from './TitleBarView'
 import { titleBarPlatform, type TitleBarPlatform } from './title-bar-platform'
 
+type Props = {
+  platform?: TitleBarPlatform
+  /** The app's menu at the bar's left. */
+  start?: ReactNode
+  /** The view toggles before the window buttons. */
+  end?: ReactNode
+}
+
 /**
- * The window's own title bar, drawn in the app's colors. The native bar is turned
- * off in tauri.conf.json, so this one carries the logo, the drag area and the
- * window buttons, drawn the way the platform draws them. It renders nothing
- * outside the desktop app. `platform` overrides detection, for tests and previews.
+ * The window's own title bar, drawn in the app's colors. The native bar is turned off in tauri.conf.json, so this one
+ * carries the app's menu, the view toggles, the drag area and the window buttons, drawn the way the platform draws
+ * them. Outside the desktop app it draws the menu and toggles alone, and nothing without them. `platform` overrides
+ * detection, for tests and previews.
  */
-export function TitleBar({ platform = titleBarPlatform(navigator.userAgent) }: { platform?: TitleBarPlatform }) {
-  if (!isTauri() || !hasWindowMetadata()) return null
-  return <DesktopTitleBar platform={platform} />
+export function TitleBar({ platform = titleBarPlatform(navigator.userAgent), start, end }: Props) {
+  if (isTauri() && hasWindowMetadata()) return <DesktopTitleBar platform={platform} start={start} end={end} />
+  if (start === undefined && end === undefined) return null
+  return <TitleBarView platform={platform} actions={null} start={start} end={end} />
 }
 
 // getCurrentWindow() needs the host's window metadata, which a real Tauri
@@ -24,7 +33,7 @@ function hasWindowMetadata(): boolean {
   return internals?.metadata !== undefined
 }
 
-function DesktopTitleBar({ platform }: { platform: TitleBarPlatform }) {
+function DesktopTitleBar({ platform, start, end }: { platform: TitleBarPlatform; start: ReactNode; end: ReactNode }) {
   // One handle for the window's life: a new one each render re-subscribed to its events every second.
   const appWindow = useMemo(() => getCurrentWindow(), [])
   const [maximized, setMaximized] = useState(false)
@@ -51,6 +60,8 @@ function DesktopTitleBar({ platform }: { platform: TitleBarPlatform }) {
   return (
     <TitleBarView
       platform={platform}
+      start={start}
+      end={end}
       actions={{
         maximized,
         onMinimize: () => {
