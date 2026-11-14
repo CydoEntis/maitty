@@ -312,14 +312,15 @@ function modeLockedWhy(facts: Pick<ComposerFacts, 'modeLocked' | 'agentChips'>):
   return facts.modeLocked ?? facts.agentChips?.locked ?? 'Not available for this chat'
 }
 
-/**
- * The meters at the right of the tray: how full the session's context is, as a small ring, and how much of each of the
- * plan's limits is used, as a ring with its window (`Week 49%`). Only what the agent reported is drawn (ADR 0009); with
- * nothing reported there is none. When a limit starts over is in its tooltip.
- */
 /** The short name a meter wears beside its figure: Context, 5h, Week. */
 const usageName = (item: { window: string | null }): string => (item.window === null ? 'Context' : item.window === 'week' ? 'Week' : item.window)
 
+/**
+ * The meters at the right of the tray: how full the session's context is and how much of each of the plan's limits is
+ * used, each a name, a ring and the figure, in the theme's meter colour for its quarter. A meter under half used stays
+ * out of sight until the message box is hovered or focused. Only what the agent reported is drawn (ADR 0009); with
+ * nothing reported there is none. When a limit starts over is in its tooltip.
+ */
 function UsageMeters({ usage }: { usage: SessionUsage }) {
   const items = usageItems(usage, nowSeconds())
   if (items.length === 0) return null
@@ -328,10 +329,10 @@ function UsageMeters({ usage }: { usage: SessionUsage }) {
       {items.map((item) => {
         const used = item.window === null ? `How much of this chat's memory is used: ${String(item.percent)}%` : item.resetsIn === null ? `${item.label}: ${String(item.percent)}% used` : `${item.label}: ${String(item.percent)}% used · resets in ${item.resetsIn}`
         return (
-          <span key={item.key} className={`mx-usage-item is-${item.tone}`} title={used}>
+          <span key={item.key} className={`mx-usage-item is-${item.tone}${item.low ? ' is-low' : ''}`} title={used}>
             <span className="mx-usage-name">{usageName(item)}</span>
-            <span className="mx-usage-figure">{item.percent}%</span>
             <span className="mx-usage-ring" role="meter" aria-label={item.label} aria-valuemin={0} aria-valuemax={PERCENT} aria-valuenow={item.percent} style={{ '--share': `${String(item.percent)}%` } as CSSProperties} />
+            <span className="mx-usage-figure">{item.percent}%</span>
           </span>
         )
       })}

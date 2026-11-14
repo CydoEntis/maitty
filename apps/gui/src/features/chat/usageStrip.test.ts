@@ -18,9 +18,11 @@ describe('the usage strip under the message box', () => {
     expect(usageItems({ context: null, limits: [{ name: 'week', used: 5, resetsAt: 0 }] }, NOW).map((item) => [item.label, item.resetsIn])).toEqual([['Weekly limit', null]])
   })
 
-  it('turns a meter amber from four fifths and red from nine tenths', () => {
-    const tones = [10, 79, 80, 89, 90, 140].map((used) => usageItems({ context: used, limits: [] }, NOW)[0]?.tone)
-    expect(tones).toEqual(['plain', 'plain', 'warn', 'warn', 'danger', 'danger'])
+  it('steps a meter through the theme\'s four colours by quarters, and calls it low under half', () => {
+    const tones = [10, 24, 25, 49, 50, 74, 75, 140].map((used) => usageItems({ context: used, limits: [] }, NOW)[0]?.tone)
+    expect(tones).toEqual(['ok', 'ok', 'mid', 'mid', 'high', 'high', 'max', 'max'])
+    const low = [49, 50].map((used) => usageItems({ context: null, limits: [{ name: '5h', used, resetsAt: NOW + 60 }] }, NOW)[0]?.low)
+    expect(low).toEqual([true, false])
     expect(usageItems({ context: 140, limits: [] }, NOW)[0]?.percent).toBe(100)
   })
 

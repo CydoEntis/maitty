@@ -433,9 +433,11 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   still shows that menu in the terminal, not in the chat.
 - **The tray under the message box** is one line (`SettingsTray`). At the left: the folder, the branch in mono in
   the theme's magenta with the branch mark (or the tree and the worktree's blue; the tooltip says which), then the
-  permission mode. At the right, what the agent reported using (`UsageMeters`, `usageStrip.ts`): the context as a
-  small ring with its percent, then each plan limit as a short bar with its percent and window (`49% week`,
-  `12% 5h`). From 75% a meter is amber and from 90% red. When a limit starts over is in its tooltip. Only what the
+  permission mode. At the right, what the agent reported using (`UsageMeters`, `usageStrip.ts`): the context, then
+  each plan limit, each a name (`Context`, `5h`, `Week`), a 12px ring and the figure in mono, ring and figure in the
+  theme's meter colour for the quarter it is in (`--m-ok` under 25%, `--m-mid` under 50%, `--m-or` under 75%, `--m-hi`
+  from there). A meter under 50% stays out of sight until the message box is hovered or focused. When a limit starts
+  over is in its tooltip. Only what the
   agent reported is drawn (ADR 0009); a chat session with no pane has none yet. Tokens and cost stay in Settings ›
   Usage & cost.
 - **Codex's commands.** A Codex chat has the same picker. Codex cannot be asked what it takes, so its commands are a
@@ -647,10 +649,10 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   answer from anywhere in the chat but a field, a choice's number picks it, and Enter on the card gives its main
   answer. Answering removes it, the box unlocks and the agent is working again (its row and the badge follow the
   daemon); the request then folds into one line in the feed (a hairline row: its mark, "Allowed for this session",
-  and **Go to step ↑**). **2. The box**: glass
-  (`--main` under `rgba(--hl,.075)` to `.035`, a `rgba(--hl,.12)` border, radius 16), a two-line text box on top, **+**
+  and **Go to step ↑**). **2. The box**: flat
+  (`--main`, a `--line2` border, radius `--r-panel`; focused, a `--focus` border and 1px ring), a two-line text box on top, **+**
   (attach) at the left, and at the right the model picker ("Claude Sonnet 5.5 · Medium ▾": the agent's mark, the model
-  picked or the one its own file says, the effort) and the round 32px send button, teal when it can send and grey while
+  picked or the one its own file says, the effort) and the 32px send button (radius `--r-control`), in the accent when it can send and grey while
   a question waits. While the agent works and nothing is typed, the send button is the Stop square, still (the line over the
   box says the agent is at work, so the button does not spin); just after a send, before there is a turn to stop, the
   square is there and off.
@@ -659,7 +661,7 @@ and timings; the feature stylesheets beside their components carry them (`sideba
   follows another agent (Codex, Gemini) draws its model label from the start, with just the agent's name until it says its
   model. The "agent has not reported" hint of a starting chat floats over the conversation and moves nothing. Placeholders: "Message claude", "Queue a
   message for when claude finishes" while it works, "Answer the request above first" (and off) while a question
-  waits. **3. The settings tray**: narrower and darker, under the box: the permission mode from the agent's own file
+  waits. **3. The settings tray**: 14px in from each side and hanging from the box (`--main`, a `--line` border, no top edge): the permission mode from the agent's own file
   ("Ask before edits", "Plan mode", "Bypass permissions" in red, or "Permissions" before it has said; its menu is headed PERMISSIONS with the agent's name and has a row a mode, each with a line saying what it does; a new Codex chat has Read only, Auto and Full access instead). The tray reads project folder (opens Files) first, then the mode, and at the right the word **Worktree** or **Branch** before the branch's name, so a chat in a worktree never reads as one on the main checkout. It does not list subagents: the sidebar does. Queued messages are dashed bubbles above (`QueuedMessages`): each has an **×** in its top right corner (remove) and **Edit**, which takes it out of the queue and puts its words back in the box, ahead of anything typed there, with its files back as attachments. A queued message shows its files as the chips a sent message has, never as the lines that name them to the agent. Two or more sit as a **stack**: the first one sent in front, showing its first two lines and "first of N", with the edges of up to two more under it. A click on a message spreads them all out, oldest first, each with its own × and Edit; a click again stacks them, and a queue down to one message starts stacked the next time it grows.
 - **Esc ladder.** Esc closes the topmost open layer and reaches the terminal only when none is
   open (`model/escLadder.ts`): What's new, palette, Settings, the sidebar drawer,
