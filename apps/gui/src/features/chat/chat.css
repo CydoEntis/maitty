@@ -55,9 +55,9 @@
 
 /* Rich text in a reply. */
 .mx-md-rule { margin: 0; border: 0; border-top: 1px solid rgba(var(--hl), calc(.09 * var(--hk))); }
-.mx-md-table { border-radius: 10px; border: 1px solid rgba(var(--hl), calc(.09 * var(--hk))); }
-.mx-md-tablewrap { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
-.mx-md-tableacts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; }
+/* A table is a card like a code block: its Copy and Save sit in the head, never loose under it where they read as part of the next paragraph. */
+.mx-md-tablecard { min-width: 0; }
+.mx-md-tableacts { flex-wrap: wrap; gap: 2px; }
 /* The message breaks long words anywhere, which let a narrow column shrink to one letter a line. A cell keeps its words whole; a table too wide for the column scrolls in its own region. */
 .mx-md-table th, .mx-md-table td { overflow-wrap: normal; word-break: normal; }
 .mx-md-table th { white-space: nowrap; }
